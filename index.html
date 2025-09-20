@@ -64,30 +64,32 @@
         const [validationErrors, setValidationErrors] = useState({});
 
         const countdownRef = useRef(null);
-        const firstInputRef = useRef(null);
 
         useEffect(() => {
+            // Set up a cleanup function for the interval
+            const cleanup = () => {
+                if (countdownRef.current) {
+                    clearInterval(countdownRef.current);
+                }
+            };
+        
             if (currentQuestionIndex === questions.length) {
                 setCountdown(10);
                 countdownRef.current = setInterval(() => {
                     setCountdown(prev => {
                         if (prev <= 1) {
-                            clearInterval(countdownRef.current);
+                            cleanup(); // Clear the interval when countdown finishes
                             handleSubmit();
                             return 0;
                         }
                         return prev - 1;
                     });
                 }, 1000);
-                return () => clearInterval(countdownRef.current);
             }
+        
+            // This function runs on unmount or before the effect runs again
+            return cleanup;
         }, [currentQuestionIndex, questions.length]);
-
-        useEffect(() => {
-            if (firstInputRef.current) {
-                firstInputRef.current.focus();
-            }
-        }, [currentQuestionIndex]);
 
         const isQuestionAnswered = () => {
             const currentQuestion = questions[currentQuestionIndex];
@@ -96,27 +98,34 @@
             const currentAnswer = answers[currentQuestion.id];
             const otherAnswer = answers[`${currentQuestion.id}-other`];
 
+            // Basic check for required questions
+            if (['text', 'email', 'emoji', 'linear-scale', 'star-rating', 'single-choice'].includes(currentQuestion.type)) {
+                if (!currentAnswer) return false;
+            }
+
             switch (currentQuestion.type) {
-                case 'text':
                 case 'email':
-                case 'emoji':
-                case 'linear-scale':
-                case 'star-rating':
-                case 'single-choice':
-                case 'checkbox':
-                    return !!currentAnswer && (Array.isArray(currentAnswer) ? currentAnswer.length > 0 : true);
+                    // Basic email regex validation
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    return emailRegex.test(currentAnswer);
                 case 'single-choice-other':
                     return currentAnswer === 'Other' ? !!otherAnswer : !!currentAnswer;
                 case 'multiple-choice-other':
                     return (currentAnswer && currentAnswer.length > 0) && (!currentAnswer.includes('Other') || (currentAnswer.includes('Other') && !!otherAnswer));
+                case 'checkbox':
+                    return currentAnswer && currentAnswer.length > 0;
                 default:
-                    return false;
+                    return !!currentAnswer;
             }
         };
 
         const handleNextQuestion = () => {
             if (!isQuestionAnswered()) {
-                setValidationErrors({ ...validationErrors, [questions[currentQuestionIndex].id]: 'Please provide a valid answer.' });
+                let errorMsg = 'Please provide a valid answer.';
+                if (questions[currentQuestionIndex].type === 'email') {
+                    errorMsg = 'Please enter a valid email address.';
+                }
+                setValidationErrors({ ...validationErrors, [questions[currentQuestionIndex].id]: errorMsg });
                 return;
             }
             setValidationErrors({});
@@ -133,10 +142,15 @@
             setAnswers(prevAnswers => {
                 let newAnswers = { ...prevAnswers };
                 const currentQuestion = questions.find(q => q.id === questionId);
+
                 if (currentQuestion.type === 'multiple-choice-other' || currentQuestion.type === 'checkbox') {
                     const currentArray = newAnswers[questionId] || [];
                     if (currentArray.includes(value)) {
                         newAnswers[questionId] = currentArray.filter(item => item !== value);
+                        // Clear 'other' value if 'Other' is deselected
+                        if (value === 'Other') {
+                            delete newAnswers[`${questionId}-other`];
+                        }
                     } else {
                         newAnswers[questionId] = [...currentArray, value];
                     }
@@ -147,11 +161,12 @@
                 if (extraValue !== null) {
                     newAnswers[`${questionId}-other`] = extraValue;
                 } else if (value !== 'Other' && currentQuestion.type.includes('other')) {
+                    // Clear 'other' value if a different option is selected
                     delete newAnswers[`${questionId}-other`];
                 }
+                
                 return newAnswers;
             });
-
             setValidationErrors({ ...validationErrors, [questionId]: '' });
         };
 
@@ -162,7 +177,6 @@
                 setSubmissionError('Please answer the current question before submitting.');
                 return;
             }
-
             if (isSubmitting) return;
 
             setIsSubmitting(true);
@@ -193,39 +207,43 @@
         };
 
         const resetSurvey = () => {
+            clearInterval(countdownRef.current);
             setCurrentQuestionIndex(0);
             setAnswers({});
             setShowThankYou(false);
             setSubmissionError('');
             setValidationErrors({});
-            clearInterval(countdownRef.current);
             window.scrollTo(0, 0);
-            if (firstInputRef.current) {
-                firstInputRef.current.focus();
-            }
         };
 
         const currentQuestion = questions[currentQuestionIndex];
         const isLastQuestion = currentQuestionIndex === questions.length - 1;
 
         // Reusable components for each question type
-        const TextQuestion = ({ id, label, type }) => (
-            <div className="flex flex-col items-start w-full">
-                <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">{label}</label>
-                <input
-                    id={id}
-                    ref={id === questions[0].id ? firstInputRef : null}
-                    type={type}
-                    value={answers[id] || ''}
-                    onChange={(e) => handleAnswer(id, e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
-                    aria-required="true"
-                />
-                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-            </div>
-        );
+        const TextQuestion = ({ id, label, type }) => {
+            const inputRef = useRef(null);
+            useEffect(() => {
+                inputRef.current?.focus();
+            }, [id]);
+
+            return (
+                <div className="flex flex-col items-start w-full">
+                    <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">{label}</label>
+                    <input
+                        id={id}
+                        ref={inputRef}
+                        type={type}
+                        value={answers[id] || ''}
+                        onChange={(e) => handleAnswer(id, e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
+                        aria-required="true"
+                    />
+                    {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+                </div>
+            );
+        };
 
         const EmojiQuestion = ({ id, label, options }) => (
             <div className="flex flex-col items-center justify-center w-full">
@@ -317,7 +335,6 @@
                     <input
                         id={`${id}-other`}
                         type="text"
-                        ref={id === questions[currentQuestionIndex].id ? firstInputRef : null}
                         value={answers[`${id}-other`] || ''}
                         onChange={(e) => handleAnswer(id, 'Other', e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
@@ -350,9 +367,8 @@
                     <input
                         id={`${id}-other`}
                         type="text"
-                        ref={id === questions[currentQuestionIndex].id ? firstInputRef : null}
                         value={answers[`${id}-other`] || ''}
-                        onChange={(e) => setAnswers({ ...answers, [`${id}-other`]: e.target.value })}
+                        onChange={(e) => handleAnswer(id, 'Other', e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
                         className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Please specify..."
@@ -420,31 +436,31 @@
         };
 
         const renderQuestionComponent = () => {
-            if (showThankYou) return <ThankYouScreen />;
+            if (showThankYou) return <ThankYouScreen key="thank-you" />;
 
             const currentQuestion = questions[currentQuestionIndex];
-            if (!currentQuestion) return <FinalScreen />;
+            if (!currentQuestion) return <FinalScreen key="final" />;
 
             const { id, type, label, options, min, max } = currentQuestion;
 
             switch (type) {
                 case 'text':
                 case 'email':
-                    return <TextQuestion id={id} label={label} type={type} />;
+                    return <TextQuestion key={id} id={id} label={label} type={type} />;
                 case 'emoji':
-                    return <EmojiQuestion id={id} label={label} options={options} />;
+                    return <EmojiQuestion key={id} id={id} label={label} options={options} />;
                 case 'linear-scale':
-                    return <LinearScaleQuestion id={id} label={label} min={min} max={max} />;
+                    return <LinearScaleQuestion key={id} id={id} label={label} min={min} max={max} />;
                 case 'star-rating':
-                    return <StarRatingQuestion id={id} label={label} max={max} />;
+                    return <StarRatingQuestion key={id} id={id} label={label} max={max} />;
                 case 'single-choice':
-                    return <SingleChoiceQuestion id={id} label={label} options={options} hasOther={false} />;
+                    return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} />;
                 case 'single-choice-other':
-                    return <SingleChoiceQuestion id={id} label={label} options={options} hasOther={true} />;
+                    return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} />;
                 case 'multiple-choice-other':
-                    return <MultipleChoiceQuestion id={id} label={label} options={options} hasOther={true} />;
+                    return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} />;
                 case 'checkbox':
-                    return <MultipleChoiceQuestion id={id} label={label} options={options} hasOther={false} />;
+                    return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} />;
                 default:
                     return null;
             }

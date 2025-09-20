@@ -1,0 +1,14 @@
+{
+  "name": "survey-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "batch-update.js",
+  "scripts": {
+    "start": "netlify dev"
+  },
+  "dependencies": {
+    "google-auth-library": "^9.4.1",
+    "googleapis": "^129.0.0",
+    "node-cron": "^3.0.3"
+  }
+}

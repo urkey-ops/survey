@@ -1,0 +1,10 @@
+{
+  "name": "survey-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "batch-update.js",
+  "dependencies": {
+    "google-auth-library": "^9.4.1",
+    "googleapis": "^129.0.0"
+  }
+}

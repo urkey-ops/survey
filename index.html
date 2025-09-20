@@ -1,314 +1,341 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Feedback Kiosk</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        /* Custom spin animation */
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        .animate-spin-custom { animation: spin 1s linear infinite; }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Feedback Kiosk</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Custom spin animation */
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin-custom { animation: spin 1s linear infinite; }
+    </style>
 </head>
 <body class="bg-gray-100 p-4 min-h-screen flex items-center justify-center font-inter">
-    <div id="root" class="w-full"></div>
+    <div id="root" class="w-full"></div>
 
-    <script type="text/babel">
-        const StarIcon = ({ filled }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}>
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-        );
+    <script type="text/babel">
+        // Reusable SVG components for improved visual consistency and performance
+        const StarIcon = ({ filled }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}>
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+        );
 
-        const Spinner = () => (
-            <svg className="animate-spin-custom h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-        );
+        const Spinner = () => (
+            <svg className="animate-spin-custom h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        );
 
-        const TextInput = React.forwardRef(({ id, label, type, answers, validationErrors, handleAnswer }, ref) => (
-            <div className="flex flex-col items-start w-full">
-                <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
-                    {label} {type !== 'checkbox' && <span className="text-red-500">*</span>}
-                </label>
-                <input
-                    id={id}
-                    type={type}
-                    value={answers[id] || ''}
-                    onChange={(e) => handleAnswer(id, e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
-                    aria-required="true"
-                    ref={ref}
-                />
-                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-            </div>
-        ));
+        const TextInput = React.forwardRef(({ id, label, type, answers, validationErrors, handleAnswer }, ref) => (
+            <div className="flex flex-col items-start w-full">
+                <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
+                    {label} {type !== 'checkbox' && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                    id={id}
+                    type={type}
+                    value={answers[id] || ''}
+                    onChange={(e) => handleAnswer(id, e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
+                    aria-required="true"
+                    ref={ref}
+                />
+                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+            </div>
+        ));
 
-        const ChoiceQuestion = React.forwardRef(({ id, label, options, type, hasOther, answers, validationErrors, handleAnswer, handleOtherAnswer, isSubmitting }, ref) => {
-            const isMultiple = type.includes('multiple') || type === 'checkbox';
-            const isSelected = (option) => {
-                const currentAnswer = answers[id];
-                if (isMultiple) {
-                    return Array.isArray(currentAnswer) && currentAnswer.includes(option);
-                }
-                return currentAnswer === option;
-            };
+        const ChoiceQuestion = React.forwardRef(({ id, label, options, type, hasOther, answers, validationErrors, handleAnswer, handleOtherAnswer, isSubmitting }, ref) => {
+            const isMultiple = type.includes('multiple') || type === 'checkbox';
+            const isSelected = (option) => {
+                const currentAnswer = answers[id];
+                if (isMultiple) {
+                    return Array.isArray(currentAnswer) && currentAnswer.includes(option);
+                }
+                return currentAnswer === option;
+            };
 
-            return (
-                <div className="flex flex-col items-start w-full" tabIndex="0" ref={ref}>
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} {type !== 'checkbox' && <span className="text-red-500">*</span>}</h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role={isMultiple ? "group" : "radiogroup"} aria-label={label} aria-required={type !== 'checkbox' ? "true" : "false"}>
-                        {options.map(option => (
-                            <button
-                                key={option}
-                                onClick={() => handleAnswer(id, option, isMultiple)}
-                                disabled={isSubmitting}
-                                className={`py-3 px-4 rounded-md transition-all ${isSelected(option) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
-                                aria-pressed={isSelected(option)}
-                            >
-                                {option}
-                            </button>
-                        ))}
-                    </div>
-                    {hasOther && isSelected('Other') && (
-                        <input
-                            id={`${id}-other`}
-                            type="text"
-                            value={answers[`${id}-other`] || ''}
-                            onChange={(e) => handleOtherAnswer(id, e.target.value)}
-                            className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Please specify..."
-                            aria-required="true"
-                        />
-                    )}
-                    {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-                </div>
-            );
-        });
+            return (
+                <div className="flex flex-col items-start w-full" tabIndex="0" ref={ref}>
+                    <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} {type !== 'checkbox' && <span className="text-red-500">*</span>}</h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role={isMultiple ? "group" : "radiogroup"} aria-label={label} aria-required={type !== 'checkbox' ? "true" : "false"}>
+                        {options.map(option => (
+                            <button
+                                key={option}
+                                onClick={() => handleAnswer(id, option, isMultiple)}
+                                disabled={isSubmitting}
+                                className={`py-3 px-4 rounded-md transition-all ${isSelected(option) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                                aria-pressed={isSelected(option)}
+                            >
+                                {option}
+                            </button>
+                        ))}
+                    </div>
+                    {hasOther && isSelected('Other') && (
+                        <input
+                            id={`${id}-other`}
+                            type="text"
+                            value={answers[`${id}-other`] || ''}
+                            onChange={(e) => handleOtherAnswer(id, e.target.value)}
+                            className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Please specify..."
+                            aria-required="true"
+                        />
+                    )}
+                    {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+                </div>
+            );
+        });
 
-        const ThankYouScreen = ({ submissionError }) => (
-            <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg shadow-inner text-center">
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
-                <p className="text-gray-600 mb-4">Your survey has been saved.</p>
-                {submissionError && <p className="text-sm text-red-500 mb-4">{submissionError}</p>}
-                <p className="text-sm text-gray-500 mt-2">The kiosk will reset shortly.</p>
-            </div>
-        );
+        const ThankYouScreen = ({ submissionError }) => (
+            <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg shadow-inner text-center">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
+                <p className="text-gray-600 mb-4">Your survey has been saved.</p>
+                {submissionError && <p className="text-sm text-red-500 mb-4">{submissionError}</p>}
+                <p className="text-sm text-gray-500 mt-2">The kiosk will reset shortly.</p>
+            </div>
+        );
 
-        const App = () => {
-            const questions = [
-                { id: 'q1', label: 'Write us about your experience today. Any comment or suggestion?', type: 'text' },
-                { id: 'q2', label: 'Overall, how satisfied were you with your visit today?', type: 'emoji', options: [{ value: 'Sad', emoji: '😞' }, { value: 'Neutral', emoji: '😐' }, { value: 'Happy', emoji: '😊' }] },
-                { id: 'q3', label: 'How would you rate the cleanliness of the facility?', type: 'linear-scale', min: 1, max: 5 },
-                { id: 'q4', label: 'How friendly was the volunteer staff?', type: 'star-rating', max: 5 },
-                { id: 'q5', label: 'A little about yourself... How young are you?', type: 'single-choice', options: ['<18', '18-26', '26-50', '51-75', '75+'] },
-                { id: 'q6', label: 'Where are you from?', type: 'single-choice', options: ['USA', 'South America', 'Canada', 'India', 'Other'] },
-                { id: 'q7', label: 'How did you first hear about us?', type: 'multiple-choice', options: ['Drove by', 'Friends/Family', 'Internet', 'Social Media', 'Other'] },
-                { id: 'q8', label: 'Name', type: 'text' },
-                { id: 'q9', label: 'Email', type: 'email' },
-                { id: 'q10', label: 'Subscribe to e-newsletter', type: 'checkbox', options: ['Yes'] }
-            ];
-            
-            const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
-            const [answers, setAnswers] = React.useState({});
-            const [isSubmitting, setIsSubmitting] = React.useState(false);
-            const [showThankYou, setShowThankYou] = React.useState(false);
-            const [submissionError, setSubmissionError] = React.useState('');
-            const [validationErrors, setValidationErrors] = React.useState({});
+        const App = () => {
+            const questions = [
+                { id: 'q1', label: 'Write us about your experience today. Any comment or suggestion?', type: 'text' },
+                { id: 'q2', label: 'Overall, how satisfied were you with your visit today?', type: 'emoji', options: [{ value: 'Sad', emoji: '😞' }, { value: 'Neutral', emoji: '😐' }, { value: 'Happy', emoji: '😊' }] },
+                { id: 'q3', label: 'How would you rate the cleanliness of the facility?', type: 'linear-scale', min: 1, max: 5 },
+                { id: 'q4', label: 'How friendly was the volunteer staff?', type: 'star-rating', max: 5 },
+                { id: 'q5', label: 'A little about yourself... How young are you?', type: 'single-choice', options: ['<18', '18-26', '26-50', '51-75', '75+'] },
+                { id: 'q6', label: 'Where are you from?', type: 'single-choice', options: ['USA', 'South America', 'Canada', 'India', 'Other'] },
+                { id: 'q7', label: 'How did you first hear about us?', type: 'multiple-choice', options: ['Drove by', 'Friends/Family', 'Internet', 'Social Media', 'Other'] },
+                { id: 'q8', label: 'Name', type: 'text' },
+                { id: 'q9', label: 'Email', type: 'email' },
+                { id: 'q10', label: 'Subscribe to e-newsletter', type: 'checkbox', options: ['Yes'] }
+            ];
 
-            const isQuestionAnswered = () => {
-                const currentQuestion = questions[currentQuestionIndex];
-                if (!currentQuestion || currentQuestion.type === 'checkbox') return true;
-                const currentAnswer = answers[currentQuestion.id];
-                const otherAnswer = answers[`${currentQuestion.id}-other`];
-                const hasPrimaryAnswer = Array.isArray(currentAnswer) ? currentAnswer.length > 0 : !!currentAnswer;
+            const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
+            const [answers, setAnswers] = React.useState({});
+            const [isSubmitting, setIsSubmitting] = React.useState(false);
+            const [showThankYou, setShowThankYou] = React.useState(false);
+            const [submissionError, setSubmissionError] = React.useState('');
+            const [validationErrors, setValidationErrors] = React.useState({});
+            const [syncStatus, setSyncStatus] = React.useState('');
 
-                if (!hasPrimaryAnswer) return false;
+            const questionRef = React.useRef(null);
 
-                if (currentQuestion.type === 'email') {
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    return emailRegex.test(currentAnswer);
-                }
-                if (currentQuestion.options && currentQuestion.options.includes('Other')) {
-                    if (currentAnswer === 'Other' && !otherAnswer) return false;
-                    if (Array.isArray(currentAnswer) && currentAnswer.includes('Other') && !otherAnswer) return false;
-                }
-                return true;
-            };
+            const getStoredData = () => {
+                try {
+                    const data = JSON.parse(localStorage.getItem('unsyncedSurveyData'));
+                    return Array.isArray(data) ? data : [];
+                } catch (e) {
+                    console.error("Failed to parse localStorage data", e);
+                    return [];
+                }
+            };
+            
+            const isQuestionAnswered = () => {
+                const currentQuestion = questions[currentQuestionIndex];
+                if (!currentQuestion) return false;
+                if (currentQuestion.type === 'checkbox') return true;
+                
+                const currentAnswer = answers[currentQuestion.id];
+                const hasPrimaryAnswer = Array.isArray(currentAnswer) ? currentAnswer.length > 0 : !!currentAnswer;
+                if (!hasPrimaryAnswer) return false;
 
-            const handleNextQuestion = () => {
-                if (!isQuestionAnswered()) {
-                    const errorMsg = 'Please provide a valid answer to continue.';
-                    setValidationErrors({ [questions[currentQuestionIndex].id]: errorMsg });
-                    return;
-                }
-                setValidationErrors({});
-                setCurrentQuestionIndex(prevIndex => prevIndex + 1);
-            };
+                if (currentQuestion.type === 'email') {
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    return emailRegex.test(currentAnswer);
+                }
 
-            const handleAnswer = (questionId, value, isMultiple) => {
-                setAnswers(prevAnswers => {
-                    const newAnswers = { ...prevAnswers };
-                    if (isMultiple) {
-                        const currentArray = newAnswers[questionId] || [];
-                        if (currentArray.includes(value)) {
-                            newAnswers[questionId] = currentArray.filter(item => item !== value);
-                        } else {
-                            newAnswers[questionId] = [...currentArray, value];
-                        }
-                    } else {
-                        newAnswers[questionId] = value;
-                    }
-                    return newAnswers;
-                });
-                setValidationErrors({});
-            };
+                if (currentQuestion.options && currentQuestion.options.includes('Other')) {
+                    const otherAnswer = answers[`${currentQuestion.id}-other`];
+                    const hasOtherAnswer = Array.isArray(currentAnswer) ? currentAnswer.includes('Other') : currentAnswer === 'Other';
+                    if (hasOtherAnswer && !otherAnswer) return false;
+                }
+                
+                return true;
+            };
 
-            const handleOtherAnswer = (questionId, otherText) => {
-                setAnswers(prevAnswers => ({
-                    ...prevAnswers,
-                    [`${questionId}-other`]: otherText,
-                }));
-            };
+            const handleNextQuestion = () => {
+                if (!isQuestionAnswered()) {
+                    const errorMsg = 'Please provide a valid answer to continue.';
+                    setValidationErrors({ [questions[currentQuestionIndex].id]: errorMsg });
+                    return;
+                }
+                setValidationErrors({});
+                setCurrentQuestionIndex(prevIndex => prevIndex + 1);
+            };
 
-            const sendDataToSheets = async (data) => {
-                try {
-                    const response = await fetch('/.netlify/functions/append-to-sheet', {
-                        method: 'POST',
-                        body: JSON.stringify(data),
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    console.log('Survey submitted successfully!');
-                    localStorage.removeItem('unsyncedSurveyData');
-                    return { success: true };
-                } catch (error) {
-                    console.error("Submission failed:", error);
-                    return { success: false, error: 'Submission failed. The data is saved locally and will be synced later.' };
-                }
-            };
+            const handleAnswer = (questionId, value, isMultiple) => {
+                setAnswers(prevAnswers => {
+                    const newAnswers = { ...prevAnswers };
+                    if (isMultiple) {
+                        const currentArray = newAnswers[questionId] || [];
+                        if (currentArray.includes(value)) {
+                            newAnswers[questionId] = currentArray.filter(item => item !== value);
+                        } else {
+                            newAnswers[questionId] = [...currentArray, value];
+                        }
+                    } else {
+                        newAnswers[questionId] = value;
+                    }
+                    return newAnswers;
+                });
+                setValidationErrors({});
+            };
 
-            const handleSubmit = async () => {
-                if (!isQuestionAnswered()) {
-                    const errorMsg = 'Please provide a valid answer before submitting.';
-                    setValidationErrors({ [questions[currentQuestionIndex].id]: errorMsg });
-                    return;
-                }
-                setIsSubmitting(true);
-                setSubmissionError('');
-                
-                const dataToSave = { timestamp: new Date().toISOString(), ...answers };
-                const existingData = JSON.parse(localStorage.getItem('unsyncedSurveyData')) || [];
-                const newData = [...existingData, dataToSave];
-                localStorage.setItem('unsyncedSurveyData', JSON.stringify(newData));
+            const handleOtherAnswer = (questionId, otherText) => {
+                setAnswers(prevAnswers => ({
+                    ...prevAnswers,
+                    [`${questionId}-other`]: otherText,
+                }));
+            };
 
-                const result = await sendDataToSheets(newData);
-                if (!result.success) {
-                    setSubmissionError(result.error);
-                }
-                
-                setIsSubmitting(false);
-                setShowThankYou(true);
-            };
+            const sendDataToSheets = async (data) => {
+                try {
+                    const response = await fetch('/.netlify/functions/append-to-sheet', {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    
+                    const successfullySentIds = data.map(entry => entry.timestamp);
+                    const remainingData = getStoredData().filter(entry => !successfullySentIds.includes(entry.timestamp));
+                    localStorage.setItem('unsyncedSurveyData', JSON.stringify(remainingData));
+                    
+                    setSyncStatus('Data synced successfully!');
+                    setTimeout(() => setSyncStatus(''), 3000);
+                    return { success: true };
+                } catch (error) {
+                    console.error("Submission failed:", error);
+                    setSyncStatus('Data saved locally. Sync failed.');
+                    return { success: false, error: 'Submission failed. The data is saved locally and will be synced later.' };
+                }
+            };
 
-            const resetSurvey = () => {
-                setCurrentQuestionIndex(0);
-                setAnswers({});
-                setShowThankYou(false);
-                setSubmissionError('');
-                setValidationErrors({});
-            };
-            
-            React.useEffect(() => {
-                if (showThankYou) {
-                    const timer = setTimeout(resetSurvey, 5000);
-                    return () => clearTimeout(timer);
-                }
-            }, [showThankYou]);
-            
-            React.useEffect(() => {
-                const storedData = JSON.parse(localStorage.getItem('unsyncedSurveyData'));
-                if (storedData && storedData.length > 0) {
-                    console.log('Attempting to sync previously unsynced data...');
-                    sendDataToSheets(storedData);
-                }
-            }, []);
+            const handleSubmit = async () => {
+                if (!isQuestionAnswered()) {
+                    const errorMsg = 'Please provide a valid answer before submitting.';
+                    setValidationErrors({ [questions[currentQuestionIndex].id]: errorMsg });
+                    return;
+                }
+                setIsSubmitting(true);
+                setSubmissionError('');
+                
+                const dataToSave = { timestamp: new Date().toISOString(), ...answers };
+                const existingData = getStoredData();
+                const newData = [...existingData, dataToSave];
+                localStorage.setItem('unsyncedSurveyData', JSON.stringify(newData));
 
-            const currentQuestion = questions[currentQuestionIndex];
-            const isLastQuestion = currentQuestionIndex === questions.length - 1;
+                const result = await sendDataToSheets([dataToSave]);
+                if (!result.success) {
+                    setSubmissionError(result.error);
+                }
+                
+                setIsSubmitting(false);
+                setShowThankYou(true);
+            };
 
-            const renderQuestionComponent = () => {
-                if (showThankYou) return <ThankYouScreen key="thank-you" submissionError={submissionError} />;
-                if (!currentQuestion) return null;
-                const { id, type, label, options, min, max } = currentQuestion;
+            const resetSurvey = () => {
+                setCurrentQuestionIndex(0);
+                setAnswers({});
+                setShowThankYou(false);
+                setSubmissionError('');
+                setValidationErrors({});
+            };
+            
+            React.useEffect(() => {
+                if (showThankYou) {
+                    const timer = setTimeout(resetSurvey, 5000);
+                    return () => clearTimeout(timer);
+                }
+            }, [showThankYou]);
+            
+            // Periodic sync check
+            React.useEffect(() => {
+                const checkAndSync = () => {
+                    const storedData = getStoredData();
+                    if (storedData.length > 0) {
+                        console.log('Attempting to sync previously unsynced data...');
+                        sendDataToSheets(storedData);
+                    }
+                };
 
-                switch (type) {
-                    case 'text':
-                    case 'email':
-                        return <TextInput key={id} id={id} label={label} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
-                    case 'emoji':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options.map(o => o.value)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
-                    case 'linear-scale':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={Array.from({ length: max - min + 1 }, (_, i) => min + i)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
-                    case 'star-rating':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={Array.from({ length: max }, (_, i) => i + 1)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
-                    case 'single-choice':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} hasOther={options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} />;
-                    case 'multiple-choice':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} hasOther={options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} />;
-                    case 'checkbox':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
-                    default:
-                        return null;
-                }
-            };
+                const syncInterval = setInterval(checkAndSync, 60000); // Check every 60 seconds
+                checkAndSync(); // Initial check on load
+                
+                return () => clearInterval(syncInterval);
+            }, []);
 
-            return (
-                <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-                    <div className="w-full max-w-xl">
-                        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
-                        <div className="w-full mb-6">
-                            <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-blue-500 transition-all duration-500 ease-in-out"
-                                    style={{ width: `${(currentQuestionIndex / questions.length) * 100}%` }}
-                                ></div>
-                            </div>
-                            <p className="text-right text-sm text-gray-600 mt-2">
-                                Question {currentQuestionIndex + 1} of {questions.length}
-                            </p>
-                        </div>
-                        <div className={`p-8 bg-white rounded-lg shadow-lg`}>
-                            {renderQuestionComponent()}
-                        </div>
-                        <div className="flex justify-center w-full max-w-xl mt-6">
-                            <button
-                                onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
-                                disabled={isSubmitting || !isQuestionAnswered()}
-                                className={`w-full py-3 px-4 rounded-md text-white font-semibold transition flex justify-center items-center gap-2 ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
-                            >
-                                {isSubmitting ? <Spinner /> : (isLastQuestion ? 'Submit' : 'Next')}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
+            const currentQuestion = questions[currentQuestionIndex];
+            const isLastQuestion = currentQuestionIndex === questions.length - 1;
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
+            const renderQuestionComponent = () => {
+                if (showThankYou) return <ThankYouScreen key="thank-you" submissionError={submissionError} />;
+                if (!currentQuestion) return null;
+                const { id, type, label, options, min, max } = currentQuestion;
+
+                switch (type) {
+                    case 'text':
+                    case 'email':
+                        return <TextInput key={id} id={id} label={label} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
+                    case 'emoji':
+                    case 'linear-scale':
+                    case 'star-rating':
+                    case 'single-choice':
+                    case 'multiple-choice':
+                    case 'checkbox':
+                        return <ChoiceQuestion key={id} id={id} label={label} options={options.map(o => o.value || o) || Array.from({ length: max - min + 1 }, (_, i) => min + i)} type={type} hasOther={options && options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} />;
+                    default:
+                        return null;
+                }
+            };
+
+            return (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+                    <div className="w-full max-w-xl">
+                        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
+                        <div className="w-full mb-6">
+                            <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-blue-500 transition-all duration-500 ease-in-out"
+                                    style={{ width: `${(currentQuestionIndex / questions.length) * 100}%` }}
+                                ></div>
+                            </div>
+                            <p className="text-right text-sm text-gray-600 mt-2">
+                                Question {currentQuestionIndex + 1} of {questions.length}
+                            </p>
+                        </div>
+                        <div className={`p-8 bg-white rounded-lg shadow-lg`}>
+                            {renderQuestionComponent()}
+                        </div>
+                        <div className="flex justify-center w-full max-w-xl mt-6">
+                            <button
+                                onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
+                                disabled={isSubmitting || !isQuestionAnswered()}
+                                className={`w-full py-3 px-4 rounded-md text-white font-semibold transition flex justify-center items-center gap-2 ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
+                            >
+                                {isSubmitting ? <Spinner /> : (isLastQuestion ? 'Submit' : 'Next')}
+                            </button>
+                        </div>
+                        <p className="text-center mt-4 text-sm text-gray-600">{syncStatus}</p>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
 </body>
 </html>

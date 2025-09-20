@@ -278,6 +278,7 @@
                 };
             }, []);
 
+            // FIX: This useEffect now correctly checks if the user has advanced past the last question
             React.useEffect(() => {
                 if (currentQuestionIndex === questions.length) {
                     if (countdownRef.current) {

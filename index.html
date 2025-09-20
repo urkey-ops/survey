@@ -131,7 +131,8 @@
         const question = questions[index];
         const questionGroup = document.createElement('div');
         questionGroup.className = 'question-group';
-        
+        questionGroup.id = question.id; // <-- ADD THIS LINE
+
         questionGroup.innerHTML = `
             <label>${question.label}</label>
             <div class="options">
@@ -142,9 +143,9 @@
                 `).join('')}
             </div>
         `;
-        
+
         questionsContainer.appendChild(questionGroup);
-        
+
         questionGroup.querySelectorAll('.option-button').forEach(button => {
             button.addEventListener('click', handleButtonClick);
         });

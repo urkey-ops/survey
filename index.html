@@ -69,40 +69,47 @@ const App = () => {
     }
   }, [currentQuestionIndex]);
 
+  // Function to check if the current question has a valid answer
+  const isQuestionAnswered = () => {
+    const currentQuestion = questions[currentQuestionIndex];
+    if (!currentQuestion) return true;
+
+    const currentAnswer = answers[currentQuestion.id];
+    const otherAnswer = answers[`${currentQuestion.id}-other`];
+
+    switch (currentQuestion.type) {
+      case 'text':
+      case 'email':
+      case 'emoji':
+      case 'linear-scale':
+      case 'star-rating':
+      case 'single-choice':
+      case 'checkbox':
+        return !!currentAnswer && (Array.isArray(currentAnswer) ? currentAnswer.length > 0 : true);
+      case 'single-choice-other':
+        return currentAnswer === 'Other' ? !!otherAnswer : !!currentAnswer;
+      case 'multiple-choice-other':
+        return (currentAnswer && currentAnswer.length > 0) && (!currentAnswer.includes('Other') || (currentAnswer.includes('Other') && !!otherAnswer));
+      default:
+        return false;
+    }
+  };
+
   // Function to advance to the next question
   const handleNextQuestion = () => {
-    const currentQuestion = questions[currentQuestionIndex];
-    let error = '';
-    const currentAnswer = answers[currentQuestion.id];
-
-    // Validation for each question type
-    if (currentQuestion.type === 'text' && !currentAnswer) {
-      error = 'This field cannot be empty.';
-    } else if (currentQuestion.type === 'email' && (!currentAnswer || !currentAnswer.includes('@'))) {
-      error = 'Please enter a valid email address.';
-    } else if (currentQuestion.type === 'single-choice-other' && currentAnswer === 'Other' && !answers[`${currentQuestion.id}-other`]) {
-      error = 'Please specify your answer.';
-    } else if (currentQuestion.type === 'multiple-choice-other' && (!currentAnswer || currentAnswer.length === 0)) {
-      error = 'Please select at least one option.';
-    } else if (currentQuestion.type === 'emoji' && !currentAnswer) {
-      error = 'Please select an emoji.';
-    } else if (currentQuestion.type === 'linear-scale' && !currentAnswer) {
-      error = 'Please select a rating.';
-    } else if (currentQuestion.type === 'star-rating' && !currentAnswer) {
-      error = 'Please select a star rating.';
-    } else if (currentQuestion.type === 'single-choice' && !currentAnswer) {
-      error = 'Please select an option.';
-    } else if (currentQuestion.type === 'checkbox' && (!currentAnswer || currentAnswer.length === 0)) {
-      error = 'Please select an option.';
+    if (!isQuestionAnswered()) {
+      setValidationErrors({ ...validationErrors, [questions[currentQuestionIndex].id]: 'Please provide a valid answer.' });
+      return;
     }
-
-    if (error) {
-      setValidationErrors({ ...validationErrors, [currentQuestion.id]: error });
-      return; // Block progression
-    }
-
     setValidationErrors({});
     setCurrentQuestionIndex(currentQuestionIndex + 1);
+  };
+
+  // Function to go back to the previous question
+  const handlePreviousQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
+    }
   };
 
   // Handle a user's answer
@@ -123,36 +130,22 @@ const App = () => {
 
       if (extraValue !== null) {
         newAnswers[`${questionId}-other`] = extraValue;
+      } else if (value !== 'Other' && currentQuestion.type.includes('other')) {
+        delete newAnswers[`${questionId}-other`];
       }
       return newAnswers;
     });
 
     // Clear validation error on interaction
     setValidationErrors({ ...validationErrors, [questionId]: '' });
-
-    // Automatically advance for simple, one-click answer types
-    const currentQuestion = questions[currentQuestionIndex];
-    const oneClickTypes = ['emoji', 'linear-scale', 'star-rating', 'single-choice'];
-    if (oneClickTypes.includes(currentQuestion.type) && currentQuestion.id !== 'q6') {
-      setTimeout(handleNextQuestion, 300);
-    }
   };
 
   // Handle survey submission
   const handleSubmit = async (event) => {
     if (event) event.preventDefault();
 
-    // Final validation before submission
-    const finalErrors = {};
-    questions.forEach(q => {
-      if (!answers[q.id]) {
-        finalErrors[q.id] = 'This question is required.';
-      }
-    });
-
-    if (Object.keys(finalErrors).length > 0) {
-      setSubmissionError('Please answer all required questions.');
-      setValidationErrors(finalErrors);
+    if (!isQuestionAnswered() && currentQuestionIndex < questions.length) {
+      setSubmissionError('Please answer the current question before submitting.');
       return;
     }
 
@@ -214,19 +207,12 @@ const App = () => {
           type={type}
           value={answers[id] || ''}
           onChange={(e) => handleAnswer(id, e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
           className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
           aria-required="true"
         />
         {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-        <button
-          onClick={handleNextQuestion}
-          disabled={isSubmitting || !!validationErrors[id]}
-          className="mt-6 w-full py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-          aria-label="Next Question"
-        >
-          Next
-        </button>
       </div>
     );
   }
@@ -328,22 +314,16 @@ const App = () => {
           <input
             id={`${id}-other`}
             type="text"
+            ref={id === questions[currentQuestionIndex].id ? firstInputRef : null}
             value={answers[`${id}-other`] || ''}
-            onChange={(e) => setAnswers(prev => ({ ...prev, [`${id}-other`]: e.target.value }))}
+            onChange={(e) => handleAnswer(id, 'Other', e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
             className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Please specify..."
             aria-required="true"
           />
         )}
         {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-        <button
-          onClick={handleNextQuestion}
-          disabled={isSubmitting || (hasOther && answers[id] === 'Other' && !answers[`${id}-other`])}
-          className="mt-6 w-full py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-          aria-label="Next Question"
-        >
-          Next
-        </button>
       </div>
     );
   }
@@ -369,22 +349,16 @@ const App = () => {
           <input
             id={`${id}-other`}
             type="text"
+            ref={id === questions[currentQuestionIndex].id ? firstInputRef : null}
             value={answers[`${id}-other`] || ''}
             onChange={(e) => setAnswers({ ...answers, [`${id}-other`]: e.target.value })}
+            onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
             className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Please specify..."
             aria-required="true"
           />
         )}
         {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-        <button
-          onClick={handleNextQuestion}
-          disabled={isSubmitting || !!validationErrors[id]}
-          className="mt-6 w-full py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-          aria-label="Next Question"
-        >
-          Next
-        </button>
       </div>
     );
   }
@@ -479,15 +453,54 @@ const App = () => {
     }
   };
 
+  const showNavigation = currentQuestionIndex < questions.length;
+  const showBackButton = currentQuestionIndex > 0;
+  const showNextButton = currentQuestionIndex < questions.length;
+
+  // The main app layout
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="w-full max-w-xl">
+        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
+
+        {showNavigation && (
+          <div className="w-full mb-6">
+            <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-500 ease-in-out"
+                style={{ width: `${(currentQuestionIndex / questions.length) * 100}%` }}
+              ></div>
+            </div>
+            <p className="text-right text-sm text-gray-600 mt-2">
+              Question {currentQuestionIndex + 1} of {questions.length}
+            </p>
+          </div>
+        )}
+
         <div className={`p-8 bg-white rounded-lg shadow-lg transition-transform duration-500 transform ${currentQuestion ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
-          <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
           <form onSubmit={handleSubmit}>
             {renderQuestionComponent()}
           </form>
         </div>
+
+        {showNavigation && (
+          <div className="flex justify-between w-full max-w-xl mt-6">
+            <button
+              onClick={handlePreviousQuestion}
+              disabled={!showBackButton}
+              className={`py-2 px-4 rounded-md font-semibold transition ${showBackButton ? 'bg-gray-300 text-gray-800 hover:bg-gray-400' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+            >
+              Back
+            </button>
+            <button
+              onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
+              disabled={isSubmitting || !isQuestionAnswered()}
+              className={`py-2 px-4 rounded-md text-white font-semibold transition ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
+            >
+              {isLastQuestion ? 'Submit' : 'Next'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -4,265 +4,62 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced Custom Survey App</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React and ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX compilation -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
         }
     </style>
 </head>
-<body class="bg-gray-100 p-4 min-h-screen flex items-center justify-center">
+<body class="bg-gray-100 p-4 min-h-screen flex items-center justify-center font-inter">
+    <div id="root" class="w-full"></div>
 
-<div id="root" class="w-full"></div>
-
-<script type="text/babel">
-    const { useState, useEffect, useRef } = React;
-
-    // A simple, reusable Star SVG icon component
-    const StarIcon = ({ filled }) => (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill={filled ? "currentColor" : "none"}
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}
-        >
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-    );
-
-    // Main application component
-    const App = () => {
-        const questions = [
-            { id: 'q1', label: 'Write us about your experience today. Any comment or suggestion?', type: 'text' },
-            { id: 'q2', label: 'Overall, how satisfied were you with your visit today?', type: 'emoji', options: [{ value: 'Sad', emoji: '😞' }, { value: 'Neutral', emoji: '😐' }, { value: 'Happy', emoji: '😊' }] },
-            { id: 'q3', label: 'How would you rate the cleanliness of the facility?', type: 'linear-scale', min: 1, max: 5 },
-            { id: 'q4', label: 'How friendly was the volunteer staff?', type: 'star-rating', max: 5 },
-            { id: 'q5', label: 'A little about yourself... How young are you?', type: 'single-choice', options: ['<18', '18-26', '26-50', '51-75', '75+'] },
-            { id: 'q6', label: 'Where are you from?', type: 'single-choice-other', options: ['USA', 'South America', 'Canada', 'India', 'Other'] },
-            { id: 'q7', label: 'How did you first hear about us?', type: 'multiple-choice-other', options: ['Drove by', 'Friends/Family', 'Internet', 'Social Media', 'Other'] },
-            { id: 'q8', label: 'Name', type: 'text' },
-            { id: 'q9', label: 'Email', type: 'email' },
-            { id: 'q10', label: 'Subscribe to e-newsletter', type: 'checkbox', options: ['Yes', 'No'] }
-        ];
-
-        const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-        const [answers, setAnswers] = useState({});
-        const [isSubmitting, setIsSubmitting] = useState(false);
-        const [showThankYou, setShowThankYou] = useState(false);
-        const [countdown, setCountdown] = useState(10);
-        const [submissionError, setSubmissionError] = useState('');
-        const [validationErrors, setValidationErrors] = useState({});
-
-        const countdownRef = useRef(null);
-
-        // Effect for unmounting cleanup
-        useEffect(() => {
-            return () => {
-                if (countdownRef.current) {
-                    clearInterval(countdownRef.current);
-                }
-            };
-        }, []);
-
-        // Effect for countdown logic on the last question
-        useEffect(() => {
-            if (currentQuestionIndex === questions.length) {
-                // Clear any existing timer before setting a new one
-                if (countdownRef.current) {
-                    clearInterval(countdownRef.current);
-                }
-                setCountdown(10);
-                countdownRef.current = setInterval(() => {
-                    setCountdown(prev => {
-                        if (prev <= 1) {
-                            clearInterval(countdownRef.current);
-                            handleSubmit();
-                            return 0;
-                        }
-                        return prev - 1;
-                    });
-                }, 1000);
-            }
-        }, [currentQuestionIndex, questions.length]);
-
-        // Effect for managing focus on question change
-        useEffect(() => {
-            const firstInteractiveElement = document.querySelector('input, button, a[href]');
-            if (firstInteractiveElement) {
-                firstInteractiveElement.focus();
-            }
-        }, [currentQuestionIndex]);
-
-        const isQuestionAnswered = () => {
-            const currentQuestion = questions[currentQuestionIndex];
-            if (!currentQuestion) return true;
-
-            const currentAnswer = answers[currentQuestion.id];
-            const otherAnswer = answers[`${currentQuestion.id}-other`];
-
-            // Check if the primary answer exists and is not an empty string
-            const hasPrimaryAnswer = Array.isArray(currentAnswer) ? currentAnswer.length > 0 : !!currentAnswer;
-
-            // Handle specific validation based on question type
-            switch (currentQuestion.type) {
-                case 'email':
-                    // Basic email regex validation
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    return hasPrimaryAnswer && emailRegex.test(currentAnswer);
-                case 'single-choice-other':
-                    return hasPrimaryAnswer && (currentAnswer !== 'Other' || !!otherAnswer);
-                case 'multiple-choice-other':
-                    return hasPrimaryAnswer && (!currentAnswer.includes('Other') || !!otherAnswer);
-                case 'checkbox':
-                    return hasPrimaryAnswer;
-                default:
-                    return hasPrimaryAnswer;
-            }
-        };
-
-        const handleNextQuestion = () => {
-            if (!isQuestionAnswered()) {
-                let errorMsg = 'Please provide a valid answer.';
-                if (questions[currentQuestionIndex].type === 'email') {
-                    errorMsg = 'Please enter a valid email address.';
-                }
-                setValidationErrors({ ...validationErrors, [questions[currentQuestionIndex].id]: errorMsg });
-                return;
-            }
-            setValidationErrors({});
-            setCurrentQuestionIndex(currentQuestionIndex + 1);
-        };
-
-        const handlePreviousQuestion = () => {
-            if (currentQuestionIndex > 0) {
-                setCurrentQuestionIndex(currentQuestionIndex - 1);
-            }
-        };
-
-        const handleAnswer = (questionId, value) => {
-            setAnswers(prevAnswers => {
-                let newAnswers = { ...prevAnswers };
-                const currentQuestion = questions.find(q => q.id === questionId);
-
-                if (currentQuestion.type.includes('multiple-choice') || currentQuestion.type === 'checkbox') {
-                    const currentArray = newAnswers[questionId] || [];
-                    if (currentArray.includes(value)) {
-                        newAnswers[questionId] = currentArray.filter(item => item !== value);
-                        if (value === 'Other') {
-                            delete newAnswers[`${questionId}-other`];
-                        }
-                    } else {
-                        newAnswers[questionId] = [...currentArray, value];
-                    }
-                } else {
-                    newAnswers[questionId] = value;
-                }
-
-                // Unify and correct 'other' answer handling.
-                // When a user selects a value that is NOT 'Other', we must clear the 'other' text field.
-                if (currentQuestion.type.includes('other') && value !== 'Other') {
-                    delete newAnswers[`${questionId}-other`];
-                }
-                
-                return newAnswers;
-            });
-            setValidationErrors({ ...validationErrors, [questionId]: '' });
-        };
-        
-        // New dedicated handler for 'other' text input fields.
-        // This is a more direct and reliable way to handle these fields and fix the bug.
-        const handleOtherAnswer = (questionId, otherText) => {
-            setAnswers(prevAnswers => ({
-                ...prevAnswers,
-                [`${questionId}-other`]: otherText,
-            }));
-        };
-
-        const handleSubmit = async (event) => {
-            if (event) event.preventDefault();
-            
-            if (!isQuestionAnswered() && currentQuestionIndex < questions.length) {
-                setSubmissionError('Please answer the current question before submitting.');
-                return;
-            }
-            if (isSubmitting) return;
-
-            setIsSubmitting(true);
-            setSubmissionError('');
-            const data = { timestamp: new Date().toISOString(), ...answers };
-
-            const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-            const submitUrl = isDeployed
-                ? `/.netlify/functions/submit-survey`
-                : 'https://jsonplaceholder.typicode.com/posts';
-
-            try {
-                const response = await fetch(submitUrl, {
-                    method: 'POST',
-                    body: JSON.stringify(data),
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                if (!response.ok) throw new Error('Network response was not ok');
-
-                console.log('Survey submitted successfully!', await response.json());
-                setShowThankYou(true);
-            } catch (error) {
-                console.error("Submission failed:", error);
-                setSubmissionError('Submission failed. Please try again.');
-            } finally {
-                setIsSubmitting(false);
-            }
-        };
-
-        const resetSurvey = () => {
-            if (countdownRef.current) {
-                clearInterval(countdownRef.current);
-            }
-            setCurrentQuestionIndex(0);
-            setAnswers({});
-            setShowThankYou(false);
-            setSubmissionError('');
-            setValidationErrors({});
-            window.scrollTo(0, 0);
-        };
-
-        const currentQuestion = questions[currentQuestionIndex];
-        const isLastQuestion = currentQuestionIndex === questions.length - 1;
+    <script type="text/babel">
+        // Reusable Star SVG icon component
+        const StarIcon = ({ filled }) => (
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill={filled ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}
+            >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+        );
 
         // Reusable components for each question type
-        const TextQuestion = ({ id, label, type }) => {
-            return (
-                <div className="flex flex-col items-start w-full">
-                    <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
-                        {label} {type !== 'checkbox' && <span className="text-red-500">*</span>}
-                    </label>
-                    <input
-                        id={id}
-                        type={type}
-                        value={answers[id] || ''}
-                        onChange={(e) => handleAnswer(id, e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
-                        aria-required="true"
-                    />
-                    {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-                </div>
-            );
-        };
+        const TextQuestion = React.forwardRef(({ id, label, type, answers, validationErrors, handleAnswer, handleNextQuestion }, ref) => (
+            <div className="flex flex-col items-start w-full">
+                <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
+                    {label} {type !== 'checkbox' && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                    id={id}
+                    type={type}
+                    value={answers[id] || ''}
+                    onChange={(e) => handleAnswer(id, e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
+                    aria-required="true"
+                    ref={ref}
+                />
+                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+            </div>
+        ));
 
-        const EmojiQuestion = ({ id, label, options }) => (
-            <div className="flex flex-col items-center justify-center w-full">
+        const EmojiQuestion = React.forwardRef(({ id, label, options, answers, isSubmitting, handleAnswer }, ref) => (
+            <div className="flex flex-col items-center justify-center w-full" tabIndex="0" ref={ref}>
                 <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
                 <div className="flex justify-center items-center gap-6 mt-4" role="radiogroup" aria-label={label} aria-required="true">
                     {options.map(option => (
@@ -279,12 +76,11 @@
                         </button>
                     ))}
                 </div>
-                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
             </div>
-        );
+        ));
 
-        const LinearScaleQuestion = ({ id, label, min, max }) => (
-            <div className="flex flex-col items-center w-full">
+        const LinearScaleQuestion = React.forwardRef(({ id, label, min, max, answers, isSubmitting, handleAnswer }, ref) => (
+            <div className="flex flex-col items-center w-full" tabIndex="0" ref={ref}>
                 <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
                 <div className="flex justify-center items-center w-full gap-4" role="radiogroup" aria-label={label} aria-required="true">
                     {[...Array(max - min + 1)].map((_, i) => {
@@ -303,12 +99,11 @@
                         );
                     })}
                 </div>
-                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
             </div>
-        );
+        ));
 
-        const StarRatingQuestion = ({ id, label, max }) => (
-            <div className="flex flex-col items-center w-full">
+        const StarRatingQuestion = React.forwardRef(({ id, label, max, answers, isSubmitting, handleAnswer }, ref) => (
+            <div className="flex flex-col items-center w-full" tabIndex="0" ref={ref}>
                 <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
                 <div className="flex items-center gap-1" role="radiogroup" aria-label={label} aria-required="true">
                     {[...Array(max)].map((_, i) => {
@@ -327,12 +122,11 @@
                         );
                     })}
                 </div>
-                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
             </div>
-        );
+        ));
 
-        const SingleChoiceQuestion = ({ id, label, options, hasOther }) => (
-            <div className="flex flex-col items-start w-full">
+        const SingleChoiceQuestion = React.forwardRef(({ id, label, options, hasOther, answers, validationErrors, handleAnswer, handleOtherAnswer, isSubmitting }, ref) => (
+            <div className="flex flex-col items-start w-full" tabIndex="0" ref={ref}>
                 <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="radiogroup" aria-label={label} aria-required="true">
                     {options.map(option => (
@@ -353,7 +147,6 @@
                         type="text"
                         value={answers[`${id}-other`] || ''}
                         onChange={(e) => handleOtherAnswer(id, e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
                         className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Please specify..."
                         aria-required="true"
@@ -361,10 +154,10 @@
                 )}
                 {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
             </div>
-        );
+        ));
 
-        const MultipleChoiceQuestion = ({ id, label, options, hasOther }) => (
-            <div className="flex flex-col items-start w-full">
+        const MultipleChoiceQuestion = React.forwardRef(({ id, label, options, hasOther, answers, validationErrors, handleAnswer, handleOtherAnswer, isSubmitting }, ref) => (
+            <div className="flex flex-col items-start w-full" tabIndex="0" ref={ref}>
                 <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="group" aria-label={label} aria-required="true">
                     {options.map(option => (
@@ -385,7 +178,6 @@
                         type="text"
                         value={answers[`${id}-other`] || ''}
                         onChange={(e) => handleOtherAnswer(id, e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
                         className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Please specify..."
                         aria-required="true"
@@ -393,9 +185,9 @@
                 )}
                 {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
             </div>
-        );
+        ));
 
-        const ThankYouScreen = () => (
+        const ThankYouScreen = ({ resetSurvey, submissionError }) => (
             <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg shadow-inner text-center">
                 <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
                 <p className="text-gray-600 mb-4">The survey has been submitted successfully.</p>
@@ -409,7 +201,7 @@
             </div>
         );
 
-        const FinalScreen = () => {
+        const FinalScreen = ({ countdown, handleSubmit, submissionError, isSubmitting }) => {
             const progressWidth = (countdown / 10) * 100;
             return (
                 <div className="flex flex-col items-center justify-center w-full">
@@ -452,96 +244,256 @@
             );
         };
 
-        const renderQuestionComponent = () => {
-            if (showThankYou) return <ThankYouScreen key="thank-you" />;
+        // Main application component
+        const App = () => {
+            const questions = [
+                { id: 'q1', label: 'Write us about your experience today. Any comment or suggestion?', type: 'text' },
+                { id: 'q2', label: 'Overall, how satisfied were you with your visit today?', type: 'emoji', options: [{ value: 'Sad', emoji: '😞' }, { value: 'Neutral', emoji: '😐' }, { value: 'Happy', emoji: '😊' }] },
+                { id: 'q3', label: 'How would you rate the cleanliness of the facility?', type: 'linear-scale', min: 1, max: 5 },
+                { id: 'q4', label: 'How friendly was the volunteer staff?', type: 'star-rating', max: 5 },
+                { id: 'q5', label: 'A little about yourself... How young are you?', type: 'single-choice', options: ['<18', '18-26', '26-50', '51-75', '75+'] },
+                { id: 'q6', label: 'Where are you from?', type: 'single-choice-other', options: ['USA', 'South America', 'Canada', 'India', 'Other'] },
+                { id: 'q7', label: 'How did you first hear about us?', type: 'multiple-choice-other', options: ['Drove by', 'Friends/Family', 'Internet', 'Social Media', 'Other'] },
+                { id: 'q8', label: 'Name', type: 'text' },
+                { id: 'q9', label: 'Email', type: 'email' },
+                { id: 'q10', label: 'Subscribe to e-newsletter', type: 'checkbox', options: ['Yes', 'No'] }
+            ];
+
+            const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
+            const [answers, setAnswers] = React.useState({});
+            const [isSubmitting, setIsSubmitting] = React.useState(false);
+            const [showThankYou, setShowThankYou] = React.useState(false);
+            const [countdown, setCountdown] = React.useState(10);
+            const [submissionError, setSubmissionError] = React.useState('');
+            const [validationErrors, setValidationErrors] = React.useState({});
+
+            const countdownRef = React.useRef(null);
+            const questionRef = React.useRef(null);
+
+            React.useEffect(() => {
+                return () => {
+                    if (countdownRef.current) {
+                        clearInterval(countdownRef.current);
+                    }
+                };
+            }, []);
+
+            React.useEffect(() => {
+                if (currentQuestionIndex === questions.length) {
+                    if (countdownRef.current) {
+                        clearInterval(countdownRef.current);
+                    }
+                    setCountdown(10);
+                    countdownRef.current = setInterval(() => {
+                        setCountdown(prev => {
+                            if (prev <= 1) {
+                                clearInterval(countdownRef.current);
+                                handleSubmit();
+                                return 0;
+                            }
+                            return prev - 1;
+                        });
+                    }, 1000);
+                }
+            }, [currentQuestionIndex, questions.length]);
+
+            React.useEffect(() => {
+                if (questionRef.current) {
+                    questionRef.current.focus();
+                }
+            }, [currentQuestionIndex]);
+
+            const isQuestionAnswered = () => {
+                const currentQuestion = questions[currentQuestionIndex];
+                if (!currentQuestion) return true;
+                const currentAnswer = answers[currentQuestion.id];
+                const otherAnswer = answers[`${currentQuestion.id}-other`];
+                const hasPrimaryAnswer = Array.isArray(currentAnswer) ? currentAnswer.length > 0 : !!currentAnswer;
+                switch (currentQuestion.type) {
+                    case 'email':
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        return hasPrimaryAnswer && emailRegex.test(currentAnswer);
+                    case 'single-choice-other':
+                        return hasPrimaryAnswer && (currentAnswer !== 'Other' || !!otherAnswer);
+                    case 'multiple-choice-other':
+                        return hasPrimaryAnswer && (!currentAnswer.includes('Other') || !!otherAnswer);
+                    case 'checkbox':
+                        return hasPrimaryAnswer;
+                    default:
+                        return hasPrimaryAnswer;
+                }
+            };
+
+            const handleNextQuestion = () => {
+                if (!isQuestionAnswered()) {
+                    const errorMsg = 'Please provide a valid answer.';
+                    setValidationErrors({ ...validationErrors, [questions[currentQuestionIndex].id]: errorMsg });
+                    return;
+                }
+                setValidationErrors({});
+                setCurrentQuestionIndex(currentQuestionIndex + 1);
+            };
+
+            const handlePreviousQuestion = () => {
+                if (currentQuestionIndex > 0) {
+                    setCurrentQuestionIndex(currentQuestionIndex - 1);
+                }
+            };
+
+            const handleAnswer = (questionId, value) => {
+                setAnswers(prevAnswers => {
+                    const newAnswers = { ...prevAnswers };
+                    const currentQuestion = questions.find(q => q.id === questionId);
+                    if (currentQuestion.type.includes('multiple-choice') || currentQuestion.type === 'checkbox') {
+                        const currentArray = newAnswers[questionId] || [];
+                        if (currentArray.includes(value)) {
+                            newAnswers[questionId] = currentArray.filter(item => item !== value);
+                            if (value === 'Other') {
+                                delete newAnswers[`${questionId}-other`];
+                            }
+                        } else {
+                            newAnswers[questionId] = [...currentArray, value];
+                        }
+                    } else {
+                        newAnswers[questionId] = value;
+                    }
+                    if (currentQuestion.type.includes('other') && value !== 'Other') {
+                        delete newAnswers[`${questionId}-other`];
+                    }
+                    return newAnswers;
+                });
+                setValidationErrors(prev => ({ ...prev, [questionId]: '' }));
+            };
+
+            const handleOtherAnswer = (questionId, otherText) => {
+                setAnswers(prevAnswers => ({
+                    ...prevAnswers,
+                    [`${questionId}-other`]: otherText,
+                }));
+            };
+
+            const handleSubmit = async (event) => {
+                if (event) event.preventDefault();
+                if (!isQuestionAnswered() && currentQuestionIndex < questions.length) {
+                    setSubmissionError('Please answer the current question before submitting.');
+                    return;
+                }
+                if (isSubmitting) return;
+                setIsSubmitting(true);
+                setSubmissionError('');
+                const data = { timestamp: new Date().toISOString(), ...answers };
+                const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+                const submitUrl = isDeployed
+                    ? `/.netlify/functions/submit-survey`
+                    : 'https://jsonplaceholder.typicode.com/posts';
+                try {
+                    const response = await fetch(submitUrl, {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    console.log('Survey submitted successfully!', await response.json());
+                    setShowThankYou(true);
+                } catch (error) {
+                    console.error("Submission failed:", error);
+                    setSubmissionError('Submission failed. Please try again.');
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            const resetSurvey = () => {
+                if (countdownRef.current) {
+                    clearInterval(countdownRef.current);
+                }
+                setCurrentQuestionIndex(0);
+                setAnswers({});
+                setShowThankYou(false);
+                setSubmissionError('');
+                setValidationErrors({});
+                window.scrollTo(0, 0);
+            };
 
             const currentQuestion = questions[currentQuestionIndex];
-            if (!currentQuestion) return <FinalScreen key="final" />;
+            const isLastQuestion = currentQuestionIndex === questions.length - 1;
+            const showNavigation = currentQuestionIndex < questions.length;
+            const showBackButton = currentQuestionIndex > 0;
+            const isAnswered = isQuestionAnswered();
 
-            const { id, type, label, options, min, max } = currentQuestion;
+            const renderQuestionComponent = () => {
+                if (showThankYou) return <ThankYouScreen key="thank-you" resetSurvey={resetSurvey} submissionError={submissionError} />;
+                if (!currentQuestion) return <FinalScreen key="final" countdown={countdown} handleSubmit={handleSubmit} submissionError={submissionError} isSubmitting={isSubmitting} />;
+                const { id, type, label, options, min, max } = currentQuestion;
+                switch (type) {
+                    case 'text':
+                    case 'email':
+                        return <TextQuestion key={id} id={id} label={label} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleNextQuestion={handleNextQuestion} ref={questionRef} />;
+                    case 'emoji':
+                        return <EmojiQuestion key={id} id={id} label={label} options={options} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} isSubmitting={isSubmitting} ref={questionRef} />;
+                    case 'linear-scale':
+                        return <LinearScaleQuestion key={id} id={id} label={label} min={min} max={max} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} isSubmitting={isSubmitting} ref={questionRef} />;
+                    case 'star-rating':
+                        return <StarRatingQuestion key={id} id={id} label={label} max={max} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} isSubmitting={isSubmitting} ref={questionRef} />;
+                    case 'single-choice':
+                        return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} isSubmitting={isSubmitting} ref={questionRef} />;
+                    case 'single-choice-other':
+                        return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} isSubmitting={isSubmitting} ref={questionRef} />;
+                    case 'multiple-choice-other':
+                        return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} isSubmitting={isSubmitting} ref={questionRef} />;
+                    case 'checkbox':
+                        return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} isSubmitting={isSubmitting} ref={questionRef} />;
+                    default:
+                        return null;
+                }
+            };
 
-            switch (type) {
-                case 'text':
-                case 'email':
-                    return <TextQuestion key={id} id={id} label={label} type={type} />;
-                case 'emoji':
-                    return <EmojiQuestion key={id} id={id} label={label} options={options} />;
-                case 'linear-scale':
-                    return <LinearScaleQuestion key={id} id={id} label={label} min={min} max={max} />;
-                case 'star-rating':
-                    return <StarRatingQuestion key={id} id={id} label={label} max={max} />;
-                case 'single-choice':
-                    return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} />;
-                case 'single-choice-other':
-                    return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} />;
-                case 'multiple-choice-other':
-                    return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} />;
-                case 'checkbox':
-                    return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} />;
-                default:
-                    return null;
-            }
+            return (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+                    <div className="w-full max-w-xl">
+                        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
+                        {showNavigation && (
+                            <div className="w-full mb-6">
+                                <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-blue-500 transition-all duration-500 ease-in-out"
+                                        style={{ width: `${(currentQuestionIndex / questions.length) * 100}%` }}
+                                    ></div>
+                                </div>
+                                <p className="text-right text-sm text-gray-600 mt-2">
+                                    Question {currentQuestionIndex + 1} of {questions.length}
+                                </p>
+                            </div>
+                        )}
+                        <div className={`p-8 bg-white rounded-lg shadow-lg transition-transform duration-500 transform ${currentQuestion ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`} tabIndex="-1" ref={questionRef}>
+                            <form onSubmit={handleSubmit}>
+                                {renderQuestionComponent()}
+                            </form>
+                        </div>
+                        {showNavigation && (
+                            <div className="flex justify-between w-full max-w-xl mt-6">
+                                <button
+                                    onClick={handlePreviousQuestion}
+                                    disabled={!showBackButton}
+                                    className={`py-2 px-4 rounded-md font-semibold transition ${showBackButton ? 'bg-gray-300 text-gray-800 hover:bg-gray-400' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
+                                    disabled={isSubmitting || !isQuestionAnswered()}
+                                    className={`py-2 px-4 rounded-md text-white font-semibold transition ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
+                                >
+                                    {isLastQuestion ? 'Submit' : 'Next'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
         };
 
-        const showNavigation = currentQuestionIndex < questions.length;
-        const showBackButton = currentQuestionIndex > 0;
-        const showNextButton = currentQuestionIndex < questions.length;
-
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-                <div className="w-full max-w-xl">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
-
-                    {showNavigation && (
-                        <div className="w-full mb-6">
-                            <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-blue-500 transition-all duration-500 ease-in-out"
-                                    style={{ width: `${(currentQuestionIndex / questions.length) * 100}%` }}
-                                ></div>
-                            </div>
-                            <p className="text-right text-sm text-gray-600 mt-2">
-                                Question {currentQuestionIndex + 1} of {questions.length}
-                            </p>
-                        </div>
-                    )}
-
-                    <div className={`p-8 bg-white rounded-lg shadow-lg transition-transform duration-500 transform ${currentQuestion ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
-                        <form onSubmit={handleSubmit}>
-                            {renderQuestionComponent()}
-                        </form>
-                    </div>
-
-                    {showNavigation && (
-                        <div className="flex justify-between w-full max-w-xl mt-6">
-                            <button
-                                onClick={handlePreviousQuestion}
-                                disabled={!showBackButton}
-                                className={`py-2 px-4 rounded-md font-semibold transition ${showBackButton ? 'bg-gray-300 text-gray-800 hover:bg-gray-400' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                            >
-                                Back
-                            </button>
-                            <button
-                                onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
-                                disabled={isSubmitting || !isQuestionAnswered()}
-                                className={`py-2 px-4 rounded-md text-white font-semibold transition ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
-                            >
-                                {isLastQuestion ? 'Submit' : 'Next'}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
-    // Render the App component
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(
-        <React.StrictMode>
-            <App />
-        </React.StrictMode>
-    );
-</script>
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
 </body>
 </html>

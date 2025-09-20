@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Survey</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+        }
+        .survey-container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .question-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        .question-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #555;
+        }
+        .options {
+            display: flex;
+            justify-content: space-around;
+            gap: 10px;
+        }
+        .option-button {
+            background-color: #eee;
+            border: 1px solid #ddd;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            flex-grow: 1;
+            font-size: 16px;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+        .option-button.selected {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .hidden {
+            display: none;
+        }
+        #message {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        #submit-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #submit-btn:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+
+<div class="survey-container">
+    <div id="survey-form">
+        <h1>Customer Feedback</h1>
+
+        <div class="question-group" id="q1">
+            <label>How was your visit?</label>
+            <div class="options">
+                <button type="button" class="option-button" data-value="Thumbs Up">👍</button>
+                <button type="button" class="option-button" data-value="Thumbs Down">👎</button>
+            </div>
+        </div>
+
+        <div class="question-group hidden" id="q2">
+            <label>How did you hear about us?</label>
+            <div class="options">
+                <button type="button" class="option-button" data-value="Online">Online</button>
+                <button type="button" class="option-button" data-value="Magazine">Magazine</button>
+            </div>
+        </div>
+
+        <div class="question-group hidden" id="q3">
+            <label>Would you visit us again?</label>
+            <div class="options">
+                <button type="button" class="option-button" data-value="Yes">Yes</button>
+                <button type="button" class="option-button" data-value="No">No</button>
+            </div>
+        </div>
+
+        <button id="submit-btn" class="hidden">Submit</button>
+    </div>
+
+    <div id="message" style="display: none;">Thank you for your feedback!</div>
+</div>
+
+<script>
+    const surveyForm = document.getElementById('survey-form');
+    const q1 = document.getElementById('q1');
+    const q2 = document.getElementById('q2');
+    const q3 = document.getElementById('q3');
+    const submitBtn = document.getElementById('submit-btn');
+    const message = document.getElementById('message');
+
+    let answers = {};
+
+    function handleButtonClick(event) {
+        const button = event.target;
+        const group = button.closest('.question-group');
+        const questionId = group.id;
+        const questionText = group.querySelector('label').innerText;
+        const answer = button.dataset.value;
+
+        // Deselect any previously selected button in the group
+        group.querySelectorAll('.option-button').forEach(btn => btn.classList.remove('selected'));
+        // Select the clicked button
+        button.classList.add('selected');
+
+        answers[questionText] = answer;
+
+        // Logic to move to the next question
+        if (questionId === 'q1') {
+            q2.classList.remove('hidden');
+        } else if (questionId === 'q2') {
+            q3.classList.remove('hidden');
+        } else if (questionId === 'q3') {
+            submitBtn.classList.remove('hidden');
+        }
+    }
+
+    // Add click listeners to all option buttons
+    document.querySelectorAll('.option-button').forEach(button => {
+        button.addEventListener('click', handleButtonClick);
+    });
+
+    // Handle submit button click
+    submitBtn.addEventListener('click', async () => {
+        const timestamp = new Date().toISOString();
+        const data = {
+            timestamp: timestamp,
+            'How was your visit?': answers['How was your visit?'],
+            'How did you hear about us?': answers['How did you hear about us?'],
+            'Would you visit us again?': answers['Would you visit us again?'],
+        };
+        
+        // Temporarily store the data
+        let submissions = JSON.parse(localStorage.getItem('surveySubmissions')) || [];
+        submissions.push(data);
+        localStorage.setItem('surveySubmissions', JSON.stringify(submissions));
+
+        // Display thank you message and hide the form
+        surveyForm.style.display = 'none';
+        message.style.display = 'block';
+
+        // NOTE: The actual batch submission to Google Sheets will be handled by the serverless function,
+        // which would be triggered by a cron job (outside the scope of a simple HTML file).
+        // This client-side code is for storing the data.
+    });
+
+</script>
+
+</body>
+</html>

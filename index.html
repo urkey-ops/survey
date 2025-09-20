@@ -25,7 +25,6 @@
     <div id="root" class="w-full"></div>
 
     <script type="text/babel">
-        // Reusable SVG components for improved visual consistency and performance
         const StarIcon = ({ filled }) => (
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}>
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -39,7 +38,6 @@
             </svg>
         );
 
-        // Common Input Component for text and email types
         const TextInput = React.forwardRef(({ id, label, type, answers, validationErrors, handleAnswer }, ref) => (
             <div className="flex flex-col items-start w-full">
                 <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
@@ -59,7 +57,6 @@
             </div>
         ));
 
-        // Reusable component for choice questions (single, multiple, checkbox)
         const ChoiceQuestion = React.forwardRef(({ id, label, options, type, hasOther, answers, validationErrors, handleAnswer, handleOtherAnswer, isSubmitting }, ref) => {
             const isMultiple = type.includes('multiple') || type === 'checkbox';
             const isSelected = (option) => {
@@ -102,7 +99,6 @@
             );
         });
 
-        // Thank You screen with auto-reset and optional error message
         const ThankYouScreen = ({ submissionError }) => (
             <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg shadow-inner text-center">
                 <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
@@ -112,7 +108,6 @@
             </div>
         );
 
-        // Main application component
         const App = () => {
             const questions = [
                 { id: 'q1', label: 'Write us about your experience today. Any comment or suggestion?', type: 'text' },
@@ -126,22 +121,13 @@
                 { id: 'q9', label: 'Email', type: 'email' },
                 { id: 'q10', label: 'Subscribe to e-newsletter', type: 'checkbox', options: ['Yes'] }
             ];
-
+            
             const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
             const [answers, setAnswers] = React.useState({});
             const [isSubmitting, setIsSubmitting] = React.useState(false);
             const [showThankYou, setShowThankYou] = React.useState(false);
             const [submissionError, setSubmissionError] = React.useState('');
             const [validationErrors, setValidationErrors] = React.useState({});
-
-            const questionRef = React.useRef(null);
-
-            React.useEffect(() => {
-                // Auto-focus the current question for better user experience
-                if (questionRef.current) {
-                    questionRef.current.focus();
-                }
-            }, [currentQuestionIndex]);
 
             const isQuestionAnswered = () => {
                 const currentQuestion = questions[currentQuestionIndex];
@@ -156,12 +142,10 @@
                     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                     return emailRegex.test(currentAnswer);
                 }
-                // Check for 'Other' option
                 if (currentQuestion.options && currentQuestion.options.includes('Other')) {
                     if (currentAnswer === 'Other' && !otherAnswer) return false;
                     if (Array.isArray(currentAnswer) && currentAnswer.includes('Other') && !otherAnswer) return false;
                 }
-
                 return true;
             };
 
@@ -172,7 +156,7 @@
                     return;
                 }
                 setValidationErrors({});
-                setCurrentQuestionIndex(currentQuestionIndex + 1);
+                setCurrentQuestionIndex(prevIndex => prevIndex + 1);
             };
 
             const handleAnswer = (questionId, value, isMultiple) => {
@@ -209,7 +193,6 @@
                     });
                     if (!response.ok) throw new Error('Network response was not ok');
                     console.log('Survey submitted successfully!');
-                    // Clear localStorage after successful sync
                     localStorage.removeItem('unsyncedSurveyData');
                     return { success: true };
                 } catch (error) {
@@ -218,8 +201,7 @@
                 }
             };
 
-            const handleSubmit = async (event) => {
-                if (event) event.preventDefault();
+            const handleSubmit = async () => {
                 if (!isQuestionAnswered()) {
                     const errorMsg = 'Please provide a valid answer before submitting.';
                     setValidationErrors({ [questions[currentQuestionIndex].id]: errorMsg });
@@ -227,20 +209,17 @@
                 }
                 setIsSubmitting(true);
                 setSubmissionError('');
-
-                const dataToSave = { timestamp: new Date().toISOString(), ...answers };
                 
-                // Save data to local storage first for offline resilience
+                const dataToSave = { timestamp: new Date().toISOString(), ...answers };
                 const existingData = JSON.parse(localStorage.getItem('unsyncedSurveyData')) || [];
                 const newData = [...existingData, dataToSave];
                 localStorage.setItem('unsyncedSurveyData', JSON.stringify(newData));
 
                 const result = await sendDataToSheets(newData);
-
                 if (!result.success) {
                     setSubmissionError(result.error);
                 }
-
+                
                 setIsSubmitting(false);
                 setShowThankYou(true);
             };
@@ -251,18 +230,15 @@
                 setShowThankYou(false);
                 setSubmissionError('');
                 setValidationErrors({});
-                window.scrollTo(0, 0);
             };
             
-            // Effect to handle auto-reset for kiosk mode
             React.useEffect(() => {
                 if (showThankYou) {
-                    const timer = setTimeout(resetSurvey, 5000); // Reset after 5 seconds
+                    const timer = setTimeout(resetSurvey, 5000);
                     return () => clearTimeout(timer);
                 }
             }, [showThankYou]);
             
-            // Logic to retry submission on component load
             React.useEffect(() => {
                 const storedData = JSON.parse(localStorage.getItem('unsyncedSurveyData'));
                 if (storedData && storedData.length > 0) {
@@ -271,33 +247,30 @@
                 }
             }, []);
 
-
             const currentQuestion = questions[currentQuestionIndex];
             const isLastQuestion = currentQuestionIndex === questions.length - 1;
-            const showNavigation = currentQuestionIndex < questions.length;
-            const isAnswered = isQuestionAnswered();
 
             const renderQuestionComponent = () => {
                 if (showThankYou) return <ThankYouScreen key="thank-you" submissionError={submissionError} />;
-                if (!currentQuestion) return null; // Should not happen in this flow
+                if (!currentQuestion) return null;
                 const { id, type, label, options, min, max } = currentQuestion;
 
                 switch (type) {
                     case 'text':
                     case 'email':
-                        return <TextInput key={id} id={id} label={label} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} ref={questionRef} />;
+                        return <TextInput key={id} id={id} label={label} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
                     case 'emoji':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options.map(o => o.value)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} ref={questionRef} />;
+                        return <ChoiceQuestion key={id} id={id} label={label} options={options.map(o => o.value)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
                     case 'linear-scale':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={Array.from({ length: max - min + 1 }, (_, i) => min + i)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} ref={questionRef} />;
+                        return <ChoiceQuestion key={id} id={id} label={label} options={Array.from({ length: max - min + 1 }, (_, i) => min + i)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
                     case 'star-rating':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={Array.from({ length: max }, (_, i) => i + 1)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} ref={questionRef} />;
+                        return <ChoiceQuestion key={id} id={id} label={label} options={Array.from({ length: max }, (_, i) => i + 1)} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
                     case 'single-choice':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} hasOther={options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} ref={questionRef} />;
+                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} hasOther={options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} />;
                     case 'multiple-choice':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} hasOther={options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} ref={questionRef} />;
+                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} hasOther={options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} />;
                     case 'checkbox':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} ref={questionRef} />;
+                        return <ChoiceQuestion key={id} id={id} label={label} options={options} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
                     default:
                         return null;
                 }
@@ -307,35 +280,29 @@
                 <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
                     <div className="w-full max-w-xl">
                         <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
-                        {showNavigation && (
-                            <div className="w-full mb-6">
-                                <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-blue-500 transition-all duration-500 ease-in-out"
-                                        style={{ width: `${(currentQuestionIndex / questions.length) * 100}%` }}
-                                    ></div>
-                                </div>
-                                <p className="text-right text-sm text-gray-600 mt-2">
-                                    Question {currentQuestionIndex + 1} of {questions.length}
-                                </p>
+                        <div className="w-full mb-6">
+                            <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-blue-500 transition-all duration-500 ease-in-out"
+                                    style={{ width: `${(currentQuestionIndex / questions.length) * 100}%` }}
+                                ></div>
                             </div>
-                        )}
-                        <div className={`p-8 bg-white rounded-lg shadow-lg transition-transform duration-500 transform ${currentQuestion ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`} tabIndex="-1" ref={questionRef}>
-                            <form onSubmit={handleSubmit}>
-                                {renderQuestionComponent()}
-                            </form>
+                            <p className="text-right text-sm text-gray-600 mt-2">
+                                Question {currentQuestionIndex + 1} of {questions.length}
+                            </p>
                         </div>
-                        {showNavigation && (
-                            <div className="flex justify-center w-full max-w-xl mt-6">
-                                <button
-                                    onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
-                                    disabled={isSubmitting || !isAnswered}
-                                    className={`w-full py-3 px-4 rounded-md text-white font-semibold transition flex justify-center items-center gap-2 ${isAnswered && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
-                                >
-                                    {isSubmitting ? <Spinner /> : (isLastQuestion ? 'Submit' : 'Next')}
-                                </button>
-                            </div>
-                        )}
+                        <div className={`p-8 bg-white rounded-lg shadow-lg`}>
+                            {renderQuestionComponent()}
+                        </div>
+                        <div className="flex justify-center w-full max-w-xl mt-6">
+                            <button
+                                onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
+                                disabled={isSubmitting || !isQuestionAnswered()}
+                                className={`w-full py-3 px-4 rounded-md text-white font-semibold transition flex justify-center items-center gap-2 ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
+                            >
+                                {isSubmitting ? <Spinner /> : (isLastQuestion ? 'Submit' : 'Next')}
+                            </button>
+                        </div>
                     </div>
                 </div>
             );

@@ -10,16 +10,18 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             background-color: #f0f2f5;
+            padding: 20px;
+            box-sizing: border-box;
         }
         .survey-container {
             background-color: white;
             padding: 40px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            width: 90%;
-            max-width: 500px;
+            width: 100%;
+            max-width: 600px;
             text-align: center;
         }
         h1 {
@@ -35,10 +37,12 @@
             font-weight: bold;
             margin-bottom: 10px;
             color: #555;
+            font-size: 1.1em;
         }
         .options {
             display: flex;
-            justify-content: space-around;
+            flex-wrap: wrap;
+            justify-content: center;
             gap: 10px;
         }
         .option-button {
@@ -47,9 +51,10 @@
             padding: 12px 20px;
             border-radius: 6px;
             cursor: pointer;
-            flex-grow: 1;
+            flex: 1 1 100px;
             font-size: 16px;
             transition: background-color 0.3s, border-color 0.3s;
+            text-align: center;
         }
         .option-button.selected {
             background-color: #007bff;
@@ -62,6 +67,7 @@
         #message {
             margin-top: 20px;
             font-weight: bold;
+            color: #28a745;
         }
         #submit-btn {
             background-color: #28a745;
@@ -76,6 +82,15 @@
         #submit-btn:hover {
             background-color: #218838;
         }
+        #auto-submit-popup {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 8px;
+            color: #664d03;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -83,100 +98,130 @@
 <div class="survey-container">
     <div id="survey-form">
         <h1>Customer Feedback</h1>
-
-        <div class="question-group" id="q1">
-            <label>How was your visit?</label>
-            <div class="options">
-                <button type="button" class="option-button" data-value="Thumbs Up">👍</button>
-                <button type="button" class="option-button" data-value="Thumbs Down">👎</button>
-            </div>
-        </div>
-
-        <div class="question-group hidden" id="q2">
-            <label>How did you hear about us?</label>
-            <div class="options">
-                <button type="button" class="option-button" data-value="Online">Online</button>
-                <button type="button" class="option-button" data-value="Magazine">Magazine</button>
-            </div>
-        </div>
-
-        <div class="question-group hidden" id="q3">
-            <label>Would you visit us again?</label>
-            <div class="options">
-                <button type="button" class="option-button" data-value="Yes">Yes</button>
-                <button type="button" class="option-button" data-value="No">No</button>
-            </div>
-        </div>
-
+        
+        <div id="questions-container"></div>
+        
         <button id="submit-btn" class="hidden">Submit</button>
+        <div id="auto-submit-popup" class="hidden">
+            <p>Your opinion will auto-submit in <span id="timer">10</span> seconds.</p>
+        </div>
     </div>
 
-    <div id="message" style="display: none;">Thank you for your feedback!</div>
+    <div id="message" class="hidden">Thank you for your feedback!</div>
 </div>
 
 <script>
-    const surveyForm = document.getElementById('survey-form');
-    const q1 = document.getElementById('q1');
-    const q2 = document.getElementById('q2');
-    const q3 = document.getElementById('q3');
+    const questionsContainer = document.getElementById('questions-container');
     const submitBtn = document.getElementById('submit-btn');
     const message = document.getElementById('message');
+    const timerElement = document.getElementById('timer');
+    const popupElement = document.getElementById('auto-submit-popup');
 
     let answers = {};
+    let questions = [];
+    let currentQuestionIndex = 0;
+    let countdown;
 
-    function handleButtonClick(event) {
-        const button = event.target;
-        const group = button.closest('.question-group');
-        const questionId = group.id;
-        const questionText = group.querySelector('label').innerText;
-        const answer = button.dataset.value;
-
-        // Deselect any previously selected button in the group
-        group.querySelectorAll('.option-button').forEach(btn => btn.classList.remove('selected'));
-        // Select the clicked button
-        button.classList.add('selected');
-
-        answers[questionText] = answer;
-
-        // Logic to move to the next question
-        if (questionId === 'q1') {
-            q2.classList.remove('hidden');
-        } else if (questionId === 'q2') {
-            q3.classList.remove('hidden');
-        } else if (questionId === 'q3') {
-            submitBtn.classList.remove('hidden');
+    async function initializeSurvey() {
+        try {
+            const response = await fetch('survey_data.json');
+            questions = await response.json();
+            renderQuestion(currentQuestionIndex);
+        } catch (error) {
+            console.error('Error fetching survey data:', error);
         }
     }
 
-    // Add click listeners to all option buttons
-    document.querySelectorAll('.option-button').forEach(button => {
-        button.addEventListener('click', handleButtonClick);
-    });
+    function renderQuestion(index) {
+        questionsContainer.innerHTML = '';
+        if (index >= questions.length) {
+            submitBtn.classList.remove('hidden');
+            popupElement.classList.remove('hidden');
+            startAutoSubmitTimer();
+            return;
+        }
 
-    // Handle submit button click
-    submitBtn.addEventListener('click', async () => {
-        const timestamp = new Date().toISOString();
-        const data = {
-            timestamp: timestamp,
-            'How was your visit?': answers['How was your visit?'],
-            'How did you hear about us?': answers['How did you hear about us?'],
-            'Would you visit us again?': answers['Would you visit us again?'],
-        };
+        const question = questions[index];
+        const questionGroup = document.createElement('div');
+        questionGroup.className = 'question-group';
+        questionGroup.id = question.id;
         
-        // Temporarily store the data
+        questionGroup.innerHTML = `
+            <label>${question.label}</label>
+            <div class="options">
+                ${question.options.map(option => `
+                    <button type="button" class="option-button" data-value="${option.value}">
+                        ${option.text}
+                    </button>
+                `).join('')}
+            </div>
+        `;
+        
+        questionsContainer.appendChild(questionGroup);
+        
+        questionGroup.querySelectorAll('.option-button').forEach(button => {
+            button.addEventListener('click', handleButtonClick);
+        });
+    }
+
+    function handleButtonClick(event) {
+        const button = event.target;
+        const questionId = button.closest('.question-group').id;
+        const answerValue = button.dataset.value;
+
+        button.parentElement.querySelectorAll('.option-button').forEach(btn => btn.classList.remove('selected'));
+        button.classList.add('selected');
+
+        const questionLabel = questions.find(q => q.id === questionId).label;
+        answers[questionLabel] = answerValue;
+
+        currentQuestionIndex++;
+        renderQuestion(currentQuestionIndex);
+    }
+
+    function startAutoSubmitTimer() {
+        let timeLeft = 10;
+        timerElement.innerText = timeLeft;
+        clearInterval(countdown);
+        countdown = setInterval(() => {
+            timeLeft--;
+            timerElement.innerText = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
+                submitForm();
+            }
+        }, 1000);
+    }
+    
+    function submitForm() {
+        clearInterval(countdown);
+        const timestamp = new Date().toISOString();
+        const fullData = { timestamp, ...answers };
+
         let submissions = JSON.parse(localStorage.getItem('surveySubmissions')) || [];
-        submissions.push(data);
+        submissions.push(fullData);
         localStorage.setItem('surveySubmissions', JSON.stringify(submissions));
 
-        // Display thank you message and hide the form
+        const surveyForm = document.getElementById('survey-form');
         surveyForm.style.display = 'none';
-        message.style.display = 'block';
+        message.classList.remove('hidden');
 
-        // NOTE: The actual batch submission to Google Sheets will be handled by the serverless function,
-        // which would be triggered by a cron job (outside the scope of a simple HTML file).
-        // This client-side code is for storing the data.
-    });
+        setTimeout(resetSurvey, 5000);
+    }
+    
+    function resetSurvey() {
+        message.classList.add('hidden');
+        answers = {};
+        currentQuestionIndex = 0;
+        const surveyForm = document.getElementById('survey-form');
+        surveyForm.style.display = 'block';
+        submitBtn.classList.add('hidden');
+        popupElement.classList.add('hidden');
+        renderQuestion(currentQuestionIndex);
+    }
 
+    submitBtn.addEventListener('click', submitForm);
+    initializeSurvey();
 </script>
 
 </body>

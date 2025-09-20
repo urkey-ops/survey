@@ -65,20 +65,27 @@
 
         const countdownRef = useRef(null);
 
+        // Effect for unmounting cleanup
         useEffect(() => {
-            // Set up a cleanup function for the interval
-            const cleanup = () => {
+            return () => {
                 if (countdownRef.current) {
                     clearInterval(countdownRef.current);
                 }
             };
-        
+        }, []);
+
+        // Effect for countdown logic on the last question
+        useEffect(() => {
             if (currentQuestionIndex === questions.length) {
+                // Clear any existing timer before setting a new one
+                if (countdownRef.current) {
+                    clearInterval(countdownRef.current);
+                }
                 setCountdown(10);
                 countdownRef.current = setInterval(() => {
                     setCountdown(prev => {
                         if (prev <= 1) {
-                            cleanup(); // Clear the interval when countdown finishes
+                            clearInterval(countdownRef.current);
                             handleSubmit();
                             return 0;
                         }
@@ -86,10 +93,15 @@
                     });
                 }, 1000);
             }
-        
-            // This function runs on unmount or before the effect runs again
-            return cleanup;
         }, [currentQuestionIndex, questions.length]);
+
+        // Effect for managing focus on question change
+        useEffect(() => {
+            const firstInteractiveElement = document.querySelector('input, button, a[href]');
+            if (firstInteractiveElement) {
+                firstInteractiveElement.focus();
+            }
+        }, [currentQuestionIndex]);
 
         const isQuestionAnswered = () => {
             const currentQuestion = questions[currentQuestionIndex];
@@ -98,24 +110,23 @@
             const currentAnswer = answers[currentQuestion.id];
             const otherAnswer = answers[`${currentQuestion.id}-other`];
 
-            // Basic check for required questions
-            if (['text', 'email', 'emoji', 'linear-scale', 'star-rating', 'single-choice'].includes(currentQuestion.type)) {
-                if (!currentAnswer) return false;
-            }
+            // Check if the primary answer exists and is not an empty string
+            const hasPrimaryAnswer = Array.isArray(currentAnswer) ? currentAnswer.length > 0 : !!currentAnswer;
 
+            // Handle specific validation based on question type
             switch (currentQuestion.type) {
                 case 'email':
                     // Basic email regex validation
                     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    return emailRegex.test(currentAnswer);
+                    return hasPrimaryAnswer && emailRegex.test(currentAnswer);
                 case 'single-choice-other':
-                    return currentAnswer === 'Other' ? !!otherAnswer : !!currentAnswer;
+                    return hasPrimaryAnswer && (currentAnswer !== 'Other' || !!otherAnswer);
                 case 'multiple-choice-other':
-                    return (currentAnswer && currentAnswer.length > 0) && (!currentAnswer.includes('Other') || (currentAnswer.includes('Other') && !!otherAnswer));
+                    return hasPrimaryAnswer && (!currentAnswer.includes('Other') || !!otherAnswer);
                 case 'checkbox':
-                    return currentAnswer && currentAnswer.length > 0;
+                    return hasPrimaryAnswer;
                 default:
-                    return !!currentAnswer;
+                    return hasPrimaryAnswer;
             }
         };
 
@@ -138,16 +149,15 @@
             }
         };
 
-        const handleAnswer = (questionId, value, extraValue = null) => {
+        const handleAnswer = (questionId, value) => {
             setAnswers(prevAnswers => {
                 let newAnswers = { ...prevAnswers };
                 const currentQuestion = questions.find(q => q.id === questionId);
 
-                if (currentQuestion.type === 'multiple-choice-other' || currentQuestion.type === 'checkbox') {
+                if (currentQuestion.type.includes('multiple-choice') || currentQuestion.type === 'checkbox') {
                     const currentArray = newAnswers[questionId] || [];
                     if (currentArray.includes(value)) {
                         newAnswers[questionId] = currentArray.filter(item => item !== value);
-                        // Clear 'other' value if 'Other' is deselected
                         if (value === 'Other') {
                             delete newAnswers[`${questionId}-other`];
                         }
@@ -158,10 +168,9 @@
                     newAnswers[questionId] = value;
                 }
 
-                if (extraValue !== null) {
-                    newAnswers[`${questionId}-other`] = extraValue;
-                } else if (value !== 'Other' && currentQuestion.type.includes('other')) {
-                    // Clear 'other' value if a different option is selected
+                // Unify and correct 'other' answer handling.
+                // When a user selects a value that is NOT 'Other', we must clear the 'other' text field.
+                if (currentQuestion.type.includes('other') && value !== 'Other') {
                     delete newAnswers[`${questionId}-other`];
                 }
                 
@@ -169,10 +178,19 @@
             });
             setValidationErrors({ ...validationErrors, [questionId]: '' });
         };
+        
+        // New dedicated handler for 'other' text input fields.
+        // This is a more direct and reliable way to handle these fields and fix the bug.
+        const handleOtherAnswer = (questionId, otherText) => {
+            setAnswers(prevAnswers => ({
+                ...prevAnswers,
+                [`${questionId}-other`]: otherText,
+            }));
+        };
 
         const handleSubmit = async (event) => {
             if (event) event.preventDefault();
-
+            
             if (!isQuestionAnswered() && currentQuestionIndex < questions.length) {
                 setSubmissionError('Please answer the current question before submitting.');
                 return;
@@ -207,7 +225,9 @@
         };
 
         const resetSurvey = () => {
-            clearInterval(countdownRef.current);
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+            }
             setCurrentQuestionIndex(0);
             setAnswers({});
             setShowThankYou(false);
@@ -221,17 +241,13 @@
 
         // Reusable components for each question type
         const TextQuestion = ({ id, label, type }) => {
-            const inputRef = useRef(null);
-            useEffect(() => {
-                inputRef.current?.focus();
-            }, [id]);
-
             return (
                 <div className="flex flex-col items-start w-full">
-                    <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">{label}</label>
+                    <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
+                        {label} {type !== 'checkbox' && <span className="text-red-500">*</span>}
+                    </label>
                     <input
                         id={id}
-                        ref={inputRef}
                         type={type}
                         value={answers[id] || ''}
                         onChange={(e) => handleAnswer(id, e.target.value)}
@@ -247,8 +263,8 @@
 
         const EmojiQuestion = ({ id, label, options }) => (
             <div className="flex flex-col items-center justify-center w-full">
-                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
-                <div className="flex justify-center items-center gap-6 mt-4" role="radiogroup" aria-label={label}>
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="flex justify-center items-center gap-6 mt-4" role="radiogroup" aria-label={label} aria-required="true">
                     {options.map(option => (
                         <button
                             key={option.value}
@@ -269,8 +285,8 @@
 
         const LinearScaleQuestion = ({ id, label, min, max }) => (
             <div className="flex flex-col items-center w-full">
-                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
-                <div className="flex justify-center items-center w-full gap-4" role="radiogroup" aria-label={label}>
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="flex justify-center items-center w-full gap-4" role="radiogroup" aria-label={label} aria-required="true">
                     {[...Array(max - min + 1)].map((_, i) => {
                         const value = min + i;
                         return (
@@ -293,8 +309,8 @@
 
         const StarRatingQuestion = ({ id, label, max }) => (
             <div className="flex flex-col items-center w-full">
-                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
-                <div className="flex items-center gap-1" role="radiogroup" aria-label={label}>
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="flex items-center gap-1" role="radiogroup" aria-label={label} aria-required="true">
                     {[...Array(max)].map((_, i) => {
                         const ratingValue = i + 1;
                         return (
@@ -317,8 +333,8 @@
 
         const SingleChoiceQuestion = ({ id, label, options, hasOther }) => (
             <div className="flex flex-col items-start w-full">
-                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="radiogroup" aria-label={label}>
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="radiogroup" aria-label={label} aria-required="true">
                     {options.map(option => (
                         <button
                             key={option}
@@ -336,7 +352,7 @@
                         id={`${id}-other`}
                         type="text"
                         value={answers[`${id}-other`] || ''}
-                        onChange={(e) => handleAnswer(id, 'Other', e.target.value)}
+                        onChange={(e) => handleOtherAnswer(id, e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
                         className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Please specify..."
@@ -349,8 +365,8 @@
 
         const MultipleChoiceQuestion = ({ id, label, options, hasOther }) => (
             <div className="flex flex-col items-start w-full">
-                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="group" aria-label={label}>
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="group" aria-label={label} aria-required="true">
                     {options.map(option => (
                         <button
                             key={option}
@@ -368,7 +384,7 @@
                         id={`${id}-other`}
                         type="text"
                         value={answers[`${id}-other`] || ''}
-                        onChange={(e) => handleAnswer(id, 'Other', e.target.value)}
+                        onChange={(e) => handleOtherAnswer(id, e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
                         className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Please specify..."
@@ -423,6 +439,7 @@
                         <div className="w-full flex justify-center mt-6">
                             <button
                                 type="submit"
+                                onClick={handleSubmit}
                                 disabled={isSubmitting}
                                 className="w-full sm:w-1/2 py-3 px-4 rounded-md bg-green-500 text-white font-semibold hover:bg-green-600 transition disabled:bg-gray-400"
                                 aria-label="Submit Survey"

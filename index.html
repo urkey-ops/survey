@@ -13,7 +13,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
-        /* Custom spin animation */
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
@@ -25,7 +24,6 @@
     <div id="root" class="w-full"></div>
 
     <script type="text/babel">
-        // Reusable SVG components for improved visual consistency and performance
         const StarIcon = ({ filled }) => (
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}>
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -38,7 +36,7 @@
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
         );
-
+        
         const TextInput = React.forwardRef(({ id, label, type, answers, validationErrors, handleAnswer }, ref) => (
             <div className="flex flex-col items-start w-full">
                 <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
@@ -68,19 +66,26 @@
                 return currentAnswer === option;
             };
 
+            const displayValue = (option) => {
+                if (typeof option === 'object' && option !== null) {
+                    return option.emoji ? `${option.emoji} ${option.value}` : option.value;
+                }
+                return option;
+            };
+
             return (
                 <div className="flex flex-col items-start w-full" tabIndex="0" ref={ref}>
                     <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} {type !== 'checkbox' && <span className="text-red-500">*</span>}</h2>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role={isMultiple ? "group" : "radiogroup"} aria-label={label} aria-required={type !== 'checkbox' ? "true" : "false"}>
-                        {options.map(option => (
+                        {options.map((option) => (
                             <button
-                                key={option}
-                                onClick={() => handleAnswer(id, option, isMultiple)}
+                                key={typeof option === 'object' ? option.value : option}
+                                onClick={() => handleAnswer(id, typeof option === 'object' ? option.value : option, isMultiple)}
                                 disabled={isSubmitting}
-                                className={`py-3 px-4 rounded-md transition-all ${isSelected(option) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
-                                aria-pressed={isSelected(option)}
+                                className={`py-3 px-4 rounded-md transition-all ${isSelected(typeof option === 'object' ? option.value : option) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                                aria-pressed={isSelected(typeof option === 'object' ? option.value : option)}
                             >
-                                {option}
+                                {displayValue(option)}
                             </button>
                         ))}
                     </div>
@@ -131,8 +136,6 @@
             const [validationErrors, setValidationErrors] = React.useState({});
             const [syncStatus, setSyncStatus] = React.useState('');
 
-            const questionRef = React.useRef(null);
-
             const getStoredData = () => {
                 try {
                     const data = JSON.parse(localStorage.getItem('unsyncedSurveyData'));
@@ -157,7 +160,7 @@
                     return emailRegex.test(currentAnswer);
                 }
 
-                if (currentQuestion.options && currentQuestion.options.includes('Other')) {
+                if (currentQuestion.options && currentQuestion.options.some(o => (typeof o === 'object' ? o.value : o) === 'Other')) {
                     const otherAnswer = answers[`${currentQuestion.id}-other`];
                     const hasOtherAnswer = Array.isArray(currentAnswer) ? currentAnswer.includes('Other') : currentAnswer === 'Other';
                     if (hasOtherAnswer && !otherAnswer) return false;
@@ -262,7 +265,6 @@
                 }
             }, [showThankYou]);
             
-            // Periodic sync check
             React.useEffect(() => {
                 const checkAndSync = () => {
                     const storedData = getStoredData();
@@ -272,8 +274,8 @@
                     }
                 };
 
-                const syncInterval = setInterval(checkAndSync, 60000); // Check every 60 seconds
-                checkAndSync(); // Initial check on load
+                const syncInterval = setInterval(checkAndSync, 60000);
+                checkAndSync();
                 
                 return () => clearInterval(syncInterval);
             }, []);
@@ -286,20 +288,27 @@
                 if (!currentQuestion) return null;
                 const { id, type, label, options, min, max } = currentQuestion;
 
-                switch (type) {
-                    case 'text':
-                    case 'email':
-                        return <TextInput key={id} id={id} label={label} type={type} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} />;
-                    case 'emoji':
-                    case 'linear-scale':
-                    case 'star-rating':
-                    case 'single-choice':
-                    case 'multiple-choice':
-                    case 'checkbox':
-                        return <ChoiceQuestion key={id} id={id} label={label} options={options.map(o => o.value || o) || Array.from({ length: max - min + 1 }, (_, i) => min + i)} type={type} hasOther={options && options.includes('Other')} answers={answers} validationErrors={validationErrors} handleAnswer={handleAnswer} handleOtherAnswer={handleOtherAnswer} />;
-                    default:
-                        return null;
-                }
+                const processedOptions = (() => {
+                    if (type === 'linear-scale' || type === 'star-rating') {
+                        return Array.from({ length: max - min + 1 || max }, (_, i) => (min || 1) + i);
+                    }
+                    return options;
+                })();
+
+                return (
+                    <ChoiceQuestion
+                        key={id}
+                        id={id}
+                        label={label}
+                        options={processedOptions}
+                        type={type}
+                        hasOther={processedOptions && processedOptions.some(o => (typeof o === 'object' ? o.value : o) === 'Other')}
+                        answers={answers}
+                        validationErrors={validationErrors}
+                        handleAnswer={handleAnswer}
+                        handleOtherAnswer={handleOtherAnswer}
+                    />
+                );
             };
 
             return (

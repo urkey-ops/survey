@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Survey</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM CDNs -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX transformation in the browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .survey-container {
+            max-width: 600px;
+            width: 100%;
+        }
+        /* Custom animation for fade-in effect */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+
+<div id="root" class="survey-container"></div>
+
+<script type="text/jsx" data-babel>
+  const { useState, useEffect } = React;
+  const { createRoot } = ReactDOM;
+
+  // Inline SVG for the Star icon
+  const StarIcon = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </svg>
+  );
+
+  const App = () => {
+    const questions = [
+      {
+        id: 'q1',
+        label: 'Write us about your experience today. Any comment or suggestion?',
+        type: 'text'
+      },
+      {
+        id: 'q2',
+        label: 'Overall, how satisfied were you with your visit today?',
+        type: 'emoji',
+        options: [
+          { value: 'Sad', emoji: '😞' },
+          { value: 'Neutral', emoji: '😐' },
+          { value: 'Happy', emoji: '😊' }
+        ]
+      },
+      {
+        id: 'q3',
+        label: 'How would you rate the cleanliness of the facility?',
+        type: 'linear-scale',
+        min: 1,
+        max: 5
+      },
+      {
+        id: 'q4',
+        label: 'How friendly was the volunteer staff?',
+        type: 'star-rating',
+        max: 5
+      },
+      {
+        id: 'q5',
+        label: 'A little about yourself... How young are you?',
+        type: 'single-choice',
+        options: ['<18', '18-26', '26-50', '51-75', '75+']
+      },
+      {
+        id: 'q6',
+        label: 'Where are you from?',
+        type: 'single-choice-other',
+        options: ['USA', 'South America', 'Canada', 'India', 'Other']
+      },
+      {
+        id: 'q7',
+        label: 'How did you first hear about us?',
+        type: 'multiple-choice-other',
+        options: ['Drove by', 'Friends/Family', 'Internet', 'Social Media', 'Other']
+      },
+      {
+        id: 'q8',
+        label: 'Name',
+        type: 'text'
+      },
+      {
+        id: 'q9',
+        label: 'Email',
+        type: 'email'
+      },
+      {
+        id: 'q10',
+        label: 'Subscribe to e-newsletter',
+        type: 'checkbox',
+        options: ['Yes', 'No']
+      }
+    ];
+
+    const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    const [answers, setAnswers] = useState({});
+    const [showPopup, setShowPopup] = useState(false);
+    const [timer, setTimer] = useState(10);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+      let countdown;
+      if (currentQuestionIndex === questions.length) {
+        setShowPopup(true);
+        setTimer(10);
+        countdown = setInterval(() => {
+          setTimer(prevTimer => {
+            if (prevTimer <= 1) {
+              clearInterval(countdown);
+              handleSubmit();
+              return 0;
+            }
+            return prevTimer - 1;
+          });
+        }, 1000);
+      } else {
+        setShowPopup(false);
+        clearInterval(countdown);
+      }
+      return () => clearInterval(countdown);
+    }, [currentQuestionIndex]);
+
+    const handleAnswer = (questionId, value, extraValue = null) => {
+      setAnswers(prevAnswers => {
+        let newAnswers = { ...prevAnswers, [questionId]: value };
+        if (extraValue !== null) {
+          newAnswers = { ...newAnswers, [`${questionId}-other`]: extraValue };
+        }
+        return newAnswers;
+      });
+      const currentQuestion = questions[currentQuestionIndex];
+      if (
+        currentQuestion.type !== 'text' &&
+        currentQuestion.type !== 'email' &&
+        currentQuestion.type !== 'checkbox' &&
+        currentQuestion.type !== 'multiple-choice-other'
+      ) {
+        setTimeout(() => setCurrentQuestionIndex(currentQuestionIndex + 1), 300);
+      }
+    };
+
+    const handleSubmit = async (event) => {
+      if (event) event.preventDefault();
+      if (isSubmitting) return;
+
+      setIsSubmitting(true);
+      const submissionData = {
+          timestamp: new Date().toISOString(),
+          answers: answers
+      };
+      
+      let fetchUrl = '/.netlify/functions/submit-survey';
+      // The local environment of the canvas cannot resolve the relative URL
+      // so we use a dummy one to avoid the error. This will work correctly on Netlify.
+      if (window.location.protocol === 'blob:') {
+        console.log("Note: The fetch call for the backend is disabled in this local preview to prevent URL parsing errors. It will work correctly once deployed on Netlify.");
+        fetchUrl = 'https://dummy-url-for-local-test.com';
+      }
+
+      try {
+          await fetch(fetchUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(submissionData),
+          });
+          console.log('Survey submitted successfully!');
+      } catch (error) {
+          console.error('Submission failed:', error);
+      } finally {
+          setIsSubmitting(false);
+          resetSurvey();
+      }
+    };
+
+    const resetSurvey = () => {
+      setCurrentQuestionIndex(0);
+      setAnswers({});
+      setShowPopup(false);
+    };
+
+    const currentQuestion = questions[currentQuestionIndex];
+    const isLastQuestion = currentQuestionIndex === questions.length - 1;
+
+    const renderQuestionComponent = () => {
+      if (!currentQuestion) {
+        return (
+          <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg shadow-inner">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
+            <p className="text-gray-600 mb-4">The survey has been submitted.</p>
+            <p className="text-gray-400">Restarting in a moment...</p>
+          </div>
+        );
+      }
+
+      const { id, type, label, options, min, max } = currentQuestion;
+
+      switch (type) {
+        case 'text':
+        case 'email':
+          return (
+            <form onSubmit={handleSubmit}>
+              <div className="flex flex-col items-start w-full">
+                <label className="text-lg font-semibold text-gray-700 mb-2">{label}</label>
+                <input
+                  type={type}
+                  value={answers[id] || ''}
+                  onChange={(e) => handleAnswer(id, e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
+                  required={type === 'email' ? true : false}
+                />
+                <button
+                  type="submit"
+                  className="mt-6 w-full py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition"
+                >
+                  Next
+                </button>
+              </div>
+            </form>
+          );
+        case 'emoji':
+          return (
+            <div className="flex flex-col items-center justify-center w-full">
+              <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
+              <div className="flex justify-center items-center gap-6 mt-4">
+                {options.map(option => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleAnswer(id, option.value)}
+                    className={`flex flex-col items-center p-4 rounded-xl transition-all ${answers[id] === option.value ? 'bg-blue-500 text-white shadow-lg scale-110' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                  >
+                    <span className="text-4xl">{option.emoji}</span>
+                    <span className="mt-2 text-sm">{option.value}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        case 'linear-scale':
+          return (
+            <div className="flex flex-col items-center w-full">
+              <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
+              <div className="flex justify-center items-center w-full gap-4">
+                {[...Array(max - min + 1)].map((_, i) => {
+                  const value = min + i;
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => handleAnswer(id, value)}
+                      className={`flex-1 py-3 px-2 rounded-lg text-lg font-bold transition-all ${answers[id] === value ? 'bg-blue-500 text-white scale-110' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                    >
+                      {value}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        case 'star-rating':
+          return (
+            <div className="flex flex-col items-center w-full">
+              <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
+              <div className="flex items-center gap-1">
+                {[...Array(max)].map((_, i) => {
+                  const ratingValue = i + 1;
+                  return (
+                    <button
+                      key={ratingValue}
+                      onClick={() => handleAnswer(id, ratingValue)}
+                      className="p-1"
+                    >
+                      <StarIcon
+                        className={`h-10 w-10 transition-colors ${ratingValue <= answers[id] ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        case 'single-choice':
+        case 'single-choice-other':
+          return (
+            <div className="flex flex-col items-start w-full">
+              <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full">
+                {options.map(option => (
+                  <button
+                    key={option}
+                    onClick={() => handleAnswer(id, option)}
+                    className={`py-3 px-4 rounded-md transition-all ${answers[id] === option ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              {answers[id] === 'Other' && (
+                <input
+                  type="text"
+                  value={answers[`${id}-other`] || ''}
+                  onChange={(e) => handleAnswer(id, 'Other', e.target.value)}
+                  className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Please specify..."
+                />
+              )}
+              <button
+                onClick={() => setCurrentQuestionIndex(currentQuestionIndex + 1)}
+                disabled={!answers[id] || (answers[id] === 'Other' && !answers[`${id}-other`])}
+                className="mt-6 w-full py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition disabled:bg-gray-400"
+              >
+                Next
+              </button>
+            </div>
+          );
+        case 'multiple-choice-other':
+          return (
+            <div className="flex flex-col items-start w-full">
+              <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full">
+                {options.map(option => (
+                  <button
+                    key={option}
+                    onClick={() => {
+                      const updatedAnswers = answers[id] ? [...answers[id]] : [];
+                      const index = updatedAnswers.indexOf(option);
+                      if (index > -1) {
+                        updatedAnswers.splice(index, 1);
+                      } else {
+                        updatedAnswers.push(option);
+                      }
+                      setAnswers({ ...answers, [id]: updatedAnswers });
+                    }}
+                    className={`py-3 px-4 rounded-md transition-all ${answers[id] && answers[id].includes(option) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              {answers[id] && answers[id].includes('Other') && (
+                <input
+                  type="text"
+                  value={answers[`${id}-other`] || ''}
+                  onChange={(e) => setAnswers({ ...answers, [`${id}-other`]: e.target.value })}
+                  className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Please specify..."
+                />
+              )}
+              <button
+                onClick={() => setCurrentQuestionIndex(currentQuestionIndex + 1)}
+                disabled={!answers[id] || answers[id].length === 0}
+                className="mt-6 w-full py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition disabled:bg-gray-400"
+              >
+                Next
+              </button>
+            </div>
+          );
+        case 'checkbox':
+          return (
+            <div className="flex flex-col items-start w-full">
+              <h2 className="text-lg font-semibold text-gray-700 mb-4">{label}</h2>
+              <div className="flex gap-4">
+                {options.map(option => (
+                  <div key={option} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id={option}
+                      checked={answers[id] === option}
+                      onChange={() => handleAnswer(id, option)}
+                      className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor={option} className="ml-2 text-gray-700">{option}</label>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setCurrentQuestionIndex(currentQuestionIndex + 1)}
+                disabled={!answers[id]}
+                className="mt-6 w-full py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition disabled:bg-gray-400"
+              >
+                Next
+              </button>
+            </div>
+          );
+        default:
+          return null;
+      }
+    };
+
+    return (
+      <div className="survey-container">
+        <div className={`p-8 bg-white rounded-lg shadow-lg transition-transform duration-500 transform ${currentQuestion ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
+          <h1 className="text-3xl font-bold text-gray-900 mb-8">Customer Feedback</h1>
+          {renderQuestionComponent()}
+        </div>
+
+        {showPopup && (
+          <div className="mt-8 p-4 bg-yellow-100 border border-yellow-400 rounded-lg text-center text-gray-800 font-medium animate-pulse">
+            Your survey will auto-submit in <span className="font-bold">{timer}</span> seconds.
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const container = document.getElementById('root');
+  if (container) {
+    const root = createRoot(container);
+    root.render(<App />);
+  } else {
+    console.error("Root element with id 'root' not found.");
+  }
+</script>
+
+</body>
+</html>

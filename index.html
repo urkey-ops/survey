@@ -3,333 +3,496 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Feedback Kiosk</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>Advanced Custom Survey App</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- React and ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        body {
+            font-family: 'Inter', sans-serif;
         }
-        .animate-spin-custom { animation: spin 1s linear infinite; }
     </style>
 </head>
-<body class="bg-gray-100 p-4 min-h-screen flex items-center justify-center font-inter">
-    <div id="root" class="w-full"></div>
+<body class="bg-gray-100 p-4 min-h-screen flex items-center justify-center">
 
-    <script type="text/babel">
-        // Reusable SVG components for improved visual consistency and performance
-        const StarIcon = ({ filled }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}>
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-        );
+<div id="root" class="w-full"></div>
 
-        const Spinner = () => (
-            <svg className="animate-spin-custom h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-        );
-        
-        const TextInput = React.forwardRef(({ id, label, type, answers, validationErrors, handleAnswer }, ref) => (
-            <div className="flex flex-col items-start w-full">
-                <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
-                    {label} {type !== 'checkbox' && <span className="text-red-500">*</span>}
-                </label>
-                <input
-                    id={id}
-                    type={type}
-                    value={answers[id] || ''}
-                    onChange={(e) => handleAnswer(id, e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
-                    aria-required="true"
-                    ref={ref}
-                />
-                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
-            </div>
-        ));
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
 
-        const ChoiceQuestion = React.forwardRef(({ id, label, options, type, hasOther, answers, validationErrors, handleAnswer, handleOtherAnswer, isSubmitting }, ref) => {
-            const isMultiple = type.includes('multiple') || type === 'checkbox';
-            const isSelected = (optionValue) => {
-                const currentAnswer = answers[id];
-                if (isMultiple) {
-                    return Array.isArray(currentAnswer) && currentAnswer.includes(optionValue);
+    // A simple, reusable Star SVG icon component
+    const StarIcon = ({ filled }) => (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill={filled ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`h-10 w-10 transition-colors ${filled ? 'text-yellow-400' : 'text-gray-300'}`}
+        >
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+    );
+
+    // Main application component
+    const App = () => {
+        const questions = [
+            { id: 'q1', label: 'Write us about your experience today. Any comment or suggestion?', type: 'text' },
+            { id: 'q2', label: 'Overall, how satisfied were you with your visit today?', type: 'emoji', options: [{ value: 'Sad', emoji: '😞' }, { value: 'Neutral', emoji: '😐' }, { value: 'Happy', emoji: '😊' }] },
+            { id: 'q3', label: 'How would you rate the cleanliness of the facility?', type: 'linear-scale', min: 1, max: 5 },
+            { id: 'q4', label: 'How friendly was the volunteer staff?', type: 'star-rating', max: 5 },
+            { id: 'q5', label: 'A little about yourself... How young are you?', type: 'single-choice', options: ['<18', '18-26', '26-50', '51-75', '75+'] },
+            { id: 'q6', label: 'Where are you from?', type: 'single-choice-other', options: ['USA', 'South America', 'Canada', 'India', 'Other'] },
+            { id: 'q7', label: 'How did you first hear about us?', type: 'multiple-choice-other', options: ['Drove by', 'Friends/Family', 'Internet', 'Social Media', 'Other'] },
+            { id: 'q8', label: 'Name', type: 'text' },
+            { id: 'q9', label: 'Email', type: 'email' },
+            { id: 'q10', label: 'Subscribe to e-newsletter', type: 'checkbox', options: ['Yes', 'No'] }
+        ];
+
+        const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+        const [answers, setAnswers] = useState({});
+        const [isSubmitting, setIsSubmitting] = useState(false);
+        const [showThankYou, setShowThankYou] = useState(false);
+        const [countdown, setCountdown] = useState(10);
+        const [submissionError, setSubmissionError] = useState('');
+        const [validationErrors, setValidationErrors] = useState({});
+
+        const countdownRef = useRef(null);
+
+        // Effect for unmounting cleanup
+        useEffect(() => {
+            return () => {
+                if (countdownRef.current) {
+                    clearInterval(countdownRef.current);
                 }
-                return currentAnswer === optionValue;
             };
+        }, []);
 
-            const getOptionValue = (option) => typeof option === 'object' ? option.value : option;
-            const getDisplayValue = (option) => typeof option === 'object' ? `${option.emoji ? `${option.emoji} ` : ''}${option.value}` : option;
+        // Effect for countdown logic on the last question
+        useEffect(() => {
+            if (currentQuestionIndex === questions.length) {
+                // Clear any existing timer before setting a new one
+                if (countdownRef.current) {
+                    clearInterval(countdownRef.current);
+                }
+                setCountdown(10);
+                countdownRef.current = setInterval(() => {
+                    setCountdown(prev => {
+                        if (prev <= 1) {
+                            clearInterval(countdownRef.current);
+                            handleSubmit();
+                            return 0;
+                        }
+                        return prev - 1;
+                    });
+                }, 1000);
+            }
+        }, [currentQuestionIndex, questions.length]);
 
+        // Effect for managing focus on question change
+        useEffect(() => {
+            const firstInteractiveElement = document.querySelector('input, button, a[href]');
+            if (firstInteractiveElement) {
+                firstInteractiveElement.focus();
+            }
+        }, [currentQuestionIndex]);
+
+        const isQuestionAnswered = () => {
+            const currentQuestion = questions[currentQuestionIndex];
+            if (!currentQuestion) return true;
+
+            const currentAnswer = answers[currentQuestion.id];
+            const otherAnswer = answers[`${currentQuestion.id}-other`];
+
+            // Check if the primary answer exists and is not an empty string
+            const hasPrimaryAnswer = Array.isArray(currentAnswer) ? currentAnswer.length > 0 : !!currentAnswer;
+
+            // Handle specific validation based on question type
+            switch (currentQuestion.type) {
+                case 'email':
+                    // Basic email regex validation
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    return hasPrimaryAnswer && emailRegex.test(currentAnswer);
+                case 'single-choice-other':
+                    return hasPrimaryAnswer && (currentAnswer !== 'Other' || !!otherAnswer);
+                case 'multiple-choice-other':
+                    return hasPrimaryAnswer && (!currentAnswer.includes('Other') || !!otherAnswer);
+                case 'checkbox':
+                    return hasPrimaryAnswer;
+                default:
+                    return hasPrimaryAnswer;
+            }
+        };
+
+        const handleNextQuestion = () => {
+            if (!isQuestionAnswered()) {
+                let errorMsg = 'Please provide a valid answer.';
+                if (questions[currentQuestionIndex].type === 'email') {
+                    errorMsg = 'Please enter a valid email address.';
+                }
+                setValidationErrors({ ...validationErrors, [questions[currentQuestionIndex].id]: errorMsg });
+                return;
+            }
+            setValidationErrors({});
+            setCurrentQuestionIndex(currentQuestionIndex + 1);
+        };
+
+        const handlePreviousQuestion = () => {
+            if (currentQuestionIndex > 0) {
+                setCurrentQuestionIndex(currentQuestionIndex - 1);
+            }
+        };
+
+        const handleAnswer = (questionId, value) => {
+            setAnswers(prevAnswers => {
+                let newAnswers = { ...prevAnswers };
+                const currentQuestion = questions.find(q => q.id === questionId);
+
+                if (currentQuestion.type.includes('multiple-choice') || currentQuestion.type === 'checkbox') {
+                    const currentArray = newAnswers[questionId] || [];
+                    if (currentArray.includes(value)) {
+                        newAnswers[questionId] = currentArray.filter(item => item !== value);
+                        if (value === 'Other') {
+                            delete newAnswers[`${questionId}-other`];
+                        }
+                    } else {
+                        newAnswers[questionId] = [...currentArray, value];
+                    }
+                } else {
+                    newAnswers[questionId] = value;
+                }
+
+                // Unify and correct 'other' answer handling.
+                // When a user selects a value that is NOT 'Other', we must clear the 'other' text field.
+                if (currentQuestion.type.includes('other') && value !== 'Other') {
+                    delete newAnswers[`${questionId}-other`];
+                }
+                
+                return newAnswers;
+            });
+            setValidationErrors({ ...validationErrors, [questionId]: '' });
+        };
+        
+        // New dedicated handler for 'other' text input fields.
+        // This is a more direct and reliable way to handle these fields and fix the bug.
+        const handleOtherAnswer = (questionId, otherText) => {
+            setAnswers(prevAnswers => ({
+                ...prevAnswers,
+                [`${questionId}-other`]: otherText,
+            }));
+        };
+
+        const handleSubmit = async (event) => {
+            if (event) event.preventDefault();
+            
+            if (!isQuestionAnswered() && currentQuestionIndex < questions.length) {
+                setSubmissionError('Please answer the current question before submitting.');
+                return;
+            }
+            if (isSubmitting) return;
+
+            setIsSubmitting(true);
+            setSubmissionError('');
+            const data = { timestamp: new Date().toISOString(), ...answers };
+
+            const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+            const submitUrl = isDeployed
+                ? `/submit-survey` // This will be your deployed backend endpoint
+                : 'http://localhost:3000/submit-survey';
+
+            try {
+                const response = await fetch(submitUrl, {
+                    method: 'POST',
+                    body: JSON.stringify(data),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                console.log('Survey submitted successfully!', await response.json());
+                setShowThankYou(true);
+            } catch (error) {
+                console.error("Submission failed:", error);
+                setSubmissionError('Submission failed. Please try again.');
+            } finally {
+                setIsSubmitting(false);
+            }
+        };
+
+        const resetSurvey = () => {
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+            }
+            setCurrentQuestionIndex(0);
+            setAnswers({});
+            setShowThankYou(false);
+            setSubmissionError('');
+            setValidationErrors({});
+            window.scrollTo(0, 0);
+        };
+
+        const currentQuestion = questions[currentQuestionIndex];
+        const isLastQuestion = currentQuestionIndex === questions.length - 1;
+
+        // Reusable components for each question type
+        const TextQuestion = ({ id, label, type }) => {
             return (
-                <div className="flex flex-col items-start w-full" tabIndex="0" ref={ref}>
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} {type !== 'checkbox' && <span className="text-red-500">*</span>}</h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role={isMultiple ? "group" : "radiogroup"} aria-label={label} aria-required={type !== 'checkbox' ? "true" : "false"}>
-                        {options.map((option) => {
-                            const value = getOptionValue(option);
-                            return (
-                                <button
-                                    key={value}
-                                    onClick={() => handleAnswer(id, value, isMultiple)}
-                                    disabled={isSubmitting}
-                                    className={`py-3 px-4 rounded-md transition-all ${isSelected(value) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
-                                    aria-pressed={isSelected(value)}
-                                >
-                                    {getDisplayValue(option)}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    {hasOther && isSelected('Other') && (
-                        <input
-                            id={`${id}-other`}
-                            type="text"
-                            value={answers[`${id}-other`] || ''}
-                            onChange={(e) => handleOtherAnswer(id, e.target.value)}
-                            className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Please specify..."
-                            aria-required="true"
-                        />
-                    )}
+                <div className="flex flex-col items-start w-full">
+                    <label htmlFor={id} className="text-lg font-semibold text-gray-700 mb-2">
+                        {label} {type !== 'checkbox' && <span className="text-red-500">*</span>}
+                    </label>
+                    <input
+                        id={id}
+                        type={type}
+                        value={answers[id] || ''}
+                        onChange={(e) => handleAnswer(id, e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={type === 'email' ? 'your@email.com' : 'Your answer...'}
+                        aria-required="true"
+                    />
                     {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
                 </div>
             );
-        });
+        };
 
-        const ThankYouScreen = ({ submissionError }) => (
-            <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg shadow-inner text-center">
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
-                <p className="text-gray-600 mb-4">Your survey has been saved.</p>
-                {submissionError && <p className="text-sm text-red-500 mb-4">{submissionError}</p>}
-                <p className="text-sm text-gray-500 mt-2">The kiosk will reset shortly.</p>
+        const EmojiQuestion = ({ id, label, options }) => (
+            <div className="flex flex-col items-center justify-center w-full">
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="flex justify-center items-center gap-6 mt-4" role="radiogroup" aria-label={label} aria-required="true">
+                    {options.map(option => (
+                        <button
+                            key={option.value}
+                            onClick={() => handleAnswer(id, option.value)}
+                            disabled={isSubmitting}
+                            className={`flex flex-col items-center p-4 rounded-xl transition-all ${answers[id] === option.value ? 'bg-blue-500 text-white shadow-lg scale-110' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                            aria-pressed={answers[id] === option.value}
+                            aria-label={option.value}
+                        >
+                            <span className="text-4xl">{option.emoji}</span>
+                            <span className="mt-2 text-sm">{option.value}</span>
+                        </button>
+                    ))}
+                </div>
+                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
             </div>
         );
 
-        const App = () => {
-            const questions = [
-                { id: 'q1', label: 'Write us about your experience today. Any comment or suggestion?', type: 'text' },
-                { id: 'q2', label: 'Overall, how satisfied were you with your visit today?', type: 'emoji', options: [{ value: 'Sad', emoji: '😞' }, { value: 'Neutral', emoji: '😐' }, { value: 'Happy', emoji: '😊' }] },
-                { id: 'q3', label: 'How would you rate the cleanliness of the facility?', type: 'linear-scale', min: 1, max: 5 },
-                { id: 'q4', label: 'How friendly was the volunteer staff?', type: 'star-rating', max: 5 },
-                { id: 'q5', label: 'A little about yourself... How young are you?', type: 'single-choice', options: ['<18', '18-26', '26-50', '51-75', '75+'] },
-                { id: 'q6', label: 'Where are you from?', type: 'single-choice', options: ['USA', 'South America', 'Canada', 'India', 'Other'] },
-                { id: 'q7', label: 'How did you first hear about us?', type: 'multiple-choice', options: ['Drove by', 'Friends/Family', 'Internet', 'Social Media', 'Other'] },
-                { id: 'q8', label: 'Name', type: 'text' },
-                { id: 'q9', label: 'Email', type: 'email' },
-                { id: 'q10', label: 'Subscribe to e-newsletter', type: 'checkbox', options: ['Yes'] }
-            ];
+        const LinearScaleQuestion = ({ id, label, min, max }) => (
+            <div className="flex flex-col items-center w-full">
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="flex justify-center items-center w-full gap-4" role="radiogroup" aria-label={label} aria-required="true">
+                    {[...Array(max - min + 1)].map((_, i) => {
+                        const value = min + i;
+                        return (
+                            <button
+                                key={value}
+                                onClick={() => handleAnswer(id, value)}
+                                disabled={isSubmitting}
+                                className={`flex-1 py-3 px-2 rounded-lg text-lg font-bold transition-all ${answers[id] === value ? 'bg-blue-500 text-white scale-110' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                                aria-pressed={answers[id] === value}
+                                aria-label={`${value} out of ${max}`}
+                            >
+                                {value}
+                            </button>
+                        );
+                    })}
+                </div>
+                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+            </div>
+        );
 
-            const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
-            const [answers, setAnswers] = React.useState({});
-            const [isSubmitting, setIsSubmitting] = React.useState(false);
-            const [showThankYou, setShowThankYou] = React.useState(false);
-            const [submissionError, setSubmissionError] = React.useState('');
-            const [validationErrors, setValidationErrors] = React.useState({});
-            const [syncStatus, setSyncStatus] = React.useState('');
+        const StarRatingQuestion = ({ id, label, max }) => (
+            <div className="flex flex-col items-center w-full">
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="flex items-center gap-1" role="radiogroup" aria-label={label} aria-required="true">
+                    {[...Array(max)].map((_, i) => {
+                        const ratingValue = i + 1;
+                        return (
+                            <button
+                                key={ratingValue}
+                                onClick={() => handleAnswer(id, ratingValue)}
+                                disabled={isSubmitting}
+                                className="p-1"
+                                aria-pressed={ratingValue === answers[id]}
+                                aria-label={`${ratingValue} stars out of ${max}`}
+                            >
+                                <StarIcon filled={ratingValue <= (answers[id] || 0)} />
+                            </button>
+                        );
+                    })}
+                </div>
+                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+            </div>
+        );
 
-            const getStoredData = () => {
-                try {
-                    const data = JSON.parse(localStorage.getItem('unsyncedSurveyData'));
-                    return Array.isArray(data) ? data : [];
-                } catch (e) {
-                    console.error("Failed to parse localStorage data", e);
-                    return [];
-                }
-            };
-            
-            const isQuestionAnswered = () => {
-                const currentQuestion = questions[currentQuestionIndex];
-                if (!currentQuestion) return false;
-                if (currentQuestion.type === 'checkbox') return true;
-                
-                const currentAnswer = answers[currentQuestion.id];
-                const hasPrimaryAnswer = Array.isArray(currentAnswer) ? currentAnswer.length > 0 : !!currentAnswer;
-                if (!hasPrimaryAnswer) return false;
+        const SingleChoiceQuestion = ({ id, label, options, hasOther }) => (
+            <div className="flex flex-col items-start w-full">
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="radiogroup" aria-label={label} aria-required="true">
+                    {options.map(option => (
+                        <button
+                            key={option}
+                            onClick={() => handleAnswer(id, option)}
+                            disabled={isSubmitting}
+                            className={`py-3 px-4 rounded-md transition-all ${answers[id] === option ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                            aria-pressed={answers[id] === option}
+                        >
+                            {option}
+                        </button>
+                    ))}
+                </div>
+                {hasOther && answers[id] === 'Other' && (
+                    <input
+                        id={`${id}-other`}
+                        type="text"
+                        value={answers[`${id}-other`] || ''}
+                        onChange={(e) => handleOtherAnswer(id, e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
+                        className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Please specify..."
+                        aria-required="true"
+                    />
+                )}
+                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+            </div>
+        );
 
-                if (currentQuestion.type === 'email') {
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    return emailRegex.test(currentAnswer);
-                }
+        const MultipleChoiceQuestion = ({ id, label, options, hasOther }) => (
+            <div className="flex flex-col items-start w-full">
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">{label} <span className="text-red-500">*</span></h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full" role="group" aria-label={label} aria-required="true">
+                    {options.map(option => (
+                        <button
+                            key={option}
+                            onClick={() => handleAnswer(id, option)}
+                            disabled={isSubmitting}
+                            className={`py-3 px-4 rounded-md transition-all ${answers[id] && answers[id].includes(option) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                            aria-pressed={answers[id] && answers[id].includes(option)}
+                        >
+                            {option}
+                        </button>
+                    ))}
+                </div>
+                {hasOther && answers[id] && answers[id].includes('Other') && (
+                    <input
+                        id={`${id}-other`}
+                        type="text"
+                        value={answers[`${id}-other`] || ''}
+                        onChange={(e) => handleOtherAnswer(id, e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleNextQuestion()}
+                        className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Please specify..."
+                        aria-required="true"
+                    />
+                )}
+                {validationErrors[id] && <p className="text-red-500 text-sm mt-1">{validationErrors[id]}</p>}
+            </div>
+        );
 
-                if (currentQuestion.options && Array.isArray(currentQuestion.options) && currentQuestion.options.some(o => (typeof o === 'object' ? o.value : o) === 'Other')) {
-                    const otherAnswer = answers[`${currentQuestion.id}-other`];
-                    const hasOtherAnswer = Array.isArray(currentAnswer) ? currentAnswer.includes('Other') : currentAnswer === 'Other';
-                    if (hasOtherAnswer && !otherAnswer) return false;
-                }
-                
-                return true;
-            };
+        const ThankYouScreen = () => (
+            <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg shadow-inner text-center">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
+                <p className="text-gray-600 mb-4">The survey has been submitted successfully.</p>
+                {submissionError && <p className="text-sm text-red-500 mb-4">{submissionError}</p>}
+                <button
+                    onClick={resetSurvey}
+                    className="mt-4 py-2 px-4 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition"
+                >
+                    Start a New Survey
+                </button>
+            </div>
+        );
 
-            const handleNextQuestion = () => {
-                if (!isQuestionAnswered()) {
-                    const errorMsg = 'Please provide a valid answer to continue.';
-                    setValidationErrors({ [questions[currentQuestionIndex].id]: errorMsg });
-                    return;
-                }
-                setValidationErrors({});
-                setCurrentQuestionIndex(prevIndex => prevIndex + 1);
-            };
+        const FinalScreen = () => {
+            const progressWidth = (countdown / 10) * 100;
+            return (
+                <div className="flex flex-col items-center justify-center w-full">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-4">Thank you for your time!</h2>
+                    <p className="text-gray-600 text-center mb-4">
+                        Your survey will automatically submit in <b className="text-blue-500">{countdown}</b> seconds.
+                    </p>
+                    <div className="w-full h-2 bg-gray-200 rounded-full mb-4">
+                        <div
+                            className="h-full bg-blue-500 rounded-full transition-all duration-1000 ease-linear"
+                            style={{ width: `${progressWidth}%` }}
+                        ></div>
+                    </div>
+                    {submissionError && (
+                        <div className="text-center w-full">
+                            <p className="text-red-500 mb-2">{submissionError}</p>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={isSubmitting}
+                                className="py-2 px-4 rounded-md bg-red-500 text-white font-semibold hover:bg-red-600 transition"
+                            >
+                                Retry Submission
+                            </button>
+                        </div>
+                    )}
+                    {!submissionError && (
+                        <div className="w-full flex justify-center mt-6">
+                            <button
+                                type="submit"
+                                onClick={handleSubmit}
+                                disabled={isSubmitting}
+                                className="w-full sm:w-1/2 py-3 px-4 rounded-md bg-green-500 text-white font-semibold hover:bg-green-600 transition disabled:bg-gray-400"
+                                aria-label="Submit Survey"
+                            >
+                                {isSubmitting ? 'Submitting...' : 'Submit Survey Now'}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
 
-            const handleAnswer = (questionId, value, isMultiple) => {
-                setAnswers(prevAnswers => {
-                    const newAnswers = { ...prevAnswers };
-                    if (isMultiple) {
-                        const currentArray = newAnswers[questionId] || [];
-                        if (currentArray.includes(value)) {
-                            newAnswers[questionId] = currentArray.filter(item => item !== value);
-                        } else {
-                            newAnswers[questionId] = [...currentArray, value];
-                        }
-                    } else {
-                        newAnswers[questionId] = value;
-                    }
-                    return newAnswers;
-                });
-                setValidationErrors({});
-            };
-
-            const handleOtherAnswer = (questionId, otherText) => {
-                setAnswers(prevAnswers => ({
-                    ...prevAnswers,
-                    [`${questionId}-other`]: otherText,
-                }));
-            };
-
-            const sendDataToSheets = async (data) => {
-                try {
-                    const response = await fetch('/.netlify/functions/append-to-sheet', {
-                        method: 'POST',
-                        body: JSON.stringify(data),
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    
-                    const successfullySentTimestamps = data.map(entry => entry.timestamp);
-                    const remainingData = getStoredData().filter(entry => !successfullySentTimestamps.includes(entry.timestamp));
-                    localStorage.setItem('unsyncedSurveyData', JSON.stringify(remainingData));
-                    
-                    setSyncStatus('Data synced successfully!');
-                    setTimeout(() => setSyncStatus(''), 3000);
-                    return { success: true };
-                } catch (error) {
-                    console.error("Submission failed:", error);
-                    setSyncStatus('Data saved locally. Sync failed.');
-                    return { success: false, error: 'Submission failed. The data is saved locally and will be synced later.' };
-                }
-            };
-
-            const handleSubmit = async () => {
-                if (!isQuestionAnswered()) {
-                    const errorMsg = 'Please provide a valid answer before submitting.';
-                    setValidationErrors({ [questions[currentQuestionIndex].id]: errorMsg });
-                    return;
-                }
-                setIsSubmitting(true);
-                setSubmissionError('');
-                
-                const dataToSave = { timestamp: new Date().toISOString(), ...answers };
-                const existingData = getStoredData();
-                const newData = [...existingData, dataToSave];
-                localStorage.setItem('unsyncedSurveyData', JSON.stringify(newData));
-
-                const result = await sendDataToSheets([dataToSave]);
-                if (!result.success) {
-                    setSubmissionError(result.error);
-                }
-                
-                setIsSubmitting(false);
-                setShowThankYou(true);
-            };
-
-            const resetSurvey = () => {
-                setCurrentQuestionIndex(0);
-                setAnswers({});
-                setShowThankYou(false);
-                setSubmissionError('');
-                setValidationErrors({});
-            };
-            
-            React.useEffect(() => {
-                if (showThankYou) {
-                    const timer = setTimeout(resetSurvey, 5000);
-                    return () => clearTimeout(timer);
-                }
-            }, [showThankYou]);
-            
-            React.useEffect(() => {
-                const checkAndSync = () => {
-                    const storedData = getStoredData();
-                    if (storedData.length > 0) {
-                        console.log('Attempting to sync previously unsynced data...');
-                        sendDataToSheets(storedData);
-                    }
-                };
-                const syncInterval = setInterval(checkAndSync, 60000);
-                checkAndSync();
-                return () => clearInterval(syncInterval);
-            }, []);
+        const renderQuestionComponent = () => {
+            if (showThankYou) return <ThankYouScreen key="thank-you" />;
 
             const currentQuestion = questions[currentQuestionIndex];
-            const isLastQuestion = currentQuestionIndex === questions.length - 1;
+            if (!currentQuestion) return <FinalScreen key="final" />;
 
-            const renderQuestionComponent = () => {
-                if (showThankYou) return <ThankYouScreen key="thank-you" submissionError={submissionError} />;
-                if (!currentQuestion) return null;
-                const { id, type, label, options, min, max } = currentQuestion;
+            const { id, type, label, options, min, max } = currentQuestion;
 
-                const processedOptions = (() => {
-                    if (type === 'linear-scale') {
-                        return Array.from({ length: max - min + 1 }, (_, i) => min + i);
-                    }
-                    if (type === 'star-rating') {
-                         return Array.from({ length: max }, (_, i) => i + 1);
-                    }
-                    return options;
-                })();
+            switch (type) {
+                case 'text':
+                case 'email':
+                    return <TextQuestion key={id} id={id} label={label} type={type} />;
+                case 'emoji':
+                    return <EmojiQuestion key={id} id={id} label={label} options={options} />;
+                case 'linear-scale':
+                    return <LinearScaleQuestion key={id} id={id} label={label} min={min} max={max} />;
+                case 'star-rating':
+                    return <StarRatingQuestion key={id} id={id} label={label} max={max} />;
+                case 'single-choice':
+                    return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} />;
+                case 'single-choice-other':
+                    return <SingleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} />;
+                case 'multiple-choice-other':
+                    return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={true} />;
+                case 'checkbox':
+                    return <MultipleChoiceQuestion key={id} id={id} label={label} options={options} hasOther={false} />;
+                default:
+                    return null;
+            }
+        };
 
-                if (type === 'text' || type === 'email') {
-                    return (
-                        <TextInput
-                            key={id}
-                            id={id}
-                            label={label}
-                            type={type}
-                            answers={answers}
-                            validationErrors={validationErrors}
-                            handleAnswer={handleAnswer}
-                        />
-                    );
-                }
+        const showNavigation = currentQuestionIndex < questions.length;
+        const showBackButton = currentQuestionIndex > 0;
+        const showNextButton = currentQuestionIndex < questions.length;
 
-                return (
-                    <ChoiceQuestion
-                        key={id}
-                        id={id}
-                        label={label}
-                        options={processedOptions}
-                        type={type}
-                        hasOther={processedOptions && processedOptions.some(o => (typeof o === 'object' ? o.value : o) === 'Other')}
-                        answers={answers}
-                        validationErrors={validationErrors}
-                        handleAnswer={handleAnswer}
-                        handleOtherAnswer={handleOtherAnswer}
-                    />
-                );
-            };
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+                <div className="w-full max-w-xl">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
 
-            return (
-                <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-                    <div className="w-full max-w-xl">
-                        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Customer Feedback</h1>
+                    {showNavigation && (
                         <div className="w-full mb-6">
                             <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
                                 <div
@@ -341,25 +504,44 @@
                                 Question {currentQuestionIndex + 1} of {questions.length}
                             </p>
                         </div>
-                        <div className={`p-8 bg-white rounded-lg shadow-lg`}>
+                    )}
+
+                    <div className={`p-8 bg-white rounded-lg shadow-lg transition-transform duration-500 transform ${currentQuestion ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
+                        <form onSubmit={handleSubmit}>
                             {renderQuestionComponent()}
-                        </div>
-                        <div className="flex justify-center w-full max-w-xl mt-6">
+                        </form>
+                    </div>
+
+                    {showNavigation && (
+                        <div className="flex justify-between w-full max-w-xl mt-6">
+                            <button
+                                onClick={handlePreviousQuestion}
+                                disabled={!showBackButton}
+                                className={`py-2 px-4 rounded-md font-semibold transition ${showBackButton ? 'bg-gray-300 text-gray-800 hover:bg-gray-400' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                            >
+                                Back
+                            </button>
                             <button
                                 onClick={isLastQuestion ? handleSubmit : handleNextQuestion}
                                 disabled={isSubmitting || !isQuestionAnswered()}
-                                className={`w-full py-3 px-4 rounded-md text-white font-semibold transition flex justify-center items-center gap-2 ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
+                                className={`py-2 px-4 rounded-md text-white font-semibold transition ${isQuestionAnswered() && !isSubmitting ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'}`}
                             >
-                                {isSubmitting ? <Spinner /> : (isLastQuestion ? 'Submit' : 'Next')}
+                                {isLastQuestion ? 'Submit' : 'Next'}
                             </button>
                         </div>
-                        <p className="text-center mt-4 text-sm text-gray-600">{syncStatus}</p>
-                    </div>
+                    )}
                 </div>
-            );
-        };
+            </div>
+        );
+    };
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
+    // Render the App component
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>
+    );
+</script>
 </body>
 </html>

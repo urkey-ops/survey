@@ -4,6 +4,7 @@
   "description": "A Vercel Function for the survey app.",
   "main": "api/submit-survey.js",
   "scripts": {
+    "build": "echo 'Building...' ",
     "start": "vercel dev"
   },
   "dependencies": {

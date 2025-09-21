@@ -1,8 +1,7 @@
 {
   "functions": {
     "api/submit-survey.js": {
-      "memory": 1024,
-      "maxDuration": 10
+      "runtime": "nodejs18.x"
     }
   },
   "rewrites": [

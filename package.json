@@ -2,11 +2,6 @@
   "name": "survey-app-server",
   "version": "1.0.0",
   "description": "A Vercel Function for the survey app.",
-  "main": "api/submit-survey.js",
-  "scripts": {
-    "build": "echo 'Building...' ",
-    "start": "vercel dev"
-  },
   "dependencies": {
     "googleapis": "^128.0.0"
   }

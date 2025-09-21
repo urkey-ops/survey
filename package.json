@@ -1,13 +1,12 @@
 {
   "name": "survey-app-server",
   "version": "1.0.0",
-  "description": "A simple Node.js server for the survey app.",
-  "main": "server.js",
+  "description": "A Vercel Function for the survey app.",
+  "main": "api/submit-survey.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "vercel dev"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "googleapis": "^128.0.0"
   }
 }

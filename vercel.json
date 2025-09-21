@@ -1,9 +1,11 @@
 {
-  "functions": {
-    "api/submit-survey.js": {
-      "runtime": "nodejs18.x"
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/submit-survey.js",
+      "use": "@vercel/node"
     }
-  },
+  ],
   "rewrites": [
     {
       "source": "/api/submit-survey",

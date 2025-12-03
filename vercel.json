@@ -1,5 +1,19 @@
+// FILE: vercel.json
 {
   "version": 2,
+  
+  // UPDATED: ADDED the 'builds' section to tell Vercel to run the Tailwind script
+  "builds": [
+    {
+      "src": "index.html",
+      "use": "@vercel/static-build",
+      "config": {
+        "installCommand": "npm install",
+        "buildCommand": "npm run tw:build"
+      }
+    }
+  ],
+  
   "rewrites": [
     {
       "source": "/api/submit-survey",
@@ -17,6 +31,7 @@
       "permanent": true
     }
   ],
+  
   "headers": [
     {
       "source": "/(.*)",

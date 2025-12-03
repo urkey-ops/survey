@@ -1,3 +1,4 @@
+
 {
   "name": "survey-app-server",
   "version": "1.0.0",
@@ -13,10 +14,10 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3"
   },
- "scripts": {
-  "tw:init": "npx tailwindcss init -p",
-  "tw:build": "npx tailwindcss -i ./input.css -o ./style.css --content './**/*.{html,js}' --minify"
-}
+  "scripts": {
+    "tw:init": "./node_modules/.bin/tailwindcss init -p",
+    "tw:build": "./node_modules/.bin/tailwindcss -i ./input.css -o ./style.css --content './**/*.{html,js}' --minify"
+  },
   "engines": {
     "node": "22.x"
   }

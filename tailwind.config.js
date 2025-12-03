@@ -1,9 +1,11 @@
-// FILE: tailwind.config.js (MUST BE SAVED WITH THIS CONTENT)
+// FILE: tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 export default {
+  // UPDATED: Use an array for content to allow explicit exclusion
   content: [
-    "./index.html", 
-    "./*.js" // Scans your JavaScript files 
+    './**/*.{html}', 
+    './**/*.js', 
+    '!./node_modules/**' // This line explicitly excludes the node_modules folder
   ],
   theme: {
     extend: {},

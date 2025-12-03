@@ -1,3 +1,4 @@
+
 // FILE: dataSync.js
 // DEPENDS ON: appState.js (CONSTANTS, appState)
 
@@ -11,10 +12,6 @@
         SYNC_ENDPOINT,
         ANALYTICS_ENDPOINT
     } = window.CONSTANTS;
-    const { 
-        unsyncedCountDisplay, 
-        syncStatusMessage 
-    } = window.globals;
     const appState = window.appState;
 
     // ---------------------------------------------------------------------
@@ -52,6 +49,8 @@
 
     function updateAdminCount() {
         const count = countUnsyncedRecords();
+        // FIXED: Access dynamically instead of at script load time
+        const unsyncedCountDisplay = window.globals?.unsyncedCountDisplay;
         if (unsyncedCountDisplay) {
             unsyncedCountDisplay.textContent = count;
         }
@@ -122,6 +121,8 @@
     // ---------------------------------------------------------------------
 
     function updateSyncStatus(message) {
+        // FIXED: Access dynamically instead of at script load time
+        const syncStatusMessage = window.globals?.syncStatusMessage;
         if (syncStatusMessage) {
             syncStatusMessage.textContent = message;
         }
@@ -147,7 +148,6 @@
         if (isManual) updateSyncStatus(`Syncing ${queue.length} records...`);
 
         try {
-            // Send the entire queue array
             const response = await fetch(SYNC_ENDPOINT, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -168,7 +168,6 @@
             if (isManual) updateSyncStatus('Data sync failed (Network Error).');
         }
 
-        // Always update count regardless of success/failure
         updateAdminCount();
     }
 

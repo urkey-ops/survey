@@ -1,0 +1,14 @@
+{
+  "name": "survey-app-server",
+  "version": "1.0.0",
+  "description": "A Vercel Function for the survey app.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "googleapis": "^142.0.0"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}

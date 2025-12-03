@@ -1,3 +1,4 @@
+cat > vercel.json << 'EOF'
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".",
@@ -17,3 +18,4 @@
     }
   ]
 }
+EOF

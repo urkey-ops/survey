@@ -19,7 +19,8 @@
   "scripts": {
     "tw:init": "npx tailwindcss init -p",
     "tw:build": "npx tailwindcss -i ./input.css -o ./dist/output.css --minify",
-    "tw:watch": "npx tailwindcss -i ./input.css -o ./dist/output.css --watch"
+    "tw:watch": "npx tailwindcss -i ./input.css -o ./dist/output.css --watch",
+    "build": "npm run tw:build"
   },
 
   "engines": {

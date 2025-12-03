@@ -1,7 +1,5 @@
-/* FILE: input.css (NEW FILE) */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import your custom styling last, so it can override Tailwind utilities */
 @import "./custom.css";

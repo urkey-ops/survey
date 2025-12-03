@@ -15,9 +15,9 @@
     "tailwindcss": "^3.4.3"
   },
   "scripts": {
-    "tw:init": "./node_modules/.bin/tailwindcss init -p",
-    "tw:build": "./node_modules/.bin/tailwindcss -i ./input.css -o ./style.css --content './**/*.{html,js}' --minify"
-  },
+  "tw:init": "npx tailwindcss init -p",
+  "tw:build": "npx tailwindcss -i ./input.css -o ./style.css --content './**/*.{html,js}' --minify"
+},
   "engines": {
     "node": "22.x"
   }

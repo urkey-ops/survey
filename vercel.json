@@ -1,8 +1,8 @@
-// FILE: vercel.json
+
 {
   "version": 2,
   
-  // UPDATED: ADDED the 'builds' section to tell Vercel to run the Tailwind script
+
   "builds": [
     {
       "src": "index.html",

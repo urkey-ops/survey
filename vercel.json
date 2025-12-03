@@ -1,25 +1,13 @@
 {
-  "version": 2,
-
-  "builds": [
-    { "src": "index.html", "use": "@vercel/static" }
-  ],
-
+  "buildCommand": "npm run build",
+  "outputDirectory": ".",
+  "installCommand": "npm install",
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1.js"
+      "destination": "/api/$1"
     }
   ],
-
-  "redirects": [
-    {
-      "source": "/",
-      "destination": "/index.html",
-      "permanent": false
-    }
-  ],
-
   "headers": [
     {
       "source": "/(.*)",

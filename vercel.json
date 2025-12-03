@@ -1,46 +1,26 @@
-
 {
   "version": 2,
-  
- 
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "installCommand": "npm install",
-        "buildCommand": "npm run tw:build"
-      }
-    }
-  ],
-  
+
   "rewrites": [
     {
-      "source": "/api/submit-survey",
-      "destination": "/api/submit-survey.js"
-    },
-    {
-      "source": "/api/sync-analytics",
-      "destination": "/api/sync-analytics.js"
+      "source": "/api/(.*)",
+      "destination": "/api/$1.js"
     }
   ],
-  
+
   "redirects": [
     {
       "source": "/",
       "destination": "/index.html",
-      "permanent": true
+      "permanent": false
     }
   ],
-  
+
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        }
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
       ]
     }
   ]

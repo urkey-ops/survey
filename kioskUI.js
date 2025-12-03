@@ -1,14 +1,12 @@
+
 // FILE: kioskUI.js
-// UPDATED: Removed initial local destructuring to force direct access to window.globals, 
-// ensuring elements assigned by main.js are available.
+// UPDATED: Fixed event setup timing - events now attached when question renders
 
 (function() {
     const { INACTIVITY_TIMEOUT_MS, SYNC_INTERVAL_MS, STORAGE_KEY_STATE, STORAGE_KEY_QUEUE } = window.CONSTANTS;
     const appState = window.appState;
-    // NOTE: Removed local variable destructuring (e.g., nextBtn, questionContainer)
-    // All global references (elements, timers, visibility flags) are now accessed via window.globals, appState, or window.* directly.
-    const { 
-        safeSetLocalStorage, getSubmissionQueue, recordAnalytics, autoSync, updateAdminCount, syncData 
+    const { 
+        safeSetLocalStorage, getSubmissionQueue, recordAnalytics, autoSync, updateAdminCount, syncData 
     } = window.dataHandlers;
     
     // Internal helper for timers
@@ -36,7 +34,7 @@
     }
 
     // ---------------------------------------------------------------------
-    // --- TIMERS & UX (Moved from Part 3) ---
+    // --- TIMERS & UX ---
     // ---------------------------------------------------------------------
     
     function startQuestionTimer(qId) {
@@ -46,7 +44,7 @@
         let elapsed = appState.questionTimeSpent[qId] || 0;
 
         const interval = setInterval(() => {
-            elapsed++; // Track seconds
+            elapsed++;
         }, 1000);
 
         appState.questionTimer[qId] = {
@@ -69,7 +67,6 @@
         for (const qId in appState.questionTimeSpent) {
             totalTime += appState.questionTimeSpent[qId];
         }
-        // Add time for current question if timer is running
         for (const qId in appState.questionTimer) {
             totalTime += appState.questionTimer[qId].timeSpent;
         }
@@ -89,7 +86,7 @@
             return;
         }
         
-        startPeriodicSync(); 
+        startPeriodicSync(); 
 
         appState.inactivityTimer = setTimeout(() => {
             const isInProgress = appState.currentQuestionIndex > 0;
@@ -98,8 +95,6 @@
                 console.log('Mid-survey inactivity detected. Auto-saving and resetting kiosk.');
 
                 const submissionQueue = getSubmissionQueue();
-                
-                // Record drop-off analytics
                 const currentQuestion = window.dataUtils.surveyQuestions[appState.currentQuestionIndex];
                 stopQuestionTimer(currentQuestion.id);
                 
@@ -109,14 +104,12 @@
                 appState.formData.abandonedAt = new Date().toISOString();
                 appState.formData.abandonedAtQuestion = currentQuestion.id;
                 appState.formData.abandonedAtQuestionIndex = appState.currentQuestionIndex;
-
                 appState.formData.timestamp = new Date().toISOString();
                 appState.formData.sync_status = 'unsynced (inactivity)';
 
                 submissionQueue.push(appState.formData);
                 safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
                 
-                // Record drop-off event
                 recordAnalytics('survey_abandoned', {
                     questionId: currentQuestion.id,
                     questionIndex: appState.currentQuestionIndex,
@@ -124,7 +117,7 @@
                     reason: 'inactivity'
                 });
 
-                performKioskReset(); 
+                performKioskReset(); 
             } else {
                 autoSync();
             }
@@ -146,24 +139,19 @@
             appState.rotationInterval = setInterval(() => {
                 idx = (idx + 1) % q.rotatingText.length;
                 if (labelEl) {
-                    // Remove typewriter classes before updating text
                     labelEl.classList.remove('typewriter', 'typing-complete');
                     labelEl.textContent = q.rotatingText[idx];
-                    
-                    // Re-apply typewriter effect for the new text
                     labelEl.classList.add('typewriter');
                     
-                    // Clear previous typewriter timer
                     if (window.typewriterTimer) {
                         clearTimeout(window.typewriterTimer);
                     }
                     
-                    // Set new completion timer
                     window.typewriterTimer = setTimeout(() => {
                         if (labelEl) {
                             labelEl.classList.add('typing-complete');
                         }
-                    }, 2000); // Match animation duration
+                    }, 2000);
                 }
             }, 4000);
         } catch (e) {
@@ -179,11 +167,10 @@
     }
     
     // ---------------------------------------------------------------------
-    // --- NAVIGATION & RENDERING (Mostly from Part 2) ---
+    // --- NAVIGATION & RENDERING ---
     // ---------------------------------------------------------------------
 
     function updateProgressBar() {
-        // Access window.globals directly
         const progressBar = window.globals.progressBar;
         const prevBtn = window.globals.prevBtn;
         const nextBtn = window.globals.nextBtn;
@@ -196,26 +183,17 @@
             progressBar.style.width = `${progress}%`;
         }
 
-        // Show/Hide navigation buttons
         if (prevBtn) {
-            // UPDATED: 'Back' button is shown only if current question index is 2 or higher,
-            // (i.e., user is on the 3rd question or later). Question 1 is index 0 (Start Screen), 
-            // Question 2 is index 1.
-            // Visibility is controlled here.
             prevBtn.style.visibility = (current >= 2) ? 'visible' : 'hidden';
         }
         if (nextBtn) {
-            // UPDATED: Ensure 'Next' button is visible regardless of the step.
             nextBtn.style.visibility = 'visible'; 
-            
-            // Check if we are on the final question (last index)
             nextBtn.textContent = (current === total - 1) ? 'Submit' : 'Next';
-            nextBtn.disabled = false; // Re-enable for the new question
+            nextBtn.disabled = false;
         }
     }
 
     function showQuestion(index) {
-        // Access window.globals directly
         const questionContainer = window.globals.questionContainer;
 
         if (index < 0 || index >= window.dataUtils.surveyQuestions.length) return;
@@ -223,12 +201,10 @@
         const q = window.dataUtils.surveyQuestions[index];
         appState.currentQuestionIndex = index;
 
-        // Save current progress
         safeSetLocalStorage(STORAGE_KEY_STATE, appState);
         updateProgressBar();
         resetInactivityTimer();
         
-        // Render content
         if (questionContainer) {
             questionContainer.innerHTML = '';
             const questionEl = renderQuestion(q);
@@ -237,7 +213,6 @@
             console.error('questionContainer not defined when calling showQuestion');
         }
         
-        // Start timer for the new question
         startQuestionTimer(q.id);
     }
 
@@ -250,61 +225,47 @@
             return;
         }
 
-        // 1. Record answer and stop timer for current question
         stopQuestionTimer(currentQuestion.id);
-        appState.formData[currentQuestion.id] = answer;
+        appState.formData[currentQuestion.name] = answer;
         
-        // 2. Check if we reached the end
         if (appState.currentQuestionIndex === window.dataUtils.surveyQuestions.length - 1) {
             console.log('Survey completed. Preparing submission.');
-            // Final submission steps
             appState.formData.completionTimeSeconds = getTotalSurveyTime();
             appState.formData.questionTimeSpent = appState.questionTimeSpent;
             appState.formData.completedAt = new Date().toISOString();
             appState.formData.timestamp = new Date().toISOString();
             appState.formData.sync_status = 'unsynced';
             
-            // Add to submission queue
             const submissionQueue = getSubmissionQueue();
             submissionQueue.push(appState.formData);
             safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
             
-            // Record completion analytics
             recordAnalytics('survey_completed', {
                 totalTimeSeconds: appState.formData.completionTimeSeconds
             });
 
-            // Perform final sync and reset
-            syncData(false); // Attempt sync immediately
+            syncData(false);
             performKioskReset();
             return;
         }
         
-        // 3. Move to next question
         showQuestion(appState.currentQuestionIndex + 1);
     }
 
     function goPrev() {
-        // UPDATED: Allow going back as long as the current index is greater than the initial state (index 1 is the first real question)
         if (appState.currentQuestionIndex > 1) { 
-            // Stop current timer
             const currentQuestion = window.dataUtils.surveyQuestions[appState.currentQuestionIndex];
             stopQuestionTimer(currentQuestion.id);
-
-            // Go back
             showQuestion(appState.currentQuestionIndex - 1);
             resetInactivityTimer();
         } else if (appState.currentQuestionIndex === 1) {
-            // Special case: If on the first real question (index 1), going back resets to start screen (index 0)
             const currentQuestion = window.dataUtils.surveyQuestions[appState.currentQuestionIndex];
             stopQuestionTimer(currentQuestion.id);
-
-            performKioskReset(); // Resets to index 0 (Start Screen)
+            performKioskReset();
         }
     }
 
     function showStartScreen() {
-        // Access window.globals directly
         const kioskStartScreen = window.globals.kioskStartScreen;
         const kioskVideo = window.globals.kioskVideo;
         const questionContainer = window.globals.questionContainer;
@@ -317,8 +278,6 @@
                 kioskVideo.play();
             }
         }
-        // FIX: The error originated here. Since questionContainer is now accessed via globals,
-        // it should only be undefined if main.js failed to run. Added check for safety.
         if (questionContainer) {
             questionContainer.innerHTML = '';
         }
@@ -336,33 +295,27 @@
             rotateQuestionText(introQuestion);
         }
         
-        // Event listener to start survey
         if (kioskStartScreen) {
-            // UPDATED: Bind start event to the whole screen tap/click
             kioskStartScreen.addEventListener('click', startSurvey, { once: true });
         }
         
-        // Ensure sync timer runs even when on start screen
         startPeriodicSync();
     }
 
     function startSurvey() {
-        // Access window.globals directly
         const kioskStartScreen = window.globals.kioskStartScreen;
         const kioskVideo = window.globals.kioskVideo;
 
         if (kioskStartScreen) {
             kioskStartScreen.classList.add('hidden');
-            // Remove the 'click' listener to prevent multiple starts if needed, though 'once: true' handles it
-            kioskStartScreen.removeEventListener('click', startSurvey); 
+            kioskStartScreen.removeEventListener('click', startSurvey); 
 
             if (kioskVideo) {
                 kioskVideo.pause();
-                kioskVideo.currentTime = 0; // Reset video
+                kioskVideo.currentTime = 0;
             }
         }
         
-        // Reset state for a new survey
         appState.formData = {
             sessionId: crypto.randomUUID(),
             kioskId: window.dataUtils.kioskId,
@@ -370,41 +323,28 @@
         };
         appState.questionTimeSpent = {};
         
-        showQuestion(1); // Start at the first actual question
+        showQuestion(1);
     }
 
     function performKioskReset() {
         console.log('[RESET] Kiosk reset initiated.');
         clearAllTimers();
         
-        // Clear in-progress data
         appState.currentQuestionIndex = 0;
         appState.formData = {};
         appState.questionTimeSpent = {};
         safeSetLocalStorage(STORAGE_KEY_STATE, appState);
         
         updateAdminCount();
-        
-        // Reload start screen
         showStartScreen();
     }
     
-    function getAnswer(q) { 
-        // Helper context for event listeners inside the renderer's setupEvents
-        const handleNextQuestion = goNext;
-        const updateData = (key, value) => appState.formData[key] = value;
-        
-        const renderer = window.dataUtils.questionRenderers[q.type];
-        if (renderer && renderer.setupEvents) {
-            renderer.setupEvents(q, { handleNextQuestion, updateData });
-        }
-        
-        // Logic to extract answer from DOM based on question type
+    function getAnswer(q) {
         let answer = appState.formData[q.name];
 
         if (q.type === 'textarea') {
             const input = document.getElementById(q.id);
-            answer = input ? input.value : (appState.formData[q.name] || null);
+            answer = input ? input.value.trim() : (appState.formData[q.name] || null);
             if (q.required && !answer) return null;
         }
 
@@ -413,7 +353,6 @@
             const otherValue = otherInput ? otherInput.value.trim() : '';
             if (q.required && !otherValue) return null;
             
-            // Combine the answer for submission
             return {
                 main: answer,
                 other: otherValue
@@ -424,7 +363,6 @@
             const otherInput = document.getElementById('other_hear_about_text');
             const otherValue = otherInput ? otherInput.value.trim() : '';
             
-            // In a checkbox group, the answer is an array of selected values
             if (q.required && answer.length === 0) return null;
 
             return {
@@ -434,11 +372,10 @@
         }
         
         if (q.required && (answer === null || answer === undefined || answer === '' || (Array.isArray(answer) && answer.length === 0))) {
-             // Basic validation for simple types (radio, number-scale, star-rating)
              return null;
         }
         
-        return answer; 
+        return answer; 
     }
 
     function renderQuestion(q) {
@@ -454,11 +391,21 @@
         div.classList.add('survey-question-wrapper');
         div.innerHTML = renderer.render(q, appState.formData);
         
-        // NOTE: Event setup is moved to getAnswer(), which runs before goNext().
+        // FIXED: Setup events immediately after rendering
+        if (renderer.setupEvents) {
+            // Use setTimeout to ensure DOM is ready
+            setTimeout(() => {
+                const handleNextQuestion = goNext;
+                const updateData = (key, value) => {
+                    appState.formData[key] = value;
+                };
+                
+                renderer.setupEvents(q, { handleNextQuestion, updateData });
+            }, 0);
+        }
 
         return div;
     }
-
 
     // Expose functions globally
     window.uiHandlers = {

@@ -1,23 +1,18 @@
 // FILE: kioskUI.js
-// UPDATED: Implemented getAnswer and renderQuestion using data-util.js
-// DEPENDS ON: appState.js (CONSTANTS, appState, globals, typewriterTimer, adminPanelTimer), dataSync.js (dataHandlers), data-util.js (window.dataUtils)
+// UPDATED: Removed initial local destructuring to force direct access to window.globals, 
+// ensuring elements assigned by main.js are available.
 
 (function() {
     const { INACTIVITY_TIMEOUT_MS, SYNC_INTERVAL_MS, STORAGE_KEY_STATE, STORAGE_KEY_QUEUE } = window.CONSTANTS;
     const appState = window.appState;
-    let { 
-        questionContainer, nextBtn, prevBtn, progressBar, kioskStartScreen, kioskVideo 
-    } = window.globals;
+    // NOTE: Removed local variable destructuring (e.g., nextBtn, questionContainer)
+    // All global references (elements, timers, visibility flags) are now accessed via window.globals, appState, or window.* directly.
     const { 
         safeSetLocalStorage, getSubmissionQueue, recordAnalytics, autoSync, updateAdminCount, syncData 
     } = window.dataHandlers;
     
-    let isKioskVisible = window.isKioskVisible;
-    let typewriterTimer = window.typewriterTimer;
-
     // Internal helper for timers
     function clearAllTimers() {
-        // ... (clearAllTimers function content remains unchanged)
         if (appState.inactivityTimer) {
             clearTimeout(appState.inactivityTimer);
             appState.inactivityTimer = null;
@@ -34,7 +29,6 @@
     }
 
     function cleanupIntervals() {
-        // ... (cleanupIntervals function content remains unchanged)
         if (appState.rotationInterval) {
             clearInterval(appState.rotationInterval);
             appState.rotationInterval = null;
@@ -46,7 +40,6 @@
     // ---------------------------------------------------------------------
     
     function startQuestionTimer(qId) {
-        // ... (startQuestionTimer function content remains unchanged)
         stopQuestionTimer(qId);
         
         const startTime = Date.now();
@@ -64,7 +57,6 @@
     }
 
     function stopQuestionTimer(qId) {
-        // ... (stopQuestionTimer function content remains unchanged)
         if (appState.questionTimer[qId]) {
             clearInterval(appState.questionTimer[qId].interval);
             appState.questionTimeSpent[qId] = appState.questionTimer[qId].timeSpent;
@@ -73,7 +65,6 @@
     }
 
     function getTotalSurveyTime() {
-        // ... (getTotalSurveyTime function content remains unchanged)
         let totalTime = 0;
         for (const qId in appState.questionTimeSpent) {
             totalTime += appState.questionTimeSpent[qId];
@@ -86,7 +77,6 @@
     }
 
     function resetInactivityTimer() {
-        // ... (resetInactivityTimer function content remains unchanged)
         if (appState.inactivityTimer) {
             clearTimeout(appState.inactivityTimer);
         }
@@ -94,7 +84,7 @@
             clearInterval(appState.syncTimer);
         }
         
-        if (!isKioskVisible) {
+        if (!window.isKioskVisible) {
             console.log('[VISIBILITY] Kiosk hidden - timers not started');
             return;
         }
@@ -142,12 +132,10 @@
     }
 
     function startPeriodicSync() {
-        // ... (startPeriodicSync function content remains unchanged)
         appState.syncTimer = setInterval(autoSync, SYNC_INTERVAL_MS);
     }
 
     function rotateQuestionText(q) {
-        // ... (rotateQuestionText function content remains unchanged)
         let idx = 0;
         const labelEl = document.getElementById('rotatingQuestion');
         if (!labelEl) return;
@@ -185,7 +173,6 @@
     }
 
     function addInactivityListeners() {
-        // ... (addInactivityListeners function content remains unchanged)
         document.addEventListener('mousemove', resetInactivityTimer);
         document.addEventListener('keypress', resetInactivityTimer);
         document.addEventListener('touchstart', resetInactivityTimer);
@@ -196,7 +183,11 @@
     // ---------------------------------------------------------------------
 
     function updateProgressBar() {
-        // ... (updateProgressBar function content remains unchanged)
+        // Access window.globals directly
+        const progressBar = window.globals.progressBar;
+        const prevBtn = window.globals.prevBtn;
+        const nextBtn = window.globals.nextBtn;
+
         const total = window.dataUtils.surveyQuestions.length;
         const current = appState.currentQuestionIndex;
         const progress = (current / total) * 100;
@@ -216,7 +207,9 @@
     }
 
     function showQuestion(index) {
-        // ... (showQuestion function content remains unchanged)
+        // Access window.globals directly
+        const questionContainer = window.globals.questionContainer;
+
         if (index < 0 || index >= window.dataUtils.surveyQuestions.length) return;
         
         const q = window.dataUtils.surveyQuestions[index];
@@ -228,16 +221,19 @@
         resetInactivityTimer();
         
         // Render content
-        questionContainer.innerHTML = '';
-        const questionEl = renderQuestion(q);
-        questionContainer.appendChild(questionEl);
+        if (questionContainer) {
+            questionContainer.innerHTML = '';
+            const questionEl = renderQuestion(q);
+            questionContainer.appendChild(questionEl);
+        } else {
+            console.error('questionContainer not defined when calling showQuestion');
+        }
         
         // Start timer for the new question
         startQuestionTimer(q.id);
     }
 
     function goNext() {
-        // ... (goNext function content remains unchanged)
         const currentQuestion = window.dataUtils.surveyQuestions[appState.currentQuestionIndex];
         const answer = getAnswer(currentQuestion);
         
@@ -281,7 +277,6 @@
     }
 
     function goPrev() {
-        // ... (goPrev function content remains unchanged)
         if (appState.currentQuestionIndex > 1) {
             // Stop current timer
             const currentQuestion = window.dataUtils.surveyQuestions[appState.currentQuestionIndex];
@@ -294,15 +289,25 @@
     }
 
     function showStartScreen() {
-        // ... (showStartScreen function content remains unchanged)
+        // Access window.globals directly
+        const kioskStartScreen = window.globals.kioskStartScreen;
+        const kioskVideo = window.globals.kioskVideo;
+        const questionContainer = window.globals.questionContainer;
+        const nextBtn = window.globals.nextBtn;
+        const prevBtn = window.globals.prevBtn;
+
         if (kioskStartScreen) {
             kioskStartScreen.classList.remove('hidden');
             if (kioskVideo) {
                 kioskVideo.play();
             }
         }
-        questionContainer.innerHTML = '';
-        // UPDATED: Added safety check for nextBtn and prevBtn to fix Uncaught TypeError
+        // FIX: The error originated here. Since questionContainer is now accessed via globals,
+        // it should only be undefined if main.js failed to run. Added check for safety.
+        if (questionContainer) {
+            questionContainer.innerHTML = '';
+        }
+        
         if (nextBtn) {
             nextBtn.style.visibility = 'hidden';
         }
@@ -327,7 +332,10 @@
     }
 
     function startSurvey() {
-        // ... (startSurvey function content remains unchanged)
+        // Access window.globals directly
+        const kioskStartScreen = window.globals.kioskStartScreen;
+        const kioskVideo = window.globals.kioskVideo;
+
         if (kioskStartScreen) {
             kioskStartScreen.classList.add('hidden');
             // Remove the 'click' listener to prevent multiple starts if needed, though 'once: true' handles it
@@ -351,7 +359,6 @@
     }
 
     function performKioskReset() {
-        // ... (performKioskReset function content remains unchanged)
         console.log('[RESET] Kiosk reset initiated.');
         clearAllTimers();
         
@@ -367,7 +374,6 @@
         showStartScreen();
     }
     
-    // UPDATED: Implemented the two helper functions that rely on data-util.js
     function getAnswer(q) { 
         // Helper context for event listeners inside the renderer's setupEvents
         const handleNextQuestion = goNext;
@@ -379,10 +385,6 @@
         }
         
         // Logic to extract answer from DOM based on question type
-        // This is simplified, in a full app it would check the DOM for the selected value.
-        // Since many types auto-advance, we assume the answer is already in appState.formData
-        // for radio/scale questions, or we return the textarea content.
-        
         let answer = appState.formData[q.name];
 
         if (q.type === 'textarea') {
@@ -438,7 +440,6 @@
         div.innerHTML = renderer.render(q, appState.formData);
         
         // NOTE: Event setup is moved to getAnswer(), which runs before goNext().
-        // For types that auto-advance, the setupEvents listener calls goNext directly.
 
         return div;
     }
@@ -454,7 +455,6 @@
         goPrev,
         showQuestion,
         showStartScreen,
-        startSurvey,
         performKioskReset,
         getTotalSurveyTime
     };

@@ -1,11 +1,12 @@
 // FILE: tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 export default {
-  // UPDATED: Corrected syntax to fix the glob warning AND explicitly exclude node_modules to fix the performance warning.
+  // UPDATED: Definitive content configuration array with necessary exclusions
   content: [
-    './**/*.html', // Corrected from ./**/*.{html}
+    './**/*.html', 
     './**/*.js', 
-    '!./node_modules/**' // Explicitly exclude node_modules
+    '!./node_modules/**', // EXCLUSION: Fixes 10-second build time
+    '!./api/**'          // EXCLUSION: Excludes JS in the API folder
   ],
   theme: {
     extend: {},

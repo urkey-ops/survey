@@ -1,6 +1,7 @@
+cat > .gitignore << 'EOF'
 node_modules/
 .DS_Store
 *.log
 .env
 .vercel
-dist/
+EOF

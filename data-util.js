@@ -1,3 +1,4 @@
+
 // FILE: data-util.js
 // UPDATED: Added kioskId and global helper functions.
 window.dataUtils = (function() {
@@ -6,20 +7,6 @@ window.dataUtils = (function() {
     const kioskId = 'KIOSK-GWINNETT-001'; // Define the unique kiosk ID
     
     const surveyQuestions = [
-        
-          {
-            id: 'satisfaction',
-            name: 'satisfaction',
-            type: 'emoji-radio',
-            question: '2. Overall, how satisfied were you with your visit today?',
-            options: [
-                { value: 'Sad', label: 'Sad', emoji: '😞' },
-                { value: 'Neutral', label: 'Neutral', emoji: '😐' },
-                { value: 'Happy', label: 'Happy', emoji: '🙂' },
-                { value: 'Super Happy', label: 'Super Happy', emoji: '😄' }
-            ],
-            required: true
-        },
         
         {
             id: 'enjoyed_most', // Renamed ID for clarity, kept name 'comments' for existing data keys
@@ -34,6 +21,20 @@ window.dataUtils = (function() {
                 "What was the most memorable part of your experience today?",
                 "Which aspects of your visit exceeded your expectations?"
             ]
+        },
+        
+        {
+            id: 'satisfaction',
+            name: 'satisfaction',
+            type: 'emoji-radio',
+            question: '2. Overall, how satisfied were you with your visit today?',
+            options: [
+                { value: 'Sad', label: 'Sad', emoji: '😞' },
+                { value: 'Neutral', label: 'Neutral', emoji: '😐' },
+                { value: 'Happy', label: 'Happy', emoji: '🙂' },
+                { value: 'Super Happy', label: 'Super Happy', emoji: '😄' }
+            ],
+            required: true
         },
         
         {

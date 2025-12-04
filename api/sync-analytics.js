@@ -3,10 +3,9 @@
 import { google } from 'googleapis';
 
 // --- Define Column Order for Analytics Summary Sheet ---
-// UPDATED: Added 'kioskId' for tracking where the aggregated data came from.
 const ANALYTICS_SUMMARY_COLUMNS = [
     'timestamp',
-    'kioskId', // NEW: Kiosk's static ID
+    'kioskId',
     'totalCompletions',
     'totalAbandonments',
     'completionRate',
@@ -15,11 +14,10 @@ const ANALYTICS_SUMMARY_COLUMNS = [
 ];
 
 // --- Define Column Order for Analytics Detail Sheet (Optional) ---
-// UPDATED: Added 'kioskId' and 'sessionId' to link events to their source and session.
 const ANALYTICS_DETAIL_COLUMNS = [
     'timestamp',
-    'kioskId', // NEW
-    'sessionId', // NEW
+    'kioskId',
+    'sessionId',
     'eventType',
     'surveyId',
     'questionId',
@@ -61,32 +59,35 @@ export default async function handler(request, response) {
     try {
         const analyticsData = request.body;
 
-        if (!analyticsData || analyticsData.analyticsType !== 'KioskData') {
+        // FIXED: Accept 'summary' type to match client-side dataSync.js
+        if (!analyticsData || analyticsData.analyticsType !== 'summary') {
             return response.status(400).json({ 
                 success: false, 
-                message: 'Invalid analytics payload or type.' 
+                message: 'Invalid analytics payload or type. Expected analyticsType: "summary"' 
             });
         }
 
-        console.log(`Processing analytics sync for Kiosk ${analyticsData.kioskId}: ${analyticsData.rawEvents?.length || 0} events`);
+        // FIXED: Extract kioskId from window.dataUtils.kioskId or rawEvents
+        const kioskId = analyticsData.kioskId 
+            || analyticsData.rawEvents?.[0]?.kioskId 
+            || 'UNKNOWN_KIOSK';
+
+        console.log(`Processing analytics sync for Kiosk ${kioskId}: ${analyticsData.rawEvents?.length || 0} events`);
 
         // --- 1. PREPARE SUMMARY DATA ---
-        // Range: A:G (7 columns)
         const summaryRow = [
             analyticsData.timestamp || new Date().toISOString(),
-            analyticsData.kioskId || 'N/A', // NEW: Added kioskId
+            kioskId,
             analyticsData.totalCompletions || 0,
             analyticsData.totalAbandonments || 0,
             analyticsData.completionRate ? `${analyticsData.completionRate}%` : '0%',
             analyticsData.avgCompletionTimeSeconds || '0',
-            // Ensure dropoff data is stringified for a single cell
             JSON.stringify(analyticsData.dropoffByQuestion || {}) 
         ];
 
         // --- 2. APPEND SUMMARY TO SHEET "a" ---
         await sheets.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_ID,
-            // UPDATED: Range is now A:G (7 columns)
             range: `${ANALYTICS_SHEET_NAME}!A:G`, 
             valueInputOption: 'USER_ENTERED',
             resource: {
@@ -94,15 +95,14 @@ export default async function handler(request, response) {
             }
         });
 
-        console.log(`Analytics summary for Kiosk ${analyticsData.kioskId} written to sheet "${ANALYTICS_SHEET_NAME}"`);
+        console.log(`Analytics summary for Kiosk ${kioskId} written to sheet "${ANALYTICS_SHEET_NAME}"`);
 
         // --- 3. OPTIONAL: APPEND DETAILED EVENTS ---
         if (analyticsData.rawEvents && analyticsData.rawEvents.length > 0) {
-            // Range: A:I (9 columns)
             const detailRows = analyticsData.rawEvents.map(event => [
                 event.timestamp || '',
-                event.kioskId || analyticsData.kioskId || '', // NEW: Get from event or root
-                event.sessionId || '', // NEW: Added sessionId
+                event.kioskId || kioskId,
+                event.sessionId || event.surveyId || '', // Fallback to surveyId if sessionId missing
                 event.eventType || '',
                 event.surveyId || '',
                 event.questionId || '',
@@ -114,7 +114,6 @@ export default async function handler(request, response) {
             try {
                 await sheets.spreadsheets.values.append({
                     spreadsheetId: SPREADSHEET_ID,
-                    // UPDATED: Range is now A:I (9 columns)
                     range: `${ANALYTICS_DETAIL_SHEET_NAME}!A:I`,
                     valueInputOption: 'USER_ENTERED',
                     resource: {
@@ -123,7 +122,6 @@ export default async function handler(request, response) {
                 });
                 console.log(`${detailRows.length} detailed events written to ${ANALYTICS_DETAIL_SHEET_NAME}`);
             } catch (detailError) {
-                // If detail sheet doesn't exist, log warning but don't fail the entire process
                 console.warn(`Could not write to detail sheet (${ANALYTICS_DETAIL_SHEET_NAME}):`, detailError.message);
             }
         }

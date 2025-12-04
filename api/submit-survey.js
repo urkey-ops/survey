@@ -6,24 +6,20 @@ import { google } from 'googleapis';
 
 // --- Define Column Order (Must match your Google Sheet headers) ---
 const COLUMN_ORDER = [
-    'sessionId', // NEW: Unique ID for the current session
-    'kioskId', // NEW: Kiosk's static ID
-    'startTime', // NEW: Start time of the survey
-    'completedAt', // NEW: End time if completed
-    'abandonedAt', // NEW: End time if abandoned (inactivity)
-    'completionTimeSeconds', // NEW: Total time taken
-    'sync_status', // Use sync_status to capture 'unsynced', 'unsynced (inactivity)'
-    'satisfaction',
-    'cleanliness',
-    'staff_friendliness',
-    'location',
-    'age',
+
+    'satisfaction',    
+    'cleanliness',
+    'staff_friendliness',
+    'location',
+    'age',
     'hear_about',
-    'gift_shop_visit', 
+    'gift_shop_visit', // ADD THIS LINE
+    'sync_status', // Use sync_status to capture 'unsynced', 'unsynced (inactivity)'
     'comments',
-    'questionTimeSpent', // NEW: JSON string of time spent on each question
-    'timestamp', // Old submission time (used as the last modification time)
-    'id', // UUID of the submission object
+    'timestamp',
+    'id',
+];
+    
 ];
 
 /**

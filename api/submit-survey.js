@@ -17,9 +17,7 @@ const COLUMN_ORDER = [
     'sync_status', // Use sync_status to capture 'unsynced', 'unsynced (inactivity)'
     'comments',
     'timestamp',
-    'id',
-];
-    
+    'id',    
 ];
 
 /**

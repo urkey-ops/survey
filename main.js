@@ -1,4 +1,3 @@
-
 // FILE: main.js
 // DEPENDS ON: appState.js (CONSTANTS, appState, globals, adminPanelTimer), dataSync.js (dataHandlers), kioskUI.js (uiHandlers)
 
@@ -57,14 +56,16 @@
         
         if (completions.length > 0) {
             const times = completions.map(c => c.totalTimeSeconds).filter(t => t > 0);
-            const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
-            const minTime = Math.min(...times);
-            const maxTime = Math.max(...times);
-            
-            console.log('\n--- Completion Times (seconds) ---');
-            console.log(`Average: ${avgTime.toFixed(1)}s`);
-            console.log(`Min: ${minTime}s`);
-            console.log(`Max: ${maxTime}s`);
+            if (times.length > 0) {
+                const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
+                const minTime = Math.min(...times);
+                const maxTime = Math.max(...times);
+                
+                console.log('\n--- Completion Times (seconds) ---');
+                console.log(`Average: ${avgTime.toFixed(1)}s`);
+                console.log(`Min: ${minTime}s`);
+                console.log(`Max: ${maxTime}s`);
+            }
         }
         
         const lastSync = safeGetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC);
@@ -123,6 +124,7 @@
                     window.uiHandlers.clearAllTimers();
                     localStorage.removeItem(STORAGE_KEY_STATE); 
                     localStorage.removeItem(STORAGE_KEY_QUEUE);
+                    localStorage.removeItem(STORAGE_KEY_ANALYTICS);
                     window.uiHandlers.performKioskReset();
                 }
                 resetAdminPanelTimer();
@@ -197,7 +199,7 @@
             return;
         }
         
-        // Get UI handlers - these will now use the correctly initialized globals
+        // Get UI handlers
         const { 
             clearAllTimers, 
             resetInactivityTimer, 
@@ -255,7 +257,7 @@
             console.log('[NETWORK] Connection lost. Operating in offline mode.');
         });
         
-        // Visibility change handler
+        // Visibility change handler - pause timers when hidden
         let visibilityTimeout;
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {

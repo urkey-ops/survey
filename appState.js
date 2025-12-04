@@ -2,36 +2,38 @@
 
 (function() {
     // ---------------------------------------------------------------------
-    // --- GLOBAL CONSTANTS ---
+    // --- IMPORT CONFIGURATION ---
     // ---------------------------------------------------------------------
-
-    // Configuration
-    const INACTIVITY_TIMEOUT_MS = 30000;  // 30 seconds of inactivity to reset kiosk
-    const SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes periodic data sync
-    const ADMIN_PANEL_TIMEOUT_MS = 30000; // 30 seconds to auto-hide admin panel
-    const RESET_DELAY_MS = 5000; // 5 seconds post-submission countdown
-    const ANALYTICS_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY_MS = 2000;
+    
+    const CONFIG = window.KIOSK_CONFIG || {};
+    
+    // Fallback to defaults if config.js is not loaded
+    const INACTIVITY_TIMEOUT_MS = CONFIG.INACTIVITY_TIMEOUT_MS || 30000;
+    const SYNC_INTERVAL_MS = CONFIG.SYNC_INTERVAL_MS || 900000;
+    const ADMIN_PANEL_TIMEOUT_MS = CONFIG.ADMIN_PANEL_TIMEOUT_MS || 30000;
+    const RESET_DELAY_MS = CONFIG.RESET_DELAY_MS || 5000;
+    const ANALYTICS_SYNC_INTERVAL_MS = CONFIG.ANALYTICS_SYNC_INTERVAL_MS || 86400000;
+    const MAX_RETRIES = CONFIG.MAX_RETRIES || 3;
+    const RETRY_DELAY_MS = CONFIG.RETRY_DELAY_MS || 2000;
 
     // Local Storage Keys
-    const STORAGE_KEY_STATE = 'kioskAppState';
-    const STORAGE_KEY_QUEUE = 'submissionQueue';
-    const STORAGE_KEY_ANALYTICS = 'surveyAnalytics';
-    const STORAGE_KEY_LAST_SYNC = 'lastDataSync';
-    const STORAGE_KEY_LAST_ANALYTICS_SYNC = 'lastAnalyticsSync';
+    const STORAGE_KEY_STATE = CONFIG.STORAGE_KEY_STATE || 'kioskAppState';
+    const STORAGE_KEY_QUEUE = CONFIG.STORAGE_KEY_QUEUE || 'submissionQueue';
+    const STORAGE_KEY_ANALYTICS = CONFIG.STORAGE_KEY_ANALYTICS || 'surveyAnalytics';
+    const STORAGE_KEY_LAST_SYNC = CONFIG.STORAGE_KEY_LAST_SYNC || 'lastDataSync';
+    const STORAGE_KEY_LAST_ANALYTICS_SYNC = CONFIG.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
 
     // API Endpoints
-    const SYNC_ENDPOINT = '/api/submit-survey';
-    const ANALYTICS_ENDPOINT = '/api/sync-analytics';
-    const SURVEY_QUESTIONS_URL = '/api/get_questions';
+    const SYNC_ENDPOINT = CONFIG.SYNC_ENDPOINT || '/api/submit-survey';
+    const ANALYTICS_ENDPOINT = CONFIG.ANALYTICS_ENDPOINT || '/api/sync-analytics';
+    const SURVEY_QUESTIONS_URL = CONFIG.SURVEY_QUESTIONS_URL || '/api/get_questions';
 
     // ---------------------------------------------------------------------
     // --- GLOBAL STATE & DOM REFERENCES ---
     // ---------------------------------------------------------------------
 
-    let appState = loadAppState(); // Initial state loaded from local storage
-    let isKioskVisible = true;     // Tracks if the browser tab is focused
+    let appState = loadAppState();
+    let isKioskVisible = true;
 
     let typewriterTimer = null;
     let adminPanelTimer = null;

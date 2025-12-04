@@ -1,10 +1,9 @@
-
 // FILE: data-util.js
-// UPDATED: Added kioskId and global helper functions.
+// UPDATED: Use kioskId from config
 window.dataUtils = (function() {
 
-    // Configuration data structure
-    const kioskId = 'KIOSK-GWINNETT-001'; // Define the unique kiosk ID
+    // Get kiosk ID from config, fallback to default
+    const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
     
     const surveyQuestions = [
         
@@ -376,6 +375,6 @@ window.dataUtils = (function() {
     return { 
         surveyQuestions, 
         questionRenderers,
-        kioskId // UPDATED: Export the kiosk ID
+        kioskId
     };
 })();

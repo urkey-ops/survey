@@ -161,6 +161,7 @@
         const payload = {
             analyticsType: 'summary',
             timestamp: new Date().toISOString(),
+            kioskId: window.dataUtils.kioskId, // ← FIXED: Added kioskId
             totalCompletions: completions.length,
             totalAbandonments: abandonments.length,
             completionRate: completions.length > 0 

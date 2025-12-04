@@ -1,10 +1,10 @@
 // FILE: api/submit-survey.js
 // UPDATED: Synchronized with client-side V11 data structure, removing contact fields and adding tracking fields.
+// FIXED: Data validation and hear_about processing to resolve Google Sheets API "Invalid values[14][12]" errors
 
 import { google } from 'googleapis';
 
 // --- Define Column Order (Must match your Google Sheet headers) ---
-// UPDATED: Added tracking fields (kioskId, sessionId, timings) and removed contact fields (name, email, newsletterConsent).
 const COLUMN_ORDER = [
     'sessionId', // NEW: Unique ID for the current session
     'kioskId', // NEW: Kiosk's static ID
@@ -29,7 +29,7 @@ const COLUMN_ORDER = [
 /**
  * Transforms a single submission object (sent from the client queue) into a
  * flat array that matches the SHEET's COLUMN_ORDER.
- * * @param {Object} submission - A single survey data object from the client queue.
+ * @param {Object} submission - A single survey data object from the client queue.
  * @returns {Array} An array of values ready for Google Sheets batch append.
  */
 function processSingleSubmission(submission) {
@@ -71,18 +71,42 @@ function processSingleSubmission(submission) {
             
         age: source.age || '',
         
-        // Handle "How did you hear about us?" (checkbox-with-other) logic
-        hear_about: (source.hear_about && Array.isArray(source.hear_about.selected))
-            ? (
-                source.hear_about.selected.includes('Other') && source.hear_about.other
-                    ? `${source.hear_about.selected.filter(v => v !== 'Other').join(', ')}, Other: ${source.hear_about.other.trim()}`
-                    : source.hear_about.selected.join(', ')
-            )
-            : (source.hear_about || ''), // Fallback for simple string if not the combined object
+        // FIXED: Robust hear_about processing to prevent Google Sheets API validation errors
+        hear_about: (() => {
+            const hear = source.hear_about;
+            try {
+                if (Array.isArray(hear)) {
+                    // Simple array of strings - join them safely
+                    return hear.filter(item => item && typeof item === 'string').join(', ');
+                }
+                if (hear && typeof hear === 'object' && hear.selected && Array.isArray(hear.selected)) {
+                    // Complex object with selected array (checkbox-with-other)
+                    const selected = hear.selected.filter(item => item && typeof item === 'string');
+                    if (hear.other && selected.includes('Other')) {
+                        return [...selected.filter(v => v !== 'Other'), `Other: ${String(hear.other).trim()}`].join(', ');
+                    }
+                    return selected.join(', ');
+                }
+                // Fallback: convert anything else to string
+                return String(hear || '');
+            } catch (e) {
+                console.error('hear_about processing error:', e, hear);
+                return 'DATA_PROCESSING_ERROR';
+            }
+        })(),
     };
     
     // Map the processed data object to an array based on the defined column order
-    return COLUMN_ORDER.map(key => processedData[key] || '');
+    const row = COLUMN_ORDER.map(key => String(processedData[key] || ''));
+    
+    // DEBUG: Log first row for verification (remove after fix confirmed)
+    if (processedData.hear_about.includes('Instagram')) {
+        console.log('DEBUG - hear_about processed:', processedData.hear_about);
+        console.log('DEBUG - Row 13 (hear_about) value:', row[12]);
+        console.log('DEBUG - Full row length:', row.length);
+    }
+    
+    return row;
 }
 
 export default async function handler(request, response) {
@@ -116,22 +140,46 @@ export default async function handler(request, response) {
 
     try {
         // --- 1. DESTRUCTURE ARRAY PAYLOAD ---
-        // VITAL: Ensure submissions array is present
         const { submissions } = request.body;
 
         if (!Array.isArray(submissions) || submissions.length === 0) {
-            // Return a successful status for an empty array to match client expectations
             return response.status(200).json({ 
                 success: true, 
                 message: 'No submissions received.',
-                successfulIds: [] // Client-side V11 expects 'successfulIds'
+                successfulIds: []
             });
         }
         
+        // --- NEW: Input Validation ---
         console.log(`Processing ${submissions.length} submissions.`);
-
+        console.log('Sample hear_about structure:', submissions[0]?.hear_about);
+        
+        // Validate submissions don't contain unprocessable data
+        const invalidCount = submissions.filter((sub, index) => {
+            if (sub.hear_about) {
+                if (typeof sub.hear_about === 'object' && !Array.isArray(sub.hear_about) && sub.hear_about.values) {
+                    console.warn(`Submission ${index} has proto list_value structure:`, sub.hear_about);
+                    return true;
+                }
+            }
+            return false;
+        }).length;
+        
+        if (invalidCount > 0) {
+            console.error(`${invalidCount}/${submissions.length} submissions have invalid hear_about format.`);
+        }
+        
         // --- 2. PREPARE DATA FOR BATCH APPEND ---
-        const rowsToAppend = submissions.map(processSingleSubmission);
+        const rowsToAppend = submissions.map((submission, index) => {
+            try {
+                return processSingleSubmission(submission);
+            } catch (e) {
+                console.error(`Error processing submission ${index}:`, e);
+                return COLUMN_ORDER.map(() => 'PROCESSING_ERROR');
+            }
+        });
+        
+        console.log('Prepared rows sample:', rowsToAppend[0]?.slice(0, 5), '...');
         
         // --- Append Data to Google Sheets ---
         await sheets.spreadsheets.values.append({
@@ -144,24 +192,22 @@ export default async function handler(request, response) {
         });
         
         // --- SUCCESS RESPONSE ---
-        // VITAL: Get all IDs from the successful batch and return them.
-        const successfulIds = submissions.map(sub => sub.id);
+        const successfulIds = submissions.map(sub => sub.id).filter(Boolean);
         
         console.log(`${successfulIds.length} submissions successfully appended to Google Sheet.`);
         return response.status(200).json({ 
             success: true,
             message: `${successfulIds.length} submissions processed.`,
-            successfulIds: successfulIds // Client-side V11 expects 'successfulIds'
+            successfulIds: successfulIds
         });
 
     } catch (error) {
         console.error('API Error:', error.message);
         if (error.response) {
-            console.error('API Response Data:', error.response.data);
+            console.error('Google Sheets API Response:', error.response.data);
         }
         
-        // VITAL: On ANY failure (500), return an empty array of IDs
-        // This tells the client to keep ALL submissions in the queue.
+        // On ANY failure, return empty successfulIds array so client retains data
         return response.status(500).json({ 
             success: false,
             message: 'Internal Server Error during sheet append. Data retained locally.',

@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kiosk Survey</title>
-    <!-- Tailwind CSS (includes custom styles) -->
     <link rel="stylesheet" href="dist/output.css">
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
@@ -54,7 +53,8 @@
         </section>
     </main>
     
-    <!-- FIXED: Correct dependency order -->
+    <!-- CRITICAL: config.js must load FIRST -->
+    <script src="config.js"></script>
     <script src="appState.js"></script>
     <script src="dataSync.js"></script>
     <script src="data-util.js"></script>

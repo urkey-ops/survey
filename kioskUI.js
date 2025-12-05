@@ -461,7 +461,8 @@
             questionContainer.innerHTML = renderer.render(q, appState.formData);
 
             // Add typewriter effect after rendering
-            addTypewriterEffect();
+            // Add typewriter effect after rendering
+addTypewriterEffect();
 
 // Attach renderer event handlers safely
 if (renderer.setupEvents) {
@@ -489,6 +490,13 @@ nextBtn.disabled = false;
 // UI helpers
 updateProgressBar();
 setupInputFocusScroll();
+} catch (e) {
+    console.error("[ERROR] Fatal error during showQuestion render:", e);
+    cleanupIntervals();
+    questionContainer.innerHTML = '<h2 class="text-xl font-bold text-red-600">A critical error occurred. Please refresh or contact support.</h2>';
+    logErrorToServer(e, 'showQuestion');
+}
+
 
 
     function logErrorToServer(error, context) {

@@ -223,14 +223,13 @@
         if (appState.syncTimer) {
             clearInterval(appState.syncTimer);
         }
-
+        
         if (!window.isKioskVisible) {
             console.log('[VISIBILITY] Kiosk hidden - timers not started');
             return;
         }
-
-        // restart periodic sync
-        startPeriodicSync();
+        
+        startPeriodicSync(); 
 
         appState.inactivityTimer = setTimeout(() => {
             const isInProgress = appState.currentQuestionIndex > 0;
@@ -251,9 +250,8 @@
                 appState.formData.timestamp = new Date().toISOString();
                 appState.formData.sync_status = 'unsynced (inactivity)';
 
-                const submissionQueueUpdated = getSubmissionQueue();
-                submissionQueueUpdated.push(appState.formData);
-                safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueueUpdated);
+                submissionQueue.push(appState.formData);
+                safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
                 
                 recordAnalytics('survey_abandoned', {
                     questionId: currentQuestion.id,
@@ -270,9 +268,6 @@
     }
 
     function startPeriodicSync() {
-        if (appState.syncTimer) {
-            clearInterval(appState.syncTimer);
-        }
         appState.syncTimer = setInterval(autoSync, SYNC_INTERVAL_MS);
     }
 
@@ -493,7 +488,7 @@
         resetInactivityTimer();
 
         setTimeout(() => {
-            if (kioskStartScreen && document.body.contains(kioskStartScreen)) {
+            if(kioskStartScreen && document.body.contains(kioskStartScreen)) {
                 kioskStartScreen.remove();
             }
         }, 400); 

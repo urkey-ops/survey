@@ -231,45 +231,66 @@
         
         startPeriodicSync(); 
 
-     appState.inactivityTimer = setTimeout(() => {
-    const idx = appState.currentQuestionIndex;
+     function resetInactivityTimer() {
+    // Clear old timers
+    if (appState.inactivityTimer) {
+        clearTimeout(appState.inactivityTimer);
+    }
+    if (appState.syncTimer) {
+        clearInterval(appState.syncTimer);
+    }
 
-    // --- Q1 inactivity → do NOT sync, do NOT save, just reset ---
-    if (idx === 0) {
-        console.log('Inactivity on Q1 → no save, no sync → resetting kiosk.');
-        performKioskReset();
+    // Don't start timers if kiosk is hidden
+    if (!window.isKioskVisible) {
+        console.log('[VISIBILITY] Kiosk hidden - timers not started');
         return;
     }
 
-    // --- Q2+ inactivity → save partial + reset ---
-    console.log('Mid-survey inactivity detected. Saving partial survey and resetting kiosk.');
+    // Start autosync interval
+    startPeriodicSync();
 
-    const submissionQueue = getSubmissionQueue();
-    const currentQuestion = window.dataUtils.surveyQuestions[idx];
-    stopQuestionTimer(currentQuestion.id);
+    // --- Main inactivity timeout ---
+    appState.inactivityTimer = setTimeout(() => {
+        const idx = appState.currentQuestionIndex;
 
-    const totalTimeSeconds = getTotalSurveyTime();
+        // --- Q1 inactivity → do NOT sync, do NOT save, just reset ---
+        if (idx === 0) {
+            console.log('Inactivity on Q1 → no save, no sync → resetting kiosk.');
+            performKioskReset();
+            return;
+        }
 
-    appState.formData.completionTimeSeconds = totalTimeSeconds;
-    appState.formData.questionTimeSpent = appState.questionTimeSpent;
-    appState.formData.abandonedAt = new Date().toISOString();
-    appState.formData.abandonedAtQuestion = currentQuestion.id;
-    appState.formData.abandonedAtQuestionIndex = idx;
-    appState.formData.timestamp = new Date().toISOString();
-    appState.formData.sync_status = 'unsynced (inactivity)';
+        // --- Q2+ inactivity → save partial + reset ---
+        console.log('Mid-survey inactivity detected. Saving partial survey and resetting kiosk.');
 
-    submissionQueue.push(appState.formData);
-    safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
+        const submissionQueue = getSubmissionQueue();
+        const currentQuestion = window.dataUtils.surveyQuestions[idx];
+        stopQuestionTimer(currentQuestion.id);
 
-    recordAnalytics('survey_abandoned', {
-        questionId: currentQuestion.id,
-        questionIndex: idx,
-        totalTimeSeconds,
-        reason: 'inactivity'
-    });
+        const totalTimeSeconds = getTotalSurveyTime();
 
-    performKioskReset();
-}, INACTIVITY_TIMEOUT_MS);
+        appState.formData.completionTimeSeconds = totalTimeSeconds;
+        appState.formData.questionTimeSpent = appState.questionTimeSpent;
+        appState.formData.abandonedAt = new Date().toISOString();
+        appState.formData.abandonedAtQuestion = currentQuestion.id;
+        appState.formData.abandonedAtQuestionIndex = idx;
+        appState.formData.timestamp = new Date().toISOString();
+        appState.formData.sync_status = 'unsynced (inactivity)';
+
+        submissionQueue.push(appState.formData);
+        safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
+
+        recordAnalytics('survey_abandoned', {
+            questionId: currentQuestion.id,
+            questionIndex: idx,
+            totalTimeSeconds,
+            reason: 'inactivity'
+        });
+
+        performKioskReset();
+    }, INACTIVITY_TIMEOUT_MS);
+}
+
 
 
     function startPeriodicSync() {

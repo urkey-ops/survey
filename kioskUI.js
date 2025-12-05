@@ -216,7 +216,6 @@
     // --- TIMERS & UX ---
     // ---------------------------------------------------------------------
 
-    // --- Replace only this function with the corrected version below ---
     function resetInactivityTimer() {
         if (appState.inactivityTimer) {
             clearTimeout(appState.inactivityTimer);
@@ -230,26 +229,8 @@
             return;
         }
 
+        // restart periodic sync
         startPeriodicSync();
-
-        // Set the inactivity timeout
-        appState.inactivityTimer = setTimeout(() => {
-            console.log('Inactivity detected. Resetting kiosk.');
-            performKioskReset();
-        }, INACTIVITY_TIMEOUT_MS);
-    }
-
-    
-    startPeriodicSync(); 
-
-    appState.inactivityTimer = setTimeout(() => {
-        // Always reset on inactivity, regardless of question index
-        console.log('Inactivity detected. Resetting kiosk.');
-        performKioskReset();
-    }, INACTIVITY_TIMEOUT_MS);
-}
-        
-        startPeriodicSync(); 
 
         appState.inactivityTimer = setTimeout(() => {
             const isInProgress = appState.currentQuestionIndex > 0;
@@ -270,8 +251,9 @@
                 appState.formData.timestamp = new Date().toISOString();
                 appState.formData.sync_status = 'unsynced (inactivity)';
 
-                submissionQueue.push(appState.formData);
-                safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
+                const submissionQueueUpdated = getSubmissionQueue();
+                submissionQueueUpdated.push(appState.formData);
+                safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueueUpdated);
                 
                 recordAnalytics('survey_abandoned', {
                     questionId: currentQuestion.id,
@@ -287,7 +269,10 @@
         }, INACTIVITY_TIMEOUT_MS);
     }
 
-   function startPeriodicSync() {
+    function startPeriodicSync() {
+        if (appState.syncTimer) {
+            clearInterval(appState.syncTimer);
+        }
         appState.syncTimer = setInterval(autoSync, SYNC_INTERVAL_MS);
     }
 
@@ -508,7 +493,7 @@
         resetInactivityTimer();
 
         setTimeout(() => {
-            if(kioskStartScreen && document.body.contains(kioskStartScreen)) {
+            if (kioskStartScreen && document.body.contains(kioskStartScreen)) {
                 kioskStartScreen.remove();
             }
         }, 400); 

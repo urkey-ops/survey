@@ -121,26 +121,30 @@
     // --- TYPEWRITER EFFECT ---
     // ---------------------------------------------------------------------
     
-    function addTypewriterEffect() {
-        if (window.typewriterTimer) {
-            clearTimeout(window.typewriterTimer);
-        }
-        
-        const questionContainer = window.globals.questionContainer;
-        const labels = questionContainer.querySelectorAll('label[id$="Label"], #rotatingQuestion');
-        
-        labels.forEach(label => {
-            if (label.classList.contains('typewriter') || !label.textContent.trim()) {
-                return;
-            }
-            
-            label.classList.add('typewriter');
-            
-            window.typewriterTimer = setTimeout(() => {
-                label.classList.add('typing-complete');
-            }, TYPEWRITER_DURATION_MS);
-        });
+
+    function addTypewriterEffect(element, text) {
+    if (!element) return;
+    
+    // Cancel existing typewriter animation
+    if (element._typewriterTimer) {
+        clearTimeout(element._typewriterTimer);
+        element._typewriterTimer = null;
     }
+
+    element.classList.remove('typewriter', 'typing-complete');
+
+    // Reset text so animation plays cleanly
+    element.textContent = text;
+
+    // Restart CSS animation
+    void element.offsetWidth; // <- reflow trick
+    element.classList.add('typewriter');
+
+    element._typewriterTimer = setTimeout(() => {
+        element.classList.add('typing-complete');
+    }, TYPEWRITER_DURATION_MS);
+}
+
 
     // ---------------------------------------------------------------------
     // --- VALIDATION ---
@@ -305,37 +309,67 @@
         appState.syncTimer = setInterval(autoSync, SYNC_INTERVAL_MS);
     }
 
-    function rotateQuestionText(q) {
-        let idx = 0;
-        const labelEl = document.getElementById('rotatingQuestion');
-        if (!labelEl) return;
+   function rotateQuestionText(q) {
+    let idx = 0;
 
-        cleanupIntervals();
+    const labelEl = document.getElementById('rotatingQuestion');
+    if (!labelEl) return;
 
-        try {
-            appState.rotationInterval = setInterval(() => {
-                idx = (idx + 1) % q.rotatingText.length;
-                if (labelEl) {
-                    labelEl.classList.remove('typewriter', 'typing-complete');
-                    labelEl.textContent = q.rotatingText[idx];
-                    labelEl.classList.add('typewriter');
-                    
-                    if (window.typewriterTimer) {
-                        clearTimeout(window.typewriterTimer);
-                    }
-                    
-                    window.typewriterTimer = setTimeout(() => {
-                        if (labelEl) {
-                            labelEl.classList.add('typing-complete');
-                        }
-                    }, TYPEWRITER_DURATION_MS);
-                }
-            }, TEXT_ROTATION_INTERVAL_MS);
-        } catch (e) {
-            console.error('[ROTATION] Error in text rotation:', e);
-            cleanupIntervals();
-        }
+    // Clear any previous intervals/timers safely
+    cleanupIntervals();
+    if (window.typewriterTimer) {
+        clearTimeout(window.typewriterTimer);
+        window.typewriterTimer = null;
     }
+
+    try {
+        // Immediately show first text before interval starts
+        if (q.rotatingText && q.rotatingText.length > 0) {
+            labelEl.classList.remove('typewriter', 'typing-complete');
+            labelEl.textContent = q.rotatingText[0];
+
+            // Trigger typing effect
+            window.typewriterTimer = setTimeout(() => {
+                if (labelEl) {
+                    labelEl.classList.add('typing-complete');
+                }
+            }, TYPEWRITER_DURATION_MS);
+        }
+
+        // Start rotation loop
+        appState.rotationInterval = setInterval(() => {
+            if (!q.rotatingText || q.rotatingText.length === 0) return;
+
+            idx = (idx + 1) % q.rotatingText.length;
+
+            // Reset classes
+            labelEl.classList.remove('typewriter', 'typing-complete');
+
+            // Set new text
+            labelEl.textContent = q.rotatingText[idx];
+
+            // Clear previous timer
+            if (window.typewriterTimer) {
+                clearTimeout(window.typewriterTimer);
+            }
+
+            // Trigger typing animation
+            window.typewriterTimer = setTimeout(() => {
+                if (labelEl) {
+                    labelEl.classList.add('typing-complete');
+                }
+            }, TYPEWRITER_DURATION_MS);
+
+        }, TEXT_ROTATION_INTERVAL_MS);
+
+    } catch (e) {
+        console.error("[ROTATION] Error in text rotation:", e);
+        cleanupIntervals();
+    }
+}
+
+
+    
 
     function addInactivityListeners() {
         boundResetInactivityTimer = resetInactivityTimer.bind(null);
@@ -429,31 +463,33 @@
             // Add typewriter effect after rendering
             addTypewriterEffect();
 
-            if (renderer.setupEvents) {
-                renderer.setupEvents(q, {
-                    handleNextQuestion: goNext,
-                    updateData: updateData
-                });
-            }
+// Attach renderer event handlers safely
+if (renderer.setupEvents) {
+    renderer.setupEvents(q, {
+        handleNextQuestion: goNext,
+        updateData: updateData
+    });
+}
 
-            if (q.rotatingText) {
-                rotateQuestionText(q);
-            }
+// Start rotating text (if this question uses it)
+if (Array.isArray(q.rotatingText) && q.rotatingText.length > 0) {
+    rotateQuestionText(q);
+} else {
+    // If no rotating text, clear any previous intervals
+    cleanupIntervals();
+}
 
-            prevBtn.disabled = index === 0;
-            nextBtn.textContent = (index === window.dataUtils.surveyQuestions.length - 1) ? 'Submit Survey' : 'Next';
-            nextBtn.disabled = false;
+// Buttons
+prevBtn.disabled = index === 0;
 
-            updateProgressBar();
-            setupInputFocusScroll();
+const isLast = index === window.dataUtils.surveyQuestions.length - 1;
+nextBtn.textContent = isLast ? 'Submit Survey' : 'Next';
+nextBtn.disabled = false;
 
-        } catch (e) {
-            console.error("[ERROR] Fatal error during showQuestion render:", e);
-            cleanupIntervals();
-            questionContainer.innerHTML = '<h2 class="text-xl font-bold text-red-600">A critical error occurred. Please refresh or contact support.</h2>';
-            logErrorToServer(e, 'showQuestion');
-        }
-    }
+// UI helpers
+updateProgressBar();
+setupInputFocusScroll();
+
 
     function logErrorToServer(error, context) {
         try {

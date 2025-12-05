@@ -542,3 +542,26 @@ textarea:hover:not(:focus) {
 .checkbox-tab-wrapper {
     position: relative;
 }
+
+/* ===== LANDSCAPE iPAD FIX FOR KEYBOARD ===== */
+#surveyContent {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto; /* allows scrolling when keyboard is open */
+    max-height: 100vh;
+    padding-bottom: 80px; /* space for fixed buttons */
+}
+
+#buttonContainer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: env(safe-area-inset-bottom, 16px); /* works with iPad home bar */
+    padding: 12px 24px;
+    background: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    box-shadow: 0 -4px 8px rgba(0,0,0,0.05);
+    z-index: 100;
+}

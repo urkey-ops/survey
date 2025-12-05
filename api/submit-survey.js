@@ -185,15 +185,24 @@ export default async function handler(request, response) {
             },
         });
         
-        // --- SUCCESS RESPONSE ---
-        const successfulIds = submissions.map(sub => sub.id).filter(Boolean);
-        
-        console.log(`${successfulIds.length} submissions successfully appended to Google Sheet.`);
-        return response.status(200).json({ 
-            success: true,
-            message: `${successfulIds.length} submissions processed.`,
-            successfulIds: successfulIds
-        });
+       // In api/submit-survey.js, after processing:
+
+// --- SUCCESS RESPONSE ---
+const successfulIds = submissions.map(sub => sub.id).filter(Boolean);
+
+// DEBUG: Log what we're returning
+console.log(`✅ Successfully processed ${successfulIds.length} submissions`);
+console.log('Returning IDs:', successfulIds);
+
+if (successfulIds.length !== submissions.length) {
+    console.warn(`⚠️ ID mismatch: Received ${submissions.length} submissions but only ${successfulIds.length} have IDs`);
+}
+
+return response.status(200).json({ 
+    success: true,
+    message: `${successfulIds.length} submissions processed.`,
+    successfulIds: successfulIds
+});
 
     } catch (error) {
         console.error('API Error:', error.message);

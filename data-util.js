@@ -8,6 +8,20 @@ window.dataUtils = (function() {
     const surveyQuestions = [
         
         {
+            id: 'satisfaction',
+            name: 'satisfaction',
+            type: 'emoji-radio',
+            question: '2. Overall, how satisfied were you with your visit today?',
+            options: [
+                { value: 'Sad', label: 'Sad', emoji: '😞' },
+                { value: 'Neutral', label: 'Neutral', emoji: '😐' },
+                { value: 'Happy', label: 'Happy', emoji: '🙂' },
+                { value: 'Super Happy', label: 'Super Happy', emoji: '😄' }
+            ],
+            required: true
+        },
+        
+        {
             id: 'enjoyed_most', // Renamed ID for clarity, kept name 'comments' for existing data keys
             name: 'comments',
             type: 'textarea',
@@ -22,19 +36,7 @@ window.dataUtils = (function() {
             ]
         },
         
-        {
-            id: 'satisfaction',
-            name: 'satisfaction',
-            type: 'emoji-radio',
-            question: '2. Overall, how satisfied were you with your visit today?',
-            options: [
-                { value: 'Sad', label: 'Sad', emoji: '😞' },
-                { value: 'Neutral', label: 'Neutral', emoji: '😐' },
-                { value: 'Happy', label: 'Happy', emoji: '🙂' },
-                { value: 'Super Happy', label: 'Super Happy', emoji: '😄' }
-            ],
-            required: true
-        },
+       
         
         {
             id: 'cleanliness',

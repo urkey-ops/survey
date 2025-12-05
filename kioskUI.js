@@ -1,5 +1,5 @@
 // FILE: kioskUI.js
-// UPDATED: Restored all missing features from original - validation, typewriter, completion screen, error handling, etc.
+// UPDATED: Fixed data clearing after successful sync - ensures IDs are always set
 
 (function() {
     const { 
@@ -330,7 +330,6 @@
         const totalQuestions = window.dataUtils.surveyQuestions.length;
         if (totalQuestions === 0) return;
 
-        // FIX: Added +1 to match original behavior
         const progressPercentage = Math.min(((appState.currentQuestionIndex + 1) / totalQuestions) * 100, 100);
         progressBar.style.width = `${progressPercentage}%`;
     }
@@ -373,7 +372,6 @@
                 rotateQuestionText(q);
             }
 
-            // FIX: Match original navigation behavior
             prevBtn.disabled = index === 0;
             nextBtn.textContent = (index === window.dataUtils.surveyQuestions.length - 1) ? 'Submit Survey' : 'Next';
             nextBtn.disabled = false;
@@ -455,7 +453,6 @@
             return;
         }
         
-        // Prevent default and stop propagation
         if (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -463,7 +460,7 @@
         
         console.log('[START] Starting survey...');
         
-        // Remove event listeners immediately to prevent double-triggering
+        // Remove event listeners immediately
         if (boundStartSurvey && kioskStartScreen) {
             kioskStartScreen.removeEventListener('click', boundStartSurvey);
             kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
@@ -475,12 +472,19 @@
             kioskVideo.pause();
         }
         
+        // FIX: Ensure formData has an ID if it doesn't exist
+        if (!appState.formData.id) {
+            appState.formData.id = generateUUID();
+            console.log('[START] Generated new survey ID:', appState.formData.id);
+        }
+        if (!appState.formData.timestamp) {
+            appState.formData.timestamp = new Date().toISOString();
+        }
+        
         // Start survey timer
         startSurveyTimer();
         
-        // Always show the current question (whether it's 0 or resumed from saved state)
         showQuestion(appState.currentQuestionIndex);
-
         resetInactivityTimer();
 
         setTimeout(() => {
@@ -577,6 +581,12 @@
         const lastQuestion = window.dataUtils.surveyQuestions[appState.currentQuestionIndex];
         stopQuestionTimer(lastQuestion.id);
         
+        // FIX: Ensure ID exists before submission
+        if (!appState.formData.id) {
+            appState.formData.id = generateUUID();
+            console.warn('[SUBMIT] Missing ID - generated new one:', appState.formData.id);
+        }
+        
         // Calculate and add analytics data
         const totalTimeSeconds = getTotalSurveyTime();
         appState.formData.completionTimeSeconds = totalTimeSeconds;
@@ -585,6 +595,8 @@
         appState.formData.timestamp = new Date().toISOString();
         appState.formData.sync_status = 'unsynced';
 
+        console.log('[SUBMIT] Submitting survey with ID:', appState.formData.id);
+        
         submissionQueue.push(appState.formData);
         safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
         
@@ -640,8 +652,14 @@
         
         localStorage.removeItem(STORAGE_KEY_STATE);
 
-        appState.formData = { id: generateUUID(), timestamp: new Date().toISOString() };
+        // FIX: Always use generateUUID to ensure proper ID
+        appState.formData = { 
+            id: generateUUID(), 
+            timestamp: new Date().toISOString() 
+        };
         appState.currentQuestionIndex = 0;
+        
+        console.log('[RESET] New session ID:', appState.formData.id);
         
         // Reset analytics tracking
         appState.surveyStartTime = null;

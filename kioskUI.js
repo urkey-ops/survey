@@ -459,57 +459,67 @@ setupInputFocusScroll();
     // --- VIDEO START SCREEN LOGIC ---
     // ---------------------------------------------------------------------
     
-    function startSurvey(e) {
-        const kioskStartScreen = window.globals.kioskStartScreen;
-        const kioskVideo = window.globals.kioskVideo;
-        
-        // Prevent multiple calls
-        if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
-            return;
-        }
-        
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        
-        console.log('[START] Starting survey...');
-        
-        // Remove event listeners immediately
-        if (boundStartSurvey && kioskStartScreen) {
-            kioskStartScreen.removeEventListener('click', boundStartSurvey);
-            kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
-        }
-        
-        kioskStartScreen.classList.add('hidden');
-        
-        if (kioskVideo) {
-            kioskVideo.pause();
-        }
-        
-        // FIX: Ensure formData has an ID if it doesn't exist
-        if (!appState.formData.id) {
-            appState.formData.id = generateUUID();
-            console.log('[START] Generated new survey ID:', appState.formData.id);
-        }
-        if (!appState.formData.timestamp) {
-            appState.formData.timestamp = new Date().toISOString();
-        }
-        
-        // Start survey timer
-        startSurveyTimer();
-        
-        showQuestion(appState.currentQuestionIndex);
-        resetInactivityTimer();
+    // --- VIDEO START SCREEN LOGIC ---
+// ---------------------------------------------------------------------
 
-        setTimeout(() => {
-            if(kioskStartScreen && document.body.contains(kioskStartScreen)) {
-                kioskStartScreen.remove();
-            }
-        }, 400); 
+function startSurvey(e) {
+    const kioskStartScreen = window.globals.kioskStartScreen;
+    const kioskVideo = window.globals.kioskVideo;
+    
+    // Prevent multiple calls
+    if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
+        return;
     }
+    
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    console.log('[START] Starting survey...');
+    
+    // Remove event listeners immediately
+    if (boundStartSurvey && kioskStartScreen) {
+        kioskStartScreen.removeEventListener('click', boundStartSurvey);
+        kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
+    }
+    
+    kioskStartScreen.classList.add('hidden');
+    
+    // NEW: Stop shaking when survey starts
+    if (window.shakeInterval) {
+        clearInterval(window.shakeInterval);
+        delete window.shakeInterval;
+        console.log('🛑 Shake stopped');
+    }
+    
+    if (kioskVideo) {
+        kioskVideo.pause();
+    }
+    
+    // FIX: Ensure formData has an ID if it doesn't exist
+    if (!appState.formData.id) {
+        appState.formData.id = generateUUID();
+        console.log('[START] Generated new survey ID:', appState.formData.id);
+    }
+    if (!appState.formData.timestamp) {
+        appState.formData.timestamp = new Date().toISOString();
+    }
+    
+    // Start survey timer
+    startSurveyTimer();
+    
+    showQuestion(appState.currentQuestionIndex);
+    resetInactivityTimer();
 
-   function showStartScreen() {
+    setTimeout(() => {
+        if(kioskStartScreen && document.body.contains(kioskStartScreen)) {
+            kioskStartScreen.remove();
+        }
+    }, 400); 
+}
+
+function showStartScreen() {
     const kioskStartScreen = window.globals.kioskStartScreen;
     const kioskVideo = window.globals.kioskVideo;
     const questionContainer = window.globals.questionContainer;
@@ -540,42 +550,29 @@ setupInputFocusScroll();
         kioskVideo.muted = true;
         kioskVideo.loop = true;
 
+        // FIXED: Shake logic - starts immediately, stops cleanly on survey start
         const startShake = () => {
-            // Shake animation every 30s
-            let shakeInterval = setInterval(() => {
-                if (!kioskVideo) return;
-
-                kioskVideo.classList.remove('shake'); // reset
-                void kioskVideo.offsetWidth; // trigger reflow
+            console.log('🎥 Starting shake interval');
+            window.shakeInterval = setInterval(() => {
+                if (!kioskVideo || kioskStartScreen.classList.contains('hidden')) return;
+                console.log('🔥 SHAKE TICK');
+                kioskVideo.classList.remove('shake');
+                void kioskVideo.offsetWidth;
                 kioskVideo.classList.add('shake');
-            }, 30000);
-
-            // Stop shake on user interaction
-            const stopShake = () => clearInterval(shakeInterval);
-            kioskStartScreen.addEventListener('click', stopShake, { once: true });
-            kioskStartScreen.addEventListener('touchstart', stopShake, { once: true });
+            }, 5000); // 5s for testing, change to 30000 later
         };
 
         const playPromise = kioskVideo.play();
+        
+        // Start shaking IMMEDIATELY regardless of autoplay success
+        startShake();
 
         if (playPromise !== undefined) {
             playPromise.then(() => {
                 console.log("[VIDEO] Video autoplay started successfully");
-                startShake();
             }).catch(error => {
                 console.warn("[VIDEO] Autoplay prevented:", error);
-
-                // Fallback: play video on first touch and start shake
-                const playOnTouch = () => {
-                    kioskVideo.play();
-                    startShake();
-                    document.removeEventListener('touchstart', playOnTouch);
-                };
-                document.addEventListener('touchstart', playOnTouch, { once: true });
             });
-        } else {
-            // Fallback if play() returns undefined
-            startShake();
         }
     }
 

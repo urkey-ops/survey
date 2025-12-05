@@ -551,16 +551,27 @@ function showStartScreen() {
         kioskVideo.loop = true;
 
         // FIXED: Shake logic - starts immediately, stops cleanly on survey start
-        const startShake = () => {
-            console.log('🎥 Starting shake interval');
-            window.shakeInterval = setInterval(() => {
-                if (!kioskVideo || kioskStartScreen.classList.contains('hidden')) return;
-                console.log('🔥 SHAKE TICK');
-                kioskVideo.classList.remove('shake');
-                void kioskVideo.offsetWidth;
-                kioskVideo.classList.add('shake');
-            }, 5000); // 5s for testing, change to 30000 later
-        };
+      const startShake = () => {
+    console.log('🎥 Starting shake interval');
+    window.shakeInterval = setInterval(() => {
+        if (!kioskVideo || kioskStartScreen.classList.contains('hidden')) return;
+        console.log('🔥 SHAKE TICK');
+        
+        // iOS SAFARI FIX: Use margin instead of transform
+        kioskVideo.style.marginLeft = '0px';
+        void kioskVideo.offsetWidth;
+        kioskVideo.style.marginLeft = '-8px';
+        setTimeout(() => {
+            kioskVideo.style.marginLeft = '8px';
+            setTimeout(() => {
+                kioskVideo.style.marginLeft = '-8px';
+                setTimeout(() => {
+                    kioskVideo.style.marginLeft = '0px';
+                }, 150);
+            }, 150);
+        }, 150);
+    }, 5000);
+};
 
         const playPromise = kioskVideo.play();
         

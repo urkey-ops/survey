@@ -216,18 +216,27 @@
     // --- TIMERS & UX ---
     // ---------------------------------------------------------------------
 
-    function resetInactivityTimer() {
-        if (appState.inactivityTimer) {
-            clearTimeout(appState.inactivityTimer);
-        }
-        if (appState.syncTimer) {
-            clearInterval(appState.syncTimer);
-        }
-        
-        if (!window.isKioskVisible) {
-            console.log('[VISIBILITY] Kiosk hidden - timers not started');
-            return;
-        }
+        function resetInactivityTimer() {
+    if (appState.inactivityTimer) {
+        clearTimeout(appState.inactivityTimer);
+    }
+    if (appState.syncTimer) {
+        clearInterval(appState.syncTimer);
+    }
+    
+    if (!window.isKioskVisible) {
+        console.log('[VISIBILITY] Kiosk hidden - timers not started');
+        return;
+    }
+    
+    startPeriodicSync(); 
+
+    appState.inactivityTimer = setTimeout(() => {
+        // Always reset on inactivity, regardless of question index
+        console.log('Inactivity detected. Resetting kiosk.');
+        performKioskReset();
+    }, INACTIVITY_TIMEOUT_MS);
+}
         
         startPeriodicSync(); 
 

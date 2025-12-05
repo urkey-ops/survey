@@ -1,5 +1,5 @@
 // FILE: kioskUI.js
-// UPDATED: Fixed data clearing after successful sync - ensures IDs are always set
+// UPDATED: Priority fixes applied - memory leaks, missing analytics, proper cleanup
 
 (function() {
     const { 
@@ -7,7 +7,10 @@
         SYNC_INTERVAL_MS, 
         RESET_DELAY_MS,
         STORAGE_KEY_STATE, 
-        STORAGE_KEY_QUEUE 
+        STORAGE_KEY_QUEUE,
+        TYPEWRITER_DURATION_MS,
+        TEXT_ROTATION_INTERVAL_MS,
+        AUTO_ADVANCE_DELAY_MS
     } = window.CONSTANTS;
     const appState = window.appState;
     const { 
@@ -24,6 +27,7 @@
     // Store bound event handlers for proper cleanup
     let boundResetInactivityTimer = null;
     let boundStartSurvey = null;
+    let boundInputFocusHandler = null;
     
     // ---------------------------------------------------------------------
     // --- UTILITIES ---
@@ -134,7 +138,7 @@
             
             window.typewriterTimer = setTimeout(() => {
                 label.classList.add('typing-complete');
-            }, 2000);
+            }, TYPEWRITER_DURATION_MS);
         });
     }
 
@@ -216,69 +220,86 @@
     // --- TIMERS & UX ---
     // ---------------------------------------------------------------------
 
-   function resetInactivityTimer() {
-    // Clear existing timers
-    if (appState.inactivityTimer) {
-        clearTimeout(appState.inactivityTimer);
-    }
-    if (appState.syncTimer) {
-        clearInterval(appState.syncTimer);
-    }
+    function resetInactivityTimer() {
+        // Clear existing timers
+        if (appState.inactivityTimer) {
+            clearTimeout(appState.inactivityTimer);
+        }
+        if (appState.syncTimer) {
+            clearInterval(appState.syncTimer);
+        }
 
-    // Stop auto-reset if kiosk is hidden
-    if (!window.isKioskVisible) {
-        console.log('[VISIBILITY] Kiosk hidden - timers not started');
-        return;
-    }
-
-    // Start auto-sync
-    startPeriodicSync();
-
-    // Main inactivity timer
-    appState.inactivityTimer = setTimeout(() => {
-        const idx = appState.currentQuestionIndex;
-
-        // Q1 inactivity → RESET ONLY
-        if (idx === 0) {
-            console.log('Inactivity on Q1 → no save, no sync → resetting kiosk.');
-            performKioskReset();
+        // Stop auto-reset if kiosk is hidden
+        if (!window.isKioskVisible) {
+            console.log('[VISIBILITY] Kiosk hidden - timers not started');
             return;
         }
 
-        // Q2–end inactivity → SAVE + RESET
-        console.log('Mid-survey inactivity detected. Saving partial survey and resetting kiosk.');
+        // Start auto-sync
+        startPeriodicSync();
 
-        const submissionQueue = getSubmissionQueue();
-        const currentQuestion = window.dataUtils.surveyQuestions[idx];
-        stopQuestionTimer(currentQuestion.id);
+        // Main inactivity timer
+        appState.inactivityTimer = setTimeout(() => {
+            const idx = appState.currentQuestionIndex;
+            const currentQuestion = window.dataUtils.surveyQuestions[idx];
+            
+            console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion.id})`);
 
-        const totalTimeSeconds = getTotalSurveyTime();
+            // PRIORITY FIX #2: Record analytics for Q1 abandonment
+            if (idx === 0) {
+                console.log('[INACTIVITY] Q1 abandonment - recording analytics before reset');
+                
+                // Record that user engaged with first question
+                recordAnalytics('survey_abandoned', {
+                    questionId: currentQuestion.id,
+                    questionIndex: idx,
+                    totalTimeSeconds: getTotalSurveyTime(),
+                    reason: 'inactivity_q1',
+                    partialData: {
+                        satisfaction: appState.formData.satisfaction || null
+                    }
+                });
+                
+                performKioskReset();
+                return;
+            }
 
-        // Save analytics + state
-        appState.formData.completionTimeSeconds = totalTimeSeconds;
-        appState.formData.questionTimeSpent = appState.questionTimeSpent;
-        appState.formData.abandonedAt = new Date().toISOString();
-        appState.formData.abandonedAtQuestion = currentQuestion.id;
-        appState.formData.abandonedAtQuestionIndex = idx;
-        appState.formData.timestamp = new Date().toISOString();
-        appState.formData.sync_status = 'unsynced (inactivity)';
+            // Q2–end inactivity → SAVE + RESET
+            console.log('[INACTIVITY] Mid-survey abandonment - saving partial data');
 
-        submissionQueue.push(appState.formData);
-        safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
+            stopQuestionTimer(currentQuestion.id);
+            const totalTimeSeconds = getTotalSurveyTime();
 
-        recordAnalytics('survey_abandoned', {
-            questionId: currentQuestion.id,
-            questionIndex: idx,
-            totalTimeSeconds,
-            reason: 'inactivity'
-        });
+            // Prepare partial submission
+            const timestamp = new Date().toISOString();
+            appState.formData.completionTimeSeconds = totalTimeSeconds;
+            appState.formData.questionTimeSpent = appState.questionTimeSpent;
+            appState.formData.abandonedAt = timestamp;
+            appState.formData.abandonedAtQuestion = currentQuestion.id;
+            appState.formData.abandonedAtQuestionIndex = idx;
+            appState.formData.timestamp = timestamp;
+            appState.formData.sync_status = 'unsynced (inactivity)';
 
-        performKioskReset();
-    }, INACTIVITY_TIMEOUT_MS);
-}
+            // PRIORITY FIX #3: Check queue size before adding
+            const submissionQueue = getSubmissionQueue();
+            if (submissionQueue.length >= 100) {
+                console.warn('[QUEUE] Queue full (100 records) - removing oldest entry');
+                submissionQueue.shift();
+            }
 
+            submissionQueue.push(appState.formData);
+            safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
 
+            recordAnalytics('survey_abandoned', {
+                questionId: currentQuestion.id,
+                questionIndex: idx,
+                totalTimeSeconds,
+                reason: 'inactivity'
+            });
 
+            performKioskReset();
+        }, INACTIVITY_TIMEOUT_MS);
+    }
 
     function startPeriodicSync() {
         appState.syncTimer = setInterval(autoSync, SYNC_INTERVAL_MS);
@@ -307,11 +328,11 @@
                         if (labelEl) {
                             labelEl.classList.add('typing-complete');
                         }
-                    }, 2000);
+                    }, TYPEWRITER_DURATION_MS);
                 }
-            }, 4000);
+            }, TEXT_ROTATION_INTERVAL_MS);
         } catch (e) {
-            console.error('Error in text rotation:', e);
+            console.error('[ROTATION] Error in text rotation:', e);
             cleanupIntervals();
         }
     }
@@ -329,6 +350,40 @@
             document.removeEventListener('mousemove', boundResetInactivityTimer);
             document.removeEventListener('keydown', boundResetInactivityTimer);
             document.removeEventListener('touchstart', boundResetInactivityTimer);
+            boundResetInactivityTimer = null;
+        }
+    }
+    
+    // PRIORITY FIX #4: Proper cleanup for input focus listeners
+    function setupInputFocusScroll() {
+        const questionContainer = window.globals.questionContainer;
+        if (!questionContainer) return;
+
+        // Remove existing listener if present
+        if (boundInputFocusHandler) {
+            questionContainer.removeEventListener('focusin', boundInputFocusHandler);
+        }
+
+        boundInputFocusHandler = (event) => {
+            const target = event.target;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                setTimeout(() => {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                    });
+                }, 300);
+            }
+        };
+
+        questionContainer.addEventListener('focusin', boundInputFocusHandler);
+    }
+    
+    function cleanupInputFocusScroll() {
+        const questionContainer = window.globals.questionContainer;
+        if (questionContainer && boundInputFocusHandler) {
+            questionContainer.removeEventListener('focusin', boundInputFocusHandler);
+            boundInputFocusHandler = null;
         }
     }
     
@@ -390,11 +445,10 @@
             nextBtn.disabled = false;
 
             updateProgressBar();
-            // scroll input fields into view on focus (iPad landscape friendly)
-setupInputFocusScroll();
+            setupInputFocusScroll();
 
         } catch (e) {
-            console.error("Fatal Error during showQuestion render:", e);
+            console.error("[ERROR] Fatal error during showQuestion render:", e);
             cleanupIntervals();
             questionContainer.innerHTML = '<h2 class="text-xl font-bold text-red-600">A critical error occurred. Please refresh or contact support.</h2>';
             logErrorToServer(e, 'showQuestion');
@@ -403,17 +457,22 @@ setupInputFocusScroll();
 
     function logErrorToServer(error, context) {
         try {
+            const errorData = {
+                error: error.message,
+                stack: error.stack,
+                context: context,
+                timestamp: new Date().toISOString(),
+                kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+                surveyId: appState.formData.id
+            };
+            
             fetch('/api/log-error', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    error: error.message,
-                    stack: error.stack,
-                    context: context,
-                    timestamp: new Date().toISOString(),
-                    kioskId: appState.formData.id
-                })
-            }).catch(() => {});
+                body: JSON.stringify(errorData)
+            }).catch(() => {
+                console.warn('[ERROR] Failed to log error to server');
+            });
         } catch (e) {
             // Silent fail for error logging
         }
@@ -459,6 +518,16 @@ setupInputFocusScroll();
     // --- VIDEO START SCREEN LOGIC ---
     // ---------------------------------------------------------------------
     
+    function cleanupStartScreenListeners() {
+        const kioskStartScreen = window.globals.kioskStartScreen;
+        
+        if (boundStartSurvey && kioskStartScreen) {
+            kioskStartScreen.removeEventListener('click', boundStartSurvey);
+            kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
+            boundStartSurvey = null;
+        }
+    }
+    
     function startSurvey(e) {
         const kioskStartScreen = window.globals.kioskStartScreen;
         const kioskVideo = window.globals.kioskVideo;
@@ -476,10 +545,7 @@ setupInputFocusScroll();
         console.log('[START] Starting survey...');
         
         // Remove event listeners immediately
-        if (boundStartSurvey && kioskStartScreen) {
-            kioskStartScreen.removeEventListener('click', boundStartSurvey);
-            kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
-        }
+        cleanupStartScreenListeners();
         
         kioskStartScreen.classList.add('hidden');
         
@@ -487,9 +553,9 @@ setupInputFocusScroll();
             kioskVideo.pause();
         }
         
-        // FIX: Ensure formData has an ID if it doesn't exist
+        // PRIORITY FIX #1: Use proper reference to generateUUID
         if (!appState.formData.id) {
-            appState.formData.id = generateUUID();
+            appState.formData.id = window.dataHandlers.generateUUID();
             console.log('[START] Generated new survey ID:', appState.formData.id);
         }
         if (!appState.formData.timestamp) {
@@ -518,6 +584,8 @@ setupInputFocusScroll();
         const progressBar = window.globals.progressBar;
         
         clearAllTimers();
+        cleanupStartScreenListeners();
+        cleanupInputFocusScroll();
 
         if (questionContainer) questionContainer.innerHTML = '';
         if (nextBtn) nextBtn.disabled = true;
@@ -545,11 +613,13 @@ setupInputFocusScroll();
                     playPromise.then(() => {
                         console.log("[VIDEO] Video autoplay started successfully");
                     }).catch(error => {
-                        console.warn("[VIDEO] Autoplay was prevented. Will play on user interaction:", error);
+                        console.warn("[VIDEO] Autoplay prevented:", error.message);
                         
                         // iOS fallback: Play on first touch
                         const playOnTouch = () => {
-                            kioskVideo.play();
+                            kioskVideo.play().catch(err => {
+                                console.warn("[VIDEO] Manual play failed:", err);
+                            });
                             document.removeEventListener('touchstart', playOnTouch);
                         };
                         document.addEventListener('touchstart', playOnTouch, { once: true });
@@ -557,16 +627,10 @@ setupInputFocusScroll();
                 }
             }
 
-            // Remove any existing listeners first
-            if (boundStartSurvey) {
-                kioskStartScreen.removeEventListener('click', boundStartSurvey);
-                kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
-            }
-
             // Create bound function
             boundStartSurvey = startSurvey.bind(null);
             
-            // Add event listeners
+            // Add event listeners with proper cleanup
             kioskStartScreen.addEventListener('click', boundStartSurvey, { once: true });
             kioskStartScreen.addEventListener('touchstart', boundStartSurvey, { once: true, passive: false });
             
@@ -589,28 +653,36 @@ setupInputFocusScroll();
         const progressBar = window.globals.progressBar;
         
         clearAllTimers();
+        cleanupInputFocusScroll();
 
-        const submissionQueue = getSubmissionQueue();
-        
         // Stop timer for last question
         const lastQuestion = window.dataUtils.surveyQuestions[appState.currentQuestionIndex];
         stopQuestionTimer(lastQuestion.id);
         
-        // FIX: Ensure ID exists before submission
+        // PRIORITY FIX #1: Ensure ID exists before submission
         if (!appState.formData.id) {
-            appState.formData.id = generateUUID();
+            appState.formData.id = window.dataHandlers.generateUUID();
             console.warn('[SUBMIT] Missing ID - generated new one:', appState.formData.id);
         }
         
-        // Calculate and add analytics data
+        // PRIORITY FIX #6: Standardize timestamp format (ISO string)
+        const timestamp = new Date().toISOString();
         const totalTimeSeconds = getTotalSurveyTime();
+        
         appState.formData.completionTimeSeconds = totalTimeSeconds;
         appState.formData.questionTimeSpent = appState.questionTimeSpent;
-        appState.formData.completedAt = new Date().toISOString();
-        appState.formData.timestamp = new Date().toISOString();
+        appState.formData.completedAt = timestamp;
+        appState.formData.timestamp = timestamp;
         appState.formData.sync_status = 'unsynced';
 
         console.log('[SUBMIT] Submitting survey with ID:', appState.formData.id);
+        
+        // PRIORITY FIX #3: Check queue size before adding
+        const submissionQueue = getSubmissionQueue();
+        if (submissionQueue.length >= 100) {
+            console.warn('[QUEUE] Queue full (100 records) - removing oldest entry');
+            submissionQueue.shift();
+        }
         
         submissionQueue.push(appState.formData);
         safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
@@ -665,12 +737,17 @@ setupInputFocusScroll();
     function performKioskReset() {
         console.log('[RESET] Performing kiosk reset...');
         
+        // Clean up all listeners
+        cleanupStartScreenListeners();
+        cleanupInputFocusScroll();
+        cleanupIntervals();
+        
         localStorage.removeItem(STORAGE_KEY_STATE);
 
-        // FIX: Always use generateUUID to ensure proper ID
+        // PRIORITY FIX #1 & #6: Use proper UUID generation and timestamp
         appState.formData = { 
-            id: generateUUID(), 
-            timestamp: new Date().toISOString() 
+            id: window.dataHandlers.generateUUID(), 
+            timestamp: new Date().toISOString()
         };
         appState.currentQuestionIndex = 0;
         
@@ -704,22 +781,4 @@ setupInputFocusScroll();
         performKioskReset,
         getTotalSurveyTime
     };
-function setupInputFocusScroll() {
-    const questionContainer = window.globals.questionContainer;
-    if (!questionContainer) return;
-
-    // Listen for focus on any input inside the question container
-    questionContainer.addEventListener('focusin', (event) => {
-        const target = event.target;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-            setTimeout(() => {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center'
-                });
-            }, 300); // Delay ensures keyboard is visible
-        }
-    });
-}
-
 })();

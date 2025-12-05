@@ -216,18 +216,29 @@
     // --- TIMERS & UX ---
     // ---------------------------------------------------------------------
 
-        function resetInactivityTimer() {
-    if (appState.inactivityTimer) {
-        clearTimeout(appState.inactivityTimer);
+    // --- Replace only this function with the corrected version below ---
+    function resetInactivityTimer() {
+        if (appState.inactivityTimer) {
+            clearTimeout(appState.inactivityTimer);
+        }
+        if (appState.syncTimer) {
+            clearInterval(appState.syncTimer);
+        }
+
+        if (!window.isKioskVisible) {
+            console.log('[VISIBILITY] Kiosk hidden - timers not started');
+            return;
+        }
+
+        startPeriodicSync();
+
+        // Set the inactivity timeout
+        appState.inactivityTimer = setTimeout(() => {
+            console.log('Inactivity detected. Resetting kiosk.');
+            performKioskReset();
+        }, INACTIVITY_TIMEOUT_MS);
     }
-    if (appState.syncTimer) {
-        clearInterval(appState.syncTimer);
-    }
-    
-    if (!window.isKioskVisible) {
-        console.log('[VISIBILITY] Kiosk hidden - timers not started');
-        return;
-    }
+
     
     startPeriodicSync(); 
 
@@ -276,7 +287,7 @@
         }, INACTIVITY_TIMEOUT_MS);
     }
 
-    function startPeriodicSync() {
+   function startPeriodicSync() {
         appState.syncTimer = setInterval(autoSync, SYNC_INTERVAL_MS);
     }
 

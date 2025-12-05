@@ -230,115 +230,146 @@
 
     let isSyncing = false;
 
-    async function syncData(isManual = false) {
-        if (isSyncing) {
-            console.warn("Sync skipped: A sync operation is already in progress.");
-            if (isManual) updateSyncStatus('Sync is already running... ⏳');
-            return;
+ async function syncData(isManual = false) {
+    if (isSyncing) {
+        console.warn("Sync skipped: A sync operation is already in progress.");
+        if (isManual) updateSyncStatus('Sync is already running... ⏳');
+        return;
+    }
+
+    if (!navigator.onLine) {
+        console.warn('[DATA SYNC] Offline. Skipping sync.');
+        if (isManual) updateSyncStatus('Offline. Sync failed.');
+        updateAdminCount();
+        return;
+    }
+
+    const submissionQueue = getSubmissionQueue();
+    
+    if (submissionQueue.length === 0) {
+        console.log('[DATA SYNC] Submission queue is empty.');
+        if (isManual) {
+            updateSyncStatus('No records to sync ✅');
+            setTimeout(() => updateSyncStatus(''), 3000);
+        }
+        updateAdminCount();
+        return;
+    }
+
+    try {
+        isSyncing = true;
+
+        const syncButton = window.globals?.syncButton;
+        if (isManual && syncButton) {
+            syncButton.disabled = true;
+            syncButton.textContent = 'Syncing...';
         }
 
-        if (!navigator.onLine) {
-            console.warn('[DATA SYNC] Offline. Skipping sync.');
-            if (isManual) updateSyncStatus('Offline. Sync failed.');
-            updateAdminCount();
-            return;
-        }
-
-        const submissionQueue = getSubmissionQueue();
+        console.log(`[DATA SYNC] Attempting to sync ${submissionQueue.length} submissions...`);
         
-        if (submissionQueue.length === 0) {
-            console.log('[DATA SYNC] Submission queue is empty.');
-            if (isManual) {
-                updateSyncStatus('No records to sync ✅');
-                setTimeout(() => updateSyncStatus(''), 3000);
-            }
-            updateAdminCount();
-            return;
-        }
+        // DEBUG: Log all submission IDs
+        console.log('[DATA SYNC] Submission IDs:', submissionQueue.map(s => s.id));
+        
+        if (isManual) updateSyncStatus(`Syncing ${submissionQueue.length} records... ⏳`);
 
-        try {
-            isSyncing = true;
+        const payload = {
+            submissions: submissionQueue
+        };
 
-            const syncButton = window.globals?.syncButton;
-            if (isManual && syncButton) {
-                syncButton.disabled = true;
-                syncButton.textContent = 'Syncing...';
-            }
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const response = await fetch(SYNC_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
 
-            console.log(`[DATA SYNC] Attempting to sync ${submissionQueue.length} submissions...`);
-            if (isManual) updateSyncStatus(`Syncing ${submissionQueue.length} records... ⏳`);
-
-            const payload = {
-                submissions: submissionQueue
-            };
-
-            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-                try {
-                    const response = await fetch(SYNC_ENDPOINT, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Server returned status: ${response.status}`);
+                if (!response.ok) {
+                    throw new Error(`Server returned status: ${response.status}`);
+                }
+                
+                const syncResult = await response.json();
+                
+                // DEBUG: Log server response
+                console.log('[DATA SYNC] Server response:', syncResult);
+                
+                const successfulIds = syncResult.successfulIds || [];
+                
+                // DEBUG: Log successful IDs
+                console.log('[DATA SYNC] Successfully synced IDs:', successfulIds);
+                
+                if (successfulIds.length === 0) {
+                    console.warn('[DATA SYNC] Server returned zero successful IDs. Data retained.');
+                    if (isManual) updateSyncStatus('Sync completed but no records confirmed. Check server logs.');
+                    return false;
+                }
+                
+                // FIX: Better filtering with validation
+                const newQueue = submissionQueue.filter(record => {
+                    // If record has no ID, keep it (shouldn't happen, but safe)
+                    if (!record.id) {
+                        console.warn('[DATA SYNC] Found record without ID, keeping in queue:', record);
+                        return true;
+                    }
+                    // Keep records that are NOT in the successful list
+                    const shouldKeep = !successfulIds.includes(record.id);
+                    
+                    if (!shouldKeep) {
+                        console.log(`[DATA SYNC] Removing successfully synced record: ${record.id}`);
                     }
                     
-                    const syncResult = await response.json();
-                    const successfulIds = syncResult.successfulIds || [];
-                    
-                    // Partial sync support - only remove successfully synced records
-                    const newQueue = submissionQueue.filter(
-                        record => !successfulIds.includes(record.id)
-                    );
-                    
-                    if (newQueue.length > 0) {
-                        safeSetLocalStorage(STORAGE_KEY_QUEUE, newQueue);
-                        console.warn(`${successfulIds.length} records synced. ${newQueue.length} records remaining in queue.`);
-                    } else {
-                        localStorage.removeItem(STORAGE_KEY_QUEUE);
-                    }
-                    
-                    safeSetLocalStorage(STORAGE_KEY_LAST_SYNC, Date.now());
-                    updateAdminCount();
+                    return shouldKeep;
+                });
+                
+                // Update localStorage
+                if (newQueue.length > 0) {
+                    console.warn(`[DATA SYNC] ${successfulIds.length} records synced. ${newQueue.length} records remaining.`);
+                    safeSetLocalStorage(STORAGE_KEY_QUEUE, newQueue);
+                } else {
+                    console.log(`[DATA SYNC] ✅ All ${submissionQueue.length} records successfully synced. Clearing queue.`);
+                    localStorage.removeItem(STORAGE_KEY_QUEUE);
+                }
+                
+                safeSetLocalStorage(STORAGE_KEY_LAST_SYNC, Date.now());
+                updateAdminCount();
 
-                    if (isManual) {
-                        const statusText = newQueue.length === 0 
-                            ? `Sync Successful (${submissionQueue.length} records cleared) ✅` 
-                            : `Partial Sync Successful (${successfulIds.length} records cleared). ${newQueue.length} remain.`;
+                if (isManual) {
+                    const statusText = newQueue.length === 0 
+                        ? `✅ Sync Complete! ${submissionQueue.length} records cleared.` 
+                        : `⚠️ Partial Sync: ${successfulIds.length} cleared, ${newQueue.length} remain.`;
 
-                        updateSyncStatus(statusText);
-                        setTimeout(() => updateSyncStatus(''), 4000);
-                    }
-                    
-                    return true;
+                    updateSyncStatus(statusText);
+                    setTimeout(() => updateSyncStatus(''), 4000);
+                }
+                
+                return true;
 
-                } catch (error) {
-                    if (attempt < MAX_RETRIES) {
-                        console.warn(`[DATA SYNC] Attempt ${attempt} failed, retrying...`);
-                        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-                    } else {
-                        throw error;
-                    }
+            } catch (error) {
+                if (attempt < MAX_RETRIES) {
+                    console.warn(`[DATA SYNC] Attempt ${attempt} failed, retrying...`);
+                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                } else {
+                    throw error;
                 }
             }
-        } catch (error) {
-            console.error(`[DATA SYNC] PERMANENT FAIL: ${error.message}`);
-            if (isManual) updateSyncStatus('Manual Sync Failed ⚠️ (Check Console)');
-        } finally {
-            isSyncing = false;
-            
-            const syncButton = window.globals?.syncButton;
-            if (isManual && syncButton) {
-                syncButton.disabled = false;
-                syncButton.textContent = 'Sync Data';
-            }
-            
-            updateAdminCount();
+        }
+    } catch (error) {
+        console.error(`[DATA SYNC] PERMANENT FAIL: ${error.message}`);
+        if (isManual) updateSyncStatus('❌ Sync Failed - Check Console');
+    } finally {
+        isSyncing = false;
+        
+        const syncButton = window.globals?.syncButton;
+        if (isManual && syncButton) {
+            syncButton.disabled = false;
+            syncButton.textContent = 'Sync Data';
         }
         
-        return false;
+        updateAdminCount();
     }
+    
+    return false;
+}
 
     function autoSync() {
         syncData(false);

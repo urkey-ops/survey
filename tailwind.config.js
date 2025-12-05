@@ -6,6 +6,9 @@ module.exports = {
     '!./node_modules/**',
     '!./api/**'
   ],
+  safelist: [
+    'shake'
+  ],
   theme: {
     extend: {},
   },

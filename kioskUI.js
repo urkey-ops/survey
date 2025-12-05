@@ -509,83 +509,94 @@ setupInputFocusScroll();
         }, 400); 
     }
 
-    function showStartScreen() {
-        const kioskStartScreen = window.globals.kioskStartScreen;
-        const kioskVideo = window.globals.kioskVideo;
-        const questionContainer = window.globals.questionContainer;
-        const nextBtn = window.globals.nextBtn;
-        const prevBtn = window.globals.prevBtn;
-        const progressBar = window.globals.progressBar;
-        
-        clearAllTimers();
+   function showStartScreen() {
+    const kioskStartScreen = window.globals.kioskStartScreen;
+    const kioskVideo = window.globals.kioskVideo;
+    const questionContainer = window.globals.questionContainer;
+    const nextBtn = window.globals.nextBtn;
+    const prevBtn = window.globals.prevBtn;
+    const progressBar = window.globals.progressBar;
 
-        if (questionContainer) questionContainer.innerHTML = '';
-        if (nextBtn) nextBtn.disabled = true;
-        if (prevBtn) prevBtn.disabled = true;
-        
-        console.log('[START SCREEN] Showing start screen...');
-        
-        if (kioskStartScreen) {
-            if (!document.body.contains(kioskStartScreen)) {
-                document.body.appendChild(kioskStartScreen);
-            }
-            kioskStartScreen.classList.remove('hidden');
+    clearAllTimers();
 
-            if (kioskVideo) {
-             // iOS Video Fix
-    kioskVideo.currentTime = 0;
-    kioskVideo.setAttribute('playsinline', '');
-    kioskVideo.setAttribute('webkit-playsinline', '');
-    kioskVideo.muted = true;
-    kioskVideo.loop = true;
+    if (questionContainer) questionContainer.innerHTML = '';
+    if (nextBtn) nextBtn.disabled = true;
+    if (prevBtn) prevBtn.disabled = true;
 
-    const playPromise = kioskVideo.play();
+    console.log('[START SCREEN] Showing start screen...');
 
-    if (playPromise !== undefined) {
-        playPromise.then(() => {
-            console.log("[VIDEO] Video autoplay started successfully");
-        }).catch(error => {
-            console.warn("[VIDEO] Autoplay prevented:", error);
+    if (!kioskStartScreen) return;
 
-            const playOnTouch = () => {
-                kioskVideo.play();
-                document.removeEventListener('touchstart', playOnTouch);
-            };
-            document.addEventListener('touchstart', playOnTouch, { once: true });
-        });
+    if (!document.body.contains(kioskStartScreen)) {
+        document.body.appendChild(kioskStartScreen);
+    }
+    kioskStartScreen.classList.remove('hidden');
+
+    if (kioskVideo) {
+        // iOS Video Fix
+        kioskVideo.currentTime = 0;
+        kioskVideo.setAttribute('playsinline', '');
+        kioskVideo.setAttribute('webkit-playsinline', '');
+        kioskVideo.muted = true;
+        kioskVideo.loop = true;
+
+        const startShake = () => {
+            // Shake animation every 30s
+            let shakeInterval = setInterval(() => {
+                if (!kioskVideo) return;
+
+                kioskVideo.classList.remove('shake'); // reset
+                void kioskVideo.offsetWidth; // trigger reflow
+                kioskVideo.classList.add('shake');
+            }, 30000);
+
+            // Stop shake on user interaction
+            const stopShake = () => clearInterval(shakeInterval);
+            kioskStartScreen.addEventListener('click', stopShake, { once: true });
+            kioskStartScreen.addEventListener('touchstart', stopShake, { once: true });
+        };
+
+        const playPromise = kioskVideo.play();
+
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                console.log("[VIDEO] Video autoplay started successfully");
+                startShake();
+            }).catch(error => {
+                console.warn("[VIDEO] Autoplay prevented:", error);
+
+                // Fallback: play video on first touch and start shake
+                const playOnTouch = () => {
+                    kioskVideo.play();
+                    startShake();
+                    document.removeEventListener('touchstart', playOnTouch);
+                };
+                document.addEventListener('touchstart', playOnTouch, { once: true });
+            });
+        } else {
+            // Fallback if play() returns undefined
+            startShake();
+        }
     }
 
-    // ===== SHAKE ANIMATION =====
-    let shakeInterval = setInterval(() => {
-        kioskVideo.classList.add('shake');
-        setTimeout(() => kioskVideo.classList.remove('shake'), 600); // match CSS duration
-    }, 30000);
+    // Remove any existing startSurvey listeners
+    if (boundStartSurvey) {
+        kioskStartScreen.removeEventListener('click', boundStartSurvey);
+        kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
+    }
 
-    // Stop shaking when user taps/clicks start screen
-    kioskStartScreen.addEventListener('click', () => clearInterval(shakeInterval), { once: true });
-    kioskStartScreen.addEventListener('touchstart', () => clearInterval(shakeInterval), { once: true });
+    // Add startSurvey event
+    boundStartSurvey = startSurvey.bind(null);
+    kioskStartScreen.addEventListener('click', boundStartSurvey, { once: true });
+    kioskStartScreen.addEventListener('touchstart', boundStartSurvey, { once: true, passive: false });
+
+    console.log('[START SCREEN] Event listeners attached');
+
+    if (progressBar) {
+        progressBar.style.width = '0%';
+    }
 }
 
-            // Remove any existing listeners first
-            if (boundStartSurvey) {
-                kioskStartScreen.removeEventListener('click', boundStartSurvey);
-                kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
-            }
-
-            // Create bound function
-            boundStartSurvey = startSurvey.bind(null);
-            
-            // Add event listeners
-            kioskStartScreen.addEventListener('click', boundStartSurvey, { once: true });
-            kioskStartScreen.addEventListener('touchstart', boundStartSurvey, { once: true, passive: false });
-            
-            console.log('[START SCREEN] Event listeners attached');
-        }
-
-        if (progressBar) {
-            progressBar.style.width = '0%';
-        }
-    }
 
     // ---------------------------------------------------------------------
     // --- SUBMISSION ---

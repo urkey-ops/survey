@@ -556,6 +556,22 @@ setupInputFocusScroll();
                     });
                 }
             }
+            // -----------------------------
+    // Add shake every 30s until user taps
+    // -----------------------------
+    let shakeInterval = setInterval(() => {
+        kioskVideo.classList.add('shake');
+        setTimeout(() => kioskVideo.classList.remove('shake'), 600); // match CSS duration
+    }, 30000);
+
+    // Stop shaking when user touches/clicks the start screen
+    kioskStartScreen.addEventListener('click', () => {
+        clearInterval(shakeInterval);
+    }, { once: true });
+    kioskStartScreen.addEventListener('touchstart', () => {
+        clearInterval(shakeInterval);
+    }, { once: true });
+}
 
             // Remove any existing listeners first
             if (boundStartSurvey) {

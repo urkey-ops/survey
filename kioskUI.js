@@ -216,23 +216,8 @@
     // --- TIMERS & UX ---
     // ---------------------------------------------------------------------
 
-    function resetInactivityTimer() {
-        if (appState.inactivityTimer) {
-            clearTimeout(appState.inactivityTimer);
-        }
-        if (appState.syncTimer) {
-            clearInterval(appState.syncTimer);
-        }
-        
-        if (!window.isKioskVisible) {
-            console.log('[VISIBILITY] Kiosk hidden - timers not started');
-            return;
-        }
-        
-        startPeriodicSync(); 
-
-     function resetInactivityTimer() {
-    // Clear old timers
+   function resetInactivityTimer() {
+    // Clear existing timers
     if (appState.inactivityTimer) {
         clearTimeout(appState.inactivityTimer);
     }
@@ -240,27 +225,27 @@
         clearInterval(appState.syncTimer);
     }
 
-    // Don't start timers if kiosk is hidden
+    // Stop auto-reset if kiosk is hidden
     if (!window.isKioskVisible) {
         console.log('[VISIBILITY] Kiosk hidden - timers not started');
         return;
     }
 
-    // Start autosync interval
+    // Start auto-sync
     startPeriodicSync();
 
-    // --- Main inactivity timeout ---
+    // Main inactivity timer
     appState.inactivityTimer = setTimeout(() => {
         const idx = appState.currentQuestionIndex;
 
-        // --- Q1 inactivity → do NOT sync, do NOT save, just reset ---
+        // Q1 inactivity → RESET ONLY
         if (idx === 0) {
             console.log('Inactivity on Q1 → no save, no sync → resetting kiosk.');
             performKioskReset();
             return;
         }
 
-        // --- Q2+ inactivity → save partial + reset ---
+        // Q2–end inactivity → SAVE + RESET
         console.log('Mid-survey inactivity detected. Saving partial survey and resetting kiosk.');
 
         const submissionQueue = getSubmissionQueue();
@@ -269,6 +254,7 @@
 
         const totalTimeSeconds = getTotalSurveyTime();
 
+        // Save analytics + state
         appState.formData.completionTimeSeconds = totalTimeSeconds;
         appState.formData.questionTimeSpent = appState.questionTimeSpent;
         appState.formData.abandonedAt = new Date().toISOString();
@@ -290,6 +276,7 @@
         performKioskReset();
     }, INACTIVITY_TIMEOUT_MS);
 }
+
 
 
 

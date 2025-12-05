@@ -11,7 +11,7 @@ window.dataUtils = (function() {
             id: 'satisfaction',
             name: 'satisfaction',
             type: 'emoji-radio',
-            question: '2. Overall, how satisfied were you with your visit today?',
+            question: 'Overall, how satisfied were you with your visit today?',
             options: [
                 { value: 'Sad', label: 'Sad', emoji: '😞' },
                 { value: 'Neutral', label: 'Neutral', emoji: '😐' },
@@ -25,7 +25,7 @@ window.dataUtils = (function() {
             id: 'enjoyed_most', // Renamed ID for clarity, kept name 'comments' for existing data keys
             name: 'comments',
             type: 'textarea',
-            question: '1. What did you enjoy most about your visit today?',
+            question: 'What did you enjoy most about your visit today?',
             placeholder: 'Type your comments here...',
             required: true,
             rotatingText: [
@@ -42,7 +42,7 @@ window.dataUtils = (function() {
             id: 'cleanliness',
             name: 'cleanliness',
             type: 'number-scale',
-            question: '3. How would you rate the cleanliness of the facility?',
+            question: 'How would you rate the cleanliness of the facility?',
             min: 1,
             max: 5,
             labels: { min: '1 (Poor)', max: '5 (Excellent)' },
@@ -52,7 +52,7 @@ window.dataUtils = (function() {
             id: 'staff_friendliness',
             name: 'staff_friendliness',
             type: 'star-rating',
-            question: '4. How friendly was the volunteer staff?',
+            question: 'How friendly was the volunteer staff?',
             min: 1,
             max: 5,
             required: true
@@ -61,7 +61,7 @@ window.dataUtils = (function() {
             id: 'location',
             name: 'location',
             type: 'radio-with-other',
-            question: '5. Where are you visiting from today?',
+            question: 'Where are you visiting from today?',
             options: [
                 { value: 'Lilburn/Gwinnett County', label: 'Lilburn / Gwinnett County' },
                 { value: 'Greater Atlanta Area', label: 'Greater Atlanta Area' },
@@ -75,7 +75,7 @@ window.dataUtils = (function() {
             id: 'age',
             name: 'age',
             type: 'radio',
-            question: '6. Which age group do you belong to?',
+            question: 'Which age group do you belong to?',
             options: [
                 { value: 'Under 18', label: 'Under 18' },
                 { value: '18-29', label: '18–29' },
@@ -89,7 +89,7 @@ window.dataUtils = (function() {
             id: 'hear_about',
             name: 'hear_about',
             type: 'checkbox-with-other',
-            question: '7. How did you first hear about us?',
+            question: 'How did you first hear about us?',
             options: [
                 { value: 'Instagram', label: 'Instagram' },
                 { value: 'Facebook', label: 'Facebook' },
@@ -105,7 +105,7 @@ window.dataUtils = (function() {
             id: 'gift_shop_visit',
             name: 'gift_shop_visit',
             type: 'emoji-radio',
-            question: '8. Have you visited Shyona Cafe & the Gift Shop today?',
+            question: 'Have you visited Shyona Cafe & the Gift Shop today?',
             options: [
                 { value: 'Yes', label: 'Yes', emoji: '👍' },
                 { value: 'Going Now', label: 'Going Now', emoji: '🏃‍♂️' },

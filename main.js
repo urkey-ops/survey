@@ -87,6 +87,35 @@
         const syncAnalyticsButton = window.globals.syncAnalyticsButton;
         const adminClearButton = window.globals.adminClearButton;
         const adminControls = window.globals.adminControls;
+
+        // Debug function to inspect queue
+window.inspectQueue = function() {
+    const queue = window.dataHandlers.getSubmissionQueue();
+    console.log('=== SUBMISSION QUEUE INSPECTION ===');
+    console.log(`Total records: ${queue.length}`);
+    queue.forEach((record, index) => {
+        console.log(`\nRecord ${index + 1}:`);
+        console.log(`  ID: ${record.id || 'MISSING'}`);
+        console.log(`  Timestamp: ${record.timestamp}`);
+        console.log(`  Sync Status: ${record.sync_status}`);
+        console.log(`  Full Record:`, record);
+    });
+    return queue;
+};
+
+// Debug function to manually clear queue
+window.clearQueue = function() {
+    if (confirm('⚠️ This will permanently delete all unsynced data. Continue?')) {
+        localStorage.removeItem(window.CONSTANTS.STORAGE_KEY_QUEUE);
+        window.dataHandlers.updateAdminCount();
+        console.log('✅ Queue cleared');
+    }
+};
+
+console.log('📋 Debug commands available:');
+console.log('  - window.inspectQueue() - View all queued submissions');
+console.log('  - window.clearQueue() - Manually clear the queue');
+console.log('  - window.viewSurveyAnalytics() - View analytics data');
         
         if (mainTitle) {
             mainTitle.addEventListener('click', () => {

@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kiosk Survey</title>
     <link rel="stylesheet" href="dist/output.css">
+    <style>
+@keyframes shake {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-8px); }
+  80% { transform: translateX(8px); }
+  100% { transform: translateX(0); }
+}
+.shake { 
+  animation: shake 0.6s ease-in-out !important; 
+}
+#kioskVideo.shake {
+  animation: shake 0.6s ease-in-out !important;
+}
+</style>
+
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
     

@@ -390,6 +390,8 @@
             nextBtn.disabled = false;
 
             updateProgressBar();
+            // scroll input fields into view on focus (iPad landscape friendly)
+setupInputFocusScroll();
 
         } catch (e) {
             console.error("Fatal Error during showQuestion render:", e);
@@ -702,4 +704,22 @@
         performKioskReset,
         getTotalSurveyTime
     };
+function setupInputFocusScroll() {
+    const questionContainer = window.globals.questionContainer;
+    if (!questionContainer) return;
+
+    // Listen for focus on any input inside the question container
+    questionContainer.addEventListener('focusin', (event) => {
+        const target = event.target;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+            setTimeout(() => {
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }, 300); // Delay ensures keyboard is visible
+        }
+    });
+}
+
 })();

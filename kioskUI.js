@@ -532,45 +532,38 @@ setupInputFocusScroll();
             kioskStartScreen.classList.remove('hidden');
 
             if (kioskVideo) {
-                // iOS Video Fix
-                kioskVideo.currentTime = 0;
-                kioskVideo.setAttribute('playsinline', '');
-                kioskVideo.setAttribute('webkit-playsinline', '');
-                kioskVideo.muted = true;
-                kioskVideo.loop = true;
-                
-                const playPromise = kioskVideo.play();
-                
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        console.log("[VIDEO] Video autoplay started successfully");
-                    }).catch(error => {
-                        console.warn("[VIDEO] Autoplay was prevented. Will play on user interaction:", error);
-                        
-                        // iOS fallback: Play on first touch
-                        const playOnTouch = () => {
-                            kioskVideo.play();
-                            document.removeEventListener('touchstart', playOnTouch);
-                        };
-                        document.addEventListener('touchstart', playOnTouch, { once: true });
-                    });
-                }
-            }
-            // -----------------------------
-    // Add shake every 30s until user taps
-    // -----------------------------
+             // iOS Video Fix
+    kioskVideo.currentTime = 0;
+    kioskVideo.setAttribute('playsinline', '');
+    kioskVideo.setAttribute('webkit-playsinline', '');
+    kioskVideo.muted = true;
+    kioskVideo.loop = true;
+
+    const playPromise = kioskVideo.play();
+
+    if (playPromise !== undefined) {
+        playPromise.then(() => {
+            console.log("[VIDEO] Video autoplay started successfully");
+        }).catch(error => {
+            console.warn("[VIDEO] Autoplay prevented:", error);
+
+            const playOnTouch = () => {
+                kioskVideo.play();
+                document.removeEventListener('touchstart', playOnTouch);
+            };
+            document.addEventListener('touchstart', playOnTouch, { once: true });
+        });
+    }
+
+    // ===== SHAKE ANIMATION =====
     let shakeInterval = setInterval(() => {
         kioskVideo.classList.add('shake');
         setTimeout(() => kioskVideo.classList.remove('shake'), 600); // match CSS duration
     }, 30000);
 
-    // Stop shaking when user touches/clicks the start screen
-    kioskStartScreen.addEventListener('click', () => {
-        clearInterval(shakeInterval);
-    }, { once: true });
-    kioskStartScreen.addEventListener('touchstart', () => {
-        clearInterval(shakeInterval);
-    }, { once: true });
+    // Stop shaking when user taps/clicks start screen
+    kioskStartScreen.addEventListener('click', () => clearInterval(shakeInterval), { once: true });
+    kioskStartScreen.addEventListener('touchstart', () => clearInterval(shakeInterval), { once: true });
 }
 
             // Remove any existing listeners first

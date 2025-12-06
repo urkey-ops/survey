@@ -566,17 +566,5 @@ textarea:hover:not(:focus) {
     z-index: 100;
 }
 
-/* Add this to your CSS (custom.css or output.css at the end) */
-@keyframes shake {
-  0% { transform: translateX(0); }
-  20% { transform: translateX(-8px); }
-  40% { transform: translateX(8px); }
-  60% { transform: translateX(-8px); }
-  80% { transform: translateX(8px); }
-  100% { transform: translateX(0); }
-}
 
-.shake {
-  animation: shake 0.6s ease;
-}
 

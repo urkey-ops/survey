@@ -1,4 +1,4 @@
-// FILE: index.html
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,16 +9,14 @@
 
 
 <style>
-  /* --- 1. ATTRACT MODE: Subtle Pulse & Glow --- */
-  /* Replaces the aggressive 'shake-scale' */
   @keyframes subtle-pulse {
     0% { 
       transform: scale(1); 
       filter: brightness(100%);
     }
     50% { 
-      transform: scale(1.025); /* Gentle 2.5% scale up */
-      filter: brightness(110%); /* Slight glow effect */
+      transform: scale(1.025); 
+      filter: brightness(110%); 
     }
     100% { 
       transform: scale(1); 
@@ -31,8 +29,6 @@
     will-change: transform, filter; /* Optimizes performance for iPad */
   }
 
-  /* --- 2. INTERACTION: Immediate Touch Feedback --- */
-  /* This runs immediately when the user taps, creating a tactile "click" feel */
   .active-press {
     transform: scale(0.96) !important; /* Shrinks slightly to look "pressed" */
     opacity: 0.8 !important;
@@ -40,8 +36,6 @@
     animation: none !important; /* Stops the pulse immediately */
   }
 
-  /* --- 3. SAFETY: Prevent Video Movement --- */
-  /* Ensures the video background remains stable */
   #kioskVideo {
     transform: none !important;
     animation: none !important;

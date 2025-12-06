@@ -49,26 +49,31 @@ import {
     validationUtils
 } from './ui/validation.js';
 
-// Assign typewriterManager to window for timerManager compatibility
+import {
+    showQuestion,
+    goNext,
+    goPrev,
+    showStartScreen,
+    updateProgressBar,
+    getCurrentQuestion,
+    getTotalQuestions,
+    isFirstQuestion,
+    isLastQuestion,
+    jumpToQuestion,
+    submitSurvey,
+    cleanupStartScreenListeners,
+    cleanupInputFocusScroll,
+    cleanupIntervals
+} from './ui/navigation/index.js';
+
+// Assign required globals for module compatibility
 window.typewriterManager = typewriterManager;
-
-// Assign timerManager to window for inactivityHandler compatibility
 window.timerManager = timerManager;
-
-// Assign validation functions to window for navigation.js compatibility
 window.validateQuestion = validateQuestion;
 window.clearErrors = clearErrors;
 
-// Now load navigation.js which will add its functions to window.uiHandlers
-// We'll import it to ensure it runs after these assignments
-import './ui/navigation.js';
-
-// After navigation.js loads, combine everything into window.uiHandlers
-// Navigation.js already adds its functions, so we just add the rest
+// Combine everything into window.uiHandlers for backward compatibility
 window.uiHandlers = {
-    // Existing functions from navigation.js (already added by that file)
-    ...window.uiHandlers,
-    
     // Inactivity handlers
     resetInactivityTimer,
     addInactivityListeners,
@@ -109,7 +114,29 @@ window.uiHandlers = {
     validateArrayNotEmpty,
     getValidationErrors,
     validateMultipleQuestions,
-    validationUtils
+    validationUtils,
+    
+    // Navigation
+    showQuestion,
+    goNext,
+    goPrev,
+    showStartScreen,
+    updateProgressBar,
+    getCurrentQuestion,
+    getTotalQuestions,
+    isFirstQuestion,
+    isLastQuestion,
+    jumpToQuestion,
+    submitSurvey,
+    cleanupStartScreenListeners,
+    cleanupInputFocusScroll,
+    
+    // Helper for inactivityHandler
+    getTotalSurveyTime: () => {
+        const appState = window.appState;
+        if (!appState.surveyStartTime) return 0;
+        return Math.round((Date.now() - appState.surveyStartTime) / 1000);
+    }
 };
 
 console.log('[UI HANDLERS] ✅ All modules loaded and assigned to window.uiHandlers');

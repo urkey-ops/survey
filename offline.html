@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Kiosk Survey</title>
+    <link rel="stylesheet" href="dist/output.css">
+    <style>
+        /* Offline Page Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: white;
+            padding: 20px;
+        }
+        
+        .offline-container {
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        /* Animated WiFi Icon */
+        .offline-icon {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+        }
+        
+        .wifi-symbol {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .wifi-circle {
+            position: absolute;
+            border: 4px solid white;
+            border-radius: 50%;
+            opacity: 0;
+            animation: wifi-pulse 2s infinite;
+        }
+        
+        .wifi-circle:nth-child(1) {
+            width: 40px;
+            height: 40px;
+            top: 40px;
+            left: 40px;
+            animation-delay: 0s;
+        }
+        
+        .wifi-circle:nth-child(2) {
+            width: 70px;
+            height: 70px;
+            top: 25px;
+            left: 25px;
+            animation-delay: 0.3s;
+        }
+        
+        .wifi-circle:nth-child(3) {
+            width: 100px;
+            height: 100px;
+            top: 10px;
+            left: 10px;
+            animation-delay: 0.6s;
+        }
+        
+        .wifi-slash {
+            position: absolute;
+            width: 4px;
+            height: 140px;
+            background: white;
+            top: -10px;
+            left: 58px;
+            transform: rotate(45deg);
+            opacity: 0.9;
+        }
+        
+        @keyframes wifi-pulse {
+            0% {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+            50% {
+                opacity: 0.7;
+            }
+            100% {
+                opacity: 0;
+                transform: scale(1.2);
+            }
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .subtitle {
+            font-size: 1.25rem;
+            margin-bottom: 15px;
+            opacity: 0.95;
+        }
+        
+        .description {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            opacity: 0.85;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+        
+        .retry-button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 16px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        .retry-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        .retry-button:active {
+            transform: translateY(-1px);
+        }
+        
+        .home-button {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            color: white;
+            border: 2px solid white;
+            padding: 16px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .home-button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-3px);
+        }
+        
+        .status-box {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ef4444;
+            animation: pulse-dot 2s infinite;
+        }
+        
+        .status-dot.online {
+            background: #10b981;
+        }
+        
+        @keyframes pulse-dot {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.5;
+                transform: scale(1.2);
+            }
+        }
+        
+        .tips {
+            text-align: left;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .tips h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .tips ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .tips li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            font-size: 0.95rem;
+            opacity: 0.9;
+        }
+        
+        .tips li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+        
+        /* Responsive */
+        @media (max-width: 640px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .subtitle {
+                font-size: 1.1rem;
+            }
+            
+            .description {
+                font-size: 1rem;
+            }
+            
+            .retry-button,
+            .home-button {
+                padding: 14px 30px;
+                font-size: 1rem;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <!-- Animated WiFi Icon -->
+        <div class="offline-icon">
+            <div class="wifi-symbol">
+                <div class="wifi-circle"></div>
+                <div class="wifi-circle"></div>
+                <div class="wifi-circle"></div>
+            </div>
+            <div class="wifi-slash"></div>
+        </div>
+        
+        <!-- Main Content -->
+        <h1>You're Offline</h1>
+        <p class="subtitle">No Internet Connection Detected</p>
+        <p class="description">
+            The kiosk survey requires an active internet connection to save your responses. 
+            Please check your network connection and try again.
+        </p>
+        
+        <!-- Action Buttons -->
+        <div class="button-group">
+            <button class="retry-button" onclick="location.reload()">
+                🔄 Retry Connection
+            </button>
+            <button class="home-button" onclick="goHome()">
+                🏠 Return to Start
+            </button>
+        </div>
+        
+        <!-- Status Box -->
+        <div class="status-box">
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Checking connection...</span>
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.8;" id="detailsText">
+                Attempting to reconnect automatically...
+            </div>
+        </div>
+        
+        <!-- Troubleshooting Tips -->
+        <div class="tips">
+            <h3>💡 Troubleshooting Tips:</h3>
+            <ul>
+                <li>Check if WiFi is enabled on this device</li>
+                <li>Verify the network cable is connected</li>
+                <li>Restart the router if possible</li>
+                <li>Contact your network administrator</li>
+                <li>Try refreshing the page in a few moments</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Connection checking logic
+        let checkInterval;
+        let attemptCount = 0;
+        const maxAttempts = 60; // Stop after 60 attempts (3 minutes with 3s interval)
+        
+        function updateStatus(isOnline) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const detailsText = document.getElementById('detailsText');
+            
+            if (isOnline) {
+                statusDot.classList.add('online');
+                statusText.textContent = '✓ Connection Restored!';
+                detailsText.textContent = 'Redirecting to survey...';
+                
+                // Reload after short delay
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                statusDot.classList.remove('online');
+                attemptCount++;
+                
+                if (attemptCount >= maxAttempts) {
+                    statusText.textContent = '✗ Still Offline';
+                    detailsText.textContent = 'Please check your connection and click "Retry Connection"';
+                    clearInterval(checkInterval);
+                } else {
+                    statusText.textContent = '✗ No Connection';
+                    detailsText.textContent = `Checking again... (Attempt ${attemptCount}/${maxAttempts})`;
+                }
+            }
+        }
+        
+        function checkConnection() {
+            // Check navigator.onLine first
+            if (navigator.onLine) {
+                // Double-check with a fetch request to our domain
+                fetch('/', { method: 'HEAD', cache: 'no-cache' })
+                    .then(() => {
+                        updateStatus(true);
+                    })
+                    .catch(() => {
+                        updateStatus(false);
+                    });
+            } else {
+                updateStatus(false);
+            }
+        }
+        
+        function goHome() {
+            // Clear any cached state
+            try {
+                localStorage.removeItem('kioskAppState');
+            } catch (e) {
+                console.warn('Could not clear state:', e);
+            }
+            
+            // Try to navigate home
+            window.location.href = '/';
+        }
+        
+        // Initial check
+        checkConnection();
+        
+        // Check every 3 seconds
+        checkInterval = setInterval(checkConnection, 3000);
+        
+        // Listen for online event
+        window.addEventListener('online', () => {
+            console.log('[OFFLINE PAGE] Online event detected');
+            updateStatus(true);
+        });
+        
+        // Listen for offline event
+        window.addEventListener('offline', () => {
+            console.log('[OFFLINE PAGE] Offline event detected');
+            updateStatus(false);
+        });
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (checkInterval) {
+                clearInterval(checkInterval);
+            }
+        });
+        
+        // Keyboard shortcut: Press 'R' to retry
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'r' || e.key === 'R') {
+                location.reload();
+            }
+        });
+        
+        // Console logging for debugging
+        console.log('[OFFLINE PAGE] Offline page loaded');
+        console.log('[OFFLINE PAGE] Navigator.onLine:', navigator.onLine);
+    </script>
+</body>
+</html>

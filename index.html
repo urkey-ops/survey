@@ -6,17 +6,46 @@
     <title>Kiosk Survey</title>
     <link rel="stylesheet" href="dist/output.css">
 
-   <style>
-@keyframes shake-scale {
-  0%, 100% { margin-left: 0px; transform: scale(1); }
-  20% { margin-left: -12px; transform: scale(1.05); }
-  40% { margin-left: 12px; transform: scale(1.05); }
-  60% { margin-left: -12px; transform: scale(1.08); }
-  80% { margin-left: 12px; transform: scale(1.08); }
-}
-.shake-scale { animation: shake-scale 0.7s ease-in-out !important; }
-#kioskVideo.shake-scale { animation: shake-scale 0.7s ease-in-out !important; }
 
+<style>
+  /* --- 1. ATTRACT MODE: Subtle Pulse & Glow --- */
+  /* Replaces the aggressive 'shake-scale' */
+  @keyframes subtle-pulse {
+    0% { 
+      transform: scale(1); 
+      filter: brightness(100%);
+    }
+    50% { 
+      transform: scale(1.025); /* Gentle 2.5% scale up */
+      filter: brightness(110%); /* Slight glow effect */
+    }
+    100% { 
+      transform: scale(1); 
+      filter: brightness(100%);
+    }
+  }
+
+  .animate-pulse {
+    animation: subtle-pulse 3s infinite ease-in-out !important;
+    will-change: transform, filter; /* Optimizes performance for iPad */
+  }
+
+  /* --- 2. INTERACTION: Immediate Touch Feedback --- */
+  /* This runs immediately when the user taps, creating a tactile "click" feel */
+  .active-press {
+    transform: scale(0.96) !important; /* Shrinks slightly to look "pressed" */
+    opacity: 0.8 !important;
+    transition: transform 0.05s ease-out !important; /* Very fast response */
+    animation: none !important; /* Stops the pulse immediately */
+  }
+
+  /* --- 3. SAFETY: Prevent Video Movement --- */
+  /* Ensures the video background remains stable */
+  #kioskVideo {
+    transform: none !important;
+    animation: none !important;
+    margin: 0 !important;
+  }
 </style>
 
 

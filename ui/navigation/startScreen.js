@@ -5,6 +5,37 @@
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 
 /**
+ * Shake animation for start screen attention grabbing
+ */
+function startShake() {
+  const kioskStartScreen = window.globals?.kioskStartScreen;
+  if (!kioskStartScreen) return;
+
+  const originalTransform = kioskStartScreen.style.transform || 'none';
+  
+  const shakeIntervals = [150, 150, 150, 5000];
+  let index = 0;
+  
+  function shakeStep() {
+    if (index < shakeIntervals.length) {
+      // Apply shake transform
+      kioskStartScreen.style.transform = 
+        `translateX(${Math.random() * 10 - 5}px) translateY(${Math.random() * 10 - 5}px)`;
+      
+      setTimeout(() => {
+        // Reset transform
+        kioskStartScreen.style.transform = originalTransform;
+        
+        index++;
+        shakeStep();
+      }, shakeIntervals[index]);
+    }
+  }
+  
+  shakeStep();
+}
+
+/**
  * Cleanup start screen event listeners
  */
 export function cleanupStartScreenListeners() {
@@ -115,6 +146,9 @@ export function showStartScreen() {
       kioskVideo.loop = true;
       
       const playPromise = kioskVideo.play();
+      
+      // Start shaking IMMEDIATELY regardless of autoplay success
+      startShake();
       
       if (playPromise !== undefined) {
         playPromise.then(() => {

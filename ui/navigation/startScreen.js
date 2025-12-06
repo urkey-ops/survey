@@ -1,79 +1,43 @@
 // FILE: ui/navigation/startScreen.js
-// PURPOSE: Start screen logic and video handling
+// PURPOSE: Start screen logic with subtle pulse and immediate touch feedback
 // DEPENDENCIES: core.js
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 
-let shakeInterval = null; // Global for infinite loop control
-let isShaking = false;
-
 /**
- * INFINITE scale + shake until user touches (iPad kiosk optimized)
+ * Applies the "Attract Mode" (Subtle Pulse)
+ * Unlike the previous version, this uses CSS for the animation loop
+ * and only targets the content/title, NOT the video.
  */
-function startShake() {
+function startAttractMode() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
-  if (!kioskStartScreen || isShaking) {
-    console.warn('[SHAKE] Already shaking or no kioskStartScreen');
-    return;
-  }
+  if (!kioskStartScreen) return;
 
-  console.log('[SHAKE] Starting INFINITE scale+shake loop...');
-  isShaking = true;
-  
-  // Target your exact elements
-  const targets = [
-    kioskStartScreen,
-    window.globals?.kioskVideo,
+  // Target only the CTA/Content for the pulse, not the background video
+  const attractTargets = [
     kioskStartScreen.querySelector('.content'),
-    kioskStartScreen.querySelector('h1, h2, .title')
+    kioskStartScreen.querySelector('.title'),
+    kioskStartScreen.querySelector('.btn-start') // Assuming there might be a button
   ].filter(Boolean);
-  
-  // INFINITE LOOP - every 2 seconds
-  shakeInterval = setInterval(() => {
-    console.log('[SHAKE] Infinite loop shake...');
-    
-    // Apply scale+shake class
-    targets.forEach(target => {
-      if (target) {
-        target.classList.remove('shake-scale', 'shake');
-        target.classList.add('shake-scale');
-        console.log(`[SHAKE] Infinite shake applied to:`, target.id || target.tagName);
-      }
-    });
-    
-    // Remove after animation (0.7s)
-    setTimeout(() => {
-      targets.forEach(target => {
-        target?.classList.remove('shake-scale', 'shake');
-      });
-    }, 700);
-    
-  }, 2000); // Every 2 seconds forever
-  
-  console.log('[SHAKE] Infinite loop started (stops on touch)');
+
+  console.log('[ATTRACT] Enabling subtle pulse effect...');
+
+  // We add a class that handles the infinite CSS animation (e.g., keyframes pulse)
+  // This replaces the JS setInterval loop for better performance and smoothness.
+  attractTargets.forEach(target => {
+    target.classList.add('animate-pulse'); // Requires CSS: @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+  });
 }
 
 /**
- * STOP infinite shake (called on user interaction)
+ * Visual Feedback on Touch
+ * Adds a "pressed" state before the logic continues
  */
-function stopShake() {
-  if (shakeInterval) {
-    clearInterval(shakeInterval);
-    shakeInterval = null;
-    isShaking = false;
-    console.log('[SHAKE] Infinite loop STOPPED by user touch');
+function triggerTouchFeedback(element) {
+  if (element) {
+    element.classList.remove('animate-pulse'); // Stop pulsing immediately
+    element.classList.add('active-press'); // Requires CSS: .active-press { transform: scale(0.95); opacity: 0.8; transition: all 0.1s; }
   }
-  
-  // Clean up all classes
-  const kioskStartScreen = window.globals?.kioskStartScreen;
-  const targets = [
-    kioskStartScreen,
-    window.globals?.kioskVideo
-  ].filter(Boolean);
-  
-  targets.forEach(target => {
-    target?.classList.remove('shake-scale', 'shake');
-  });
 }
 
 /**
@@ -120,8 +84,6 @@ export function cleanupStartScreenListeners() {
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
     window.boundStartSurvey = null;
   }
-  
-  stopShake(); // Always stop shake on cleanup
 }
 
 /**
@@ -139,49 +101,56 @@ function startSurvey(e) {
   if (e) {
     e.preventDefault();
     e.stopPropagation();
+    
+    // VISUAL FEEDBACK: Trigger the "Press" effect on the target or the container
+    // If the user clicked a specific button, animate that, otherwise animate the content container
+    const targetElement = e.target.closest('.content') || kioskStartScreen.querySelector('.content');
+    triggerTouchFeedback(targetElement);
   }
   
-  console.log('[START] Starting survey...');
-  
-  // STOP SHAKE IMMEDIATELY on user touch
-  stopShake();
-  
-  cleanupStartScreenListeners();
-  
-  kioskStartScreen.classList.add('hidden');
-  
-  if (kioskVideo) {
-    kioskVideo.pause();
-  }
-  
-  if (!appState.formData.id) {
-    appState.formData.id = dataHandlers.generateUUID();
-    console.log('[START] Generated new survey ID:', appState.formData.id);
-  }
-  if (!appState.formData.timestamp) {
-    appState.formData.timestamp = new Date().toISOString();
-  }
-  
-  if (!appState.surveyStartTime) {
-    appState.surveyStartTime = Date.now();
-    saveState();
-  }
-  
-  showQuestion(appState.currentQuestionIndex);
-  
-  if (window.uiHandlers && window.uiHandlers.resetInactivityTimer) {
-    window.uiHandlers.resetInactivityTimer();
-  }
+  console.log('[START] User interaction detected...');
 
+  // SHORT DELAY: Allow 200ms for the user to see the "press" animation before hiding
   setTimeout(() => {
-    if (kioskStartScreen && document.body.contains(kioskStartScreen)) {
-      kioskStartScreen.remove();
+    console.log('[START] Transitioning to survey...');
+    
+    cleanupStartScreenListeners();
+    
+    kioskStartScreen.classList.add('hidden');
+    
+    if (kioskVideo) {
+      kioskVideo.pause();
     }
-  }, 400);
+    
+    if (!appState.formData.id) {
+      appState.formData.id = dataHandlers.generateUUID();
+    }
+    if (!appState.formData.timestamp) {
+      appState.formData.timestamp = new Date().toISOString();
+    }
+    
+    if (!appState.surveyStartTime) {
+      appState.surveyStartTime = Date.now();
+      saveState();
+    }
+    
+    showQuestion(appState.currentQuestionIndex);
+    
+    if (window.uiHandlers && window.uiHandlers.resetInactivityTimer) {
+      window.uiHandlers.resetInactivityTimer();
+    }
+
+    // Full DOM removal after transition
+    setTimeout(() => {
+      if (kioskStartScreen && document.body.contains(kioskStartScreen)) {
+        kioskStartScreen.remove();
+      }
+    }, 400); // Matches CSS fade out transition
+  }, 200); // The "Feedback" delay
 }
 
 /**
- * Show the start screen (welcome screen with INFINITE video + shake)
+ * Show the start screen (welcome screen with INFINITE video + Subtle Pulse)
  */
 export function showStartScreen() {
   const { globals } = getDependencies();
@@ -203,7 +172,7 @@ export function showStartScreen() {
   if (nextBtn) nextBtn.disabled = true;
   if (prevBtn) prevBtn.disabled = true;
   
-  console.log('[START SCREEN] Showing with INFINITE scale+shake...');
+  console.log('[START SCREEN] Showing with Subtle Pulse...');
   
   if (kioskStartScreen) {
     if (!document.body.contains(kioskStartScreen)) {
@@ -216,20 +185,19 @@ export function showStartScreen() {
       setupVideoLoop(kioskVideo);
     }
 
-    // INFINITE SHAKE LOOP
-    startShake();
+    // ENABLE PULSE (Attract Mode)
+    startAttractMode();
 
-    // Create bound function with shake stop
+    // Create bound function
     window.boundStartSurvey = (e) => {
-      stopShake();
       startSurvey(e);
     };
     
-    // Event listeners (stops shake + starts survey)
+    // Event listeners
     kioskStartScreen.addEventListener('click', window.boundStartSurvey, { once: true });
     kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { once: true, passive: false });
     
-    console.log('[START SCREEN] Infinite shake + listeners attached');
+    console.log('[START SCREEN] Listeners attached');
   }
 
   if (progressBar) {

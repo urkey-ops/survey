@@ -1,44 +1,87 @@
 // Service Worker for Kiosk Survey PWA
-// Version 2.0.0
+// Version 2.0.0 - Updated with correct file paths
+// SYNCED with your project structure
 
 const CACHE_NAME = 'kiosk-survey-v2.0.0';
 const OFFLINE_URL = '/offline.html';
 
 // Files to cache immediately on install
+// ✅ UPDATED to match your actual project files
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/offline.html',
-  '/css/styles.css',
-  '/js/config.js',
-  '/js/appState.js',
-  '/js/dataSync.js',
-  '/js/data-util.js',
-  '/js/kioskUI.js',
-  '/js/main.js',
+  
+  // CSS - Your actual Tailwind output
+  '/dist/output.css',
+  
+  // JavaScript - Your actual JS files (in order)
+  '/config.js',
+  '/appState.js',
+  '/dataSync.js',
+  '/data-util.js',
+  '/kioskUI.js',
+  '/main.js',
+  
+  // PWA Manifest
   '/manifest.json',
-  // Add your icons
+  
+  // Video (optional - comment out if too large or you have multiple)
+  '/asset/video/1.mp4',
+  
+  // Icons (add these when you create them)
+  '/icons/icon-72x72.png',
+  '/icons/icon-96x96.png',
+  '/icons/icon-128x128.png',
+  '/icons/icon-144x144.png',
+  '/icons/icon-152x152.png',
   '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  '/icons/icon-384x384.png',
+  '/icons/icon-512x512.png',
+  '/icons/icon-maskable-192x192.png',
+  '/icons/icon-maskable-512x512.png',
+  
+  // iOS Icons (add when created)
+  '/icons/apple-touch-icon-180x180.png',
+  '/icons/apple-touch-icon-167x167.png',
+  '/icons/apple-touch-icon-152x152.png',
+  
+  // Favicon
+  '/icons/favicon-32x32.png',
+  '/icons/favicon-16x16.png'
 ];
 
 // Install event - cache files
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker...');
+  console.log('[SW] Installing service worker v2.0.0...');
   
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('[SW] Caching app shell');
-        return cache.addAll(PRECACHE_URLS);
+        
+        // Cache files one by one to handle failures gracefully
+        return Promise.allSettled(
+          PRECACHE_URLS.map(url => 
+            cache.add(url).catch(err => {
+              console.warn(`[SW] Failed to cache ${url}:`, err.message);
+            })
+          )
+        );
       })
-      .then(() => self.skipWaiting())
+      .then(() => {
+        console.log('[SW] Service worker installed successfully');
+        return self.skipWaiting();
+      })
+      .catch((error) => {
+        console.error('[SW] Installation failed:', error);
+      })
   );
 });
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating service worker...');
+  console.log('[SW] Activating service worker v2.0.0...');
   
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -50,48 +93,100 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    }).then(() => self.clients.claim())
+    })
+    .then(() => {
+      console.log('[SW] Service worker activated');
+      return self.clients.claim();
+    })
   );
 });
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  
   // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
+  if (url.origin !== self.location.origin) {
     return;
   }
 
-  // API requests - network first, cache fallback
-  if (event.request.url.includes('/api/')) {
+  // Skip chrome-extension and other non-http requests
+  if (!request.url.startsWith('http')) {
+    return;
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // API REQUESTS - Network first, cache fallback
+  // ────────────────────────────────────────────────────────────────
+  if (request.url.includes('/api/')) {
     event.respondWith(
-      fetch(event.request)
+      fetch(request)
         .then((response) => {
-          // Clone response and cache it
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
+          // Only cache successful responses
+          if (response && response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
           return response;
         })
-        .catch(() => {
+        .catch((error) => {
+          console.log('[SW] API request failed, trying cache:', request.url);
           // Fallback to cache if network fails
-          return caches.match(event.request);
+          return caches.match(request)
+            .then((cachedResponse) => {
+              if (cachedResponse) {
+                console.log('[SW] Serving API from cache:', request.url);
+                return cachedResponse;
+              }
+              // If no cache, return error response
+              return new Response(
+                JSON.stringify({ 
+                  error: 'Offline', 
+                  message: 'No network connection and no cached data available' 
+                }),
+                { 
+                  status: 503,
+                  statusText: 'Service Unavailable',
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+            });
         })
     );
     return;
   }
 
-  // Static assets - cache first, network fallback
+  // ────────────────────────────────────────────────────────────────
+  // STATIC ASSETS - Cache first, network fallback
+  // ────────────────────────────────────────────────────────────────
   event.respondWith(
-    caches.match(event.request)
+    caches.match(request)
       .then((cachedResponse) => {
         if (cachedResponse) {
+          // Return cached version immediately
+          console.log('[SW] Serving from cache:', request.url);
+          
+          // Update cache in background (stale-while-revalidate strategy)
+          fetch(request).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, networkResponse.clone());
+              });
+            }
+          }).catch(() => {
+            // Network fetch failed, but we already have cached version
+          });
+          
           return cachedResponse;
         }
 
-        return fetch(event.request)
+        // Not in cache, fetch from network
+        return fetch(request)
           .then((response) => {
-            // Don't cache non-200 responses
+            // Don't cache non-200 responses or non-basic responses
             if (!response || response.status !== 200 || response.type !== 'basic') {
               return response;
             }
@@ -99,28 +194,52 @@ self.addEventListener('fetch', (event) => {
             // Clone and cache the response
             const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
+              cache.put(request, responseClone);
             });
 
             return response;
           })
-          .catch(() => {
+          .catch((error) => {
+            console.error('[SW] Fetch failed for:', request.url, error);
+            
             // Show offline page for navigation requests
-            if (event.request.mode === 'navigate') {
-              return caches.match(OFFLINE_URL);
+            if (request.mode === 'navigate') {
+              return caches.match(OFFLINE_URL)
+                .then((offlineResponse) => {
+                  if (offlineResponse) {
+                    return offlineResponse;
+                  }
+                  // Fallback if offline page not cached
+                  return new Response(
+                    '<h1>Offline</h1><p>No internet connection and offline page not available.</p>',
+                    { 
+                      status: 503,
+                      statusText: 'Service Unavailable',
+                      headers: { 'Content-Type': 'text/html' }
+                    }
+                  );
+                });
             }
+            
+            // For other resource types, return error
+            return new Response('Network error', {
+              status: 503,
+              statusText: 'Service Unavailable'
+            });
           });
       })
   );
 });
 
-// Background sync - sync data when connection restored
+// ────────────────────────────────────────────────────────────────
+// BACKGROUND SYNC - Sync data when connection restored
+// ────────────────────────────────────────────────────────────────
 self.addEventListener('sync', (event) => {
   console.log('[SW] Background sync triggered:', event.tag);
   
   if (event.tag === 'sync-survey-data') {
     event.waitUntil(
-      // Trigger sync from your dataSync module
+      // Notify all clients to trigger sync
       self.clients.matchAll().then((clients) => {
         clients.forEach((client) => {
           client.postMessage({
@@ -128,23 +247,135 @@ self.addEventListener('sync', (event) => {
             action: 'sync-data'
           });
         });
+        console.log('[SW] Sync message sent to', clients.length, 'client(s)');
+      })
+    );
+  }
+  
+  if (event.tag === 'sync-analytics-data') {
+    event.waitUntil(
+      self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'BACKGROUND_SYNC',
+            action: 'sync-analytics'
+          });
+        });
       })
     );
   }
 });
 
-// Push notifications (optional - for admin alerts)
+// ────────────────────────────────────────────────────────────────
+// PUSH NOTIFICATIONS (Optional - for admin alerts)
+// ────────────────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   console.log('[SW] Push notification received');
   
-  const options = {
-    body: event.data ? event.data.text() : 'Survey data synced',
+  let options = {
+    body: 'Survey data synced successfully',
     icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
-    vibrate: [200, 100, 200]
+    badge: '/icons/icon-72x72.png',
+    vibrate: [200, 100, 200],
+    tag: 'kiosk-survey-notification',
+    requireInteraction: false
   };
+  
+  // Parse push data if available
+  if (event.data) {
+    try {
+      const data = event.data.json();
+      options.body = data.message || options.body;
+      options.data = data;
+    } catch (e) {
+      options.body = event.data.text();
+    }
+  }
   
   event.waitUntil(
     self.registration.showNotification('Kiosk Survey', options)
   );
 });
+
+// Handle notification clicks
+self.addEventListener('notificationclick', (event) => {
+  console.log('[SW] Notification clicked');
+  event.notification.close();
+  
+  // Open or focus the app
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Focus existing window if available
+        for (let client of clientList) {
+          if (client.url === '/' && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // Open new window if no existing window
+        if (clients.openWindow) {
+          return clients.openWindow('/');
+        }
+      })
+  );
+});
+
+// ────────────────────────────────────────────────────────────────
+// MESSAGE HANDLING - Communication with main app
+// ────────────────────────────────────────────────────────────────
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+  
+  // Handle skip waiting command
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  
+  // Handle cache clear command
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => caches.delete(cacheName))
+        );
+      }).then(() => {
+        console.log('[SW] All caches cleared');
+        // Notify client
+        event.ports[0].postMessage({ success: true });
+      })
+    );
+  }
+  
+  // Handle manual sync trigger
+  if (event.data && event.data.type === 'TRIGGER_SYNC') {
+    if ('sync' in self.registration) {
+      event.waitUntil(
+        self.registration.sync.register('sync-survey-data')
+          .then(() => {
+            console.log('[SW] Manual sync registered');
+            event.ports[0].postMessage({ success: true });
+          })
+          .catch((error) => {
+            console.error('[SW] Manual sync failed:', error);
+            event.ports[0].postMessage({ success: false, error: error.message });
+          })
+      );
+    }
+  }
+});
+
+// ────────────────────────────────────────────────────────────────
+// ERROR HANDLING
+// ────────────────────────────────────────────────────────────────
+self.addEventListener('error', (event) => {
+  console.error('[SW] Service worker error:', event.error);
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  console.error('[SW] Unhandled promise rejection:', event.reason);
+});
+
+// Log service worker startup
+console.log('[SW] Service worker script loaded - Version 2.0.0');
+console.log('[SW] Cache name:', CACHE_NAME);
+console.log('[SW] Files to cache:', PRECACHE_URLS.length);

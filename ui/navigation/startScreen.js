@@ -4,62 +4,76 @@
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 
+let shakeInterval = null; // Global for infinite loop control
+let isShaking = false;
+
 /**
- * ULTIMATE scale + shake attention grabber with iPad video loop guarantee
+ * INFINITE scale + shake until user touches (iPad kiosk optimized)
  */
 function startShake() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
-  if (!kioskStartScreen) {
-    console.warn('[SHAKE] No kioskStartScreen found');
+  if (!kioskStartScreen || isShaking) {
+    console.warn('[SHAKE] Already shaking or no kioskStartScreen');
     return;
   }
 
-  console.log('[SHAKE] Starting ULTIMATE scale+shake sequence...');
+  console.log('[SHAKE] Starting INFINITE scale+shake loop...');
+  isShaking = true;
   
   // Target your exact elements
   const targets = [
-    kioskStartScreen,                                    // Main container
-    window.globals?.kioskVideo,                          // #kioskVideo
-    kioskStartScreen.querySelector('.content'),          // Content area
-    kioskStartScreen.querySelector('h1, h2, .title')     // Title elements
+    kioskStartScreen,
+    window.globals?.kioskVideo,
+    kioskStartScreen.querySelector('.content'),
+    kioskStartScreen.querySelector('h1, h2, .title')
   ].filter(Boolean);
   
-  const shakeIntervals = [700, 700, 700, 5000]; // Match 0.7s animation
-  let index = 0;
-  
-  function shakeStep() {
-    if (index >= shakeIntervals.length) {
-      console.log('[SHAKE] Ultimate scale+shake sequence complete');
-      // Clean up classes
-      targets.forEach(target => {
-        target?.classList.remove('shake-scale', 'shake');
-      });
-      return;
-    }
+  // INFINITE LOOP - every 2 seconds
+  shakeInterval = setInterval(() => {
+    console.log('[SHAKE] Infinite loop shake...');
     
-    console.log(`[SHAKE] Scale+shake ${index + 1}/${shakeIntervals.length}`);
-    
-    // Apply scale+shake class to ALL targets
+    // Apply scale+shake class
     targets.forEach(target => {
       if (target) {
         target.classList.remove('shake-scale', 'shake');
         target.classList.add('shake-scale');
-        console.log(`[SHAKE] Applied scale+shake to:`, target.id || target.className || target.tagName);
+        console.log(`[SHAKE] Infinite shake applied to:`, target.id || target.tagName);
       }
     });
     
-    // Remove class after animation + interval
+    // Remove after animation (0.7s)
     setTimeout(() => {
       targets.forEach(target => {
         target?.classList.remove('shake-scale', 'shake');
       });
-      
-      index++;
-      shakeStep();
-    }, shakeIntervals[index]);
+    }, 700);
+    
+  }, 2000); // Every 2 seconds forever
+  
+  console.log('[SHAKE] Infinite loop started (stops on touch)');
+}
+
+/**
+ * STOP infinite shake (called on user interaction)
+ */
+function stopShake() {
+  if (shakeInterval) {
+    clearInterval(shakeInterval);
+    shakeInterval = null;
+    isShaking = false;
+    console.log('[SHAKE] Infinite loop STOPPED by user touch');
   }
   
-  shakeStep();
+  // Clean up all classes
+  const kioskStartScreen = window.globals?.kioskStartScreen;
+  const targets = [
+    kioskStartScreen,
+    window.globals?.kioskVideo
+  ].filter(Boolean);
+  
+  targets.forEach(target => {
+    target?.classList.remove('shake-scale', 'shake');
+  });
 }
 
 /**
@@ -68,9 +82,8 @@ function startShake() {
 function setupVideoLoop(kioskVideo) {
   if (!kioskVideo) return;
   
-  console.log('[VIDEO] iPad-optimized loop setup...');
+  console.log('[VIDEO] iPad-optimized infinite loop setup...');
   
-  // iPad essential attributes
   kioskVideo.currentTime = 0;
   kioskVideo.setAttribute('playsinline', '');
   kioskVideo.setAttribute('webkit-playsinline', '');
@@ -78,26 +91,17 @@ function setupVideoLoop(kioskVideo) {
   kioskVideo.loop = true;
   kioskVideo.preload = 'auto';
   
-  // Force iPad video play with user gesture fallback
   const playVideo = () => {
     const playPromise = kioskVideo.play();
     if (playPromise !== undefined) {
       playPromise
-        .then(() => {
-          console.log("[VIDEO] iPad autoplay SUCCESS - looping");
-        })
+        .then(() => console.log("[VIDEO] iPad infinite loop SUCCESS"))
         .catch(error => {
           console.warn("[VIDEO] iPad autoplay blocked:", error.message);
-          // iPad fallback - wait for ANY touch
-          const iPadTouchFallback = () => {
-            kioskVideo.play().then(() => {
-              console.log("[VIDEO] iPad touch play SUCCESS");
-            }).catch(err => {
-              console.warn("[VIDEO] iPad touch play failed:", err);
-            });
-            document.removeEventListener('touchstart', iPadTouchFallback, { once: true });
-          };
-          document.addEventListener('touchstart', iPadTouchFallback, { once: true, passive: false });
+          // iPad touch fallback
+          document.addEventListener('touchstart', () => {
+            kioskVideo.play().catch(err => console.warn("[VIDEO] Touch play failed:", err));
+          }, { once: true });
         });
     }
   };
@@ -116,17 +120,18 @@ export function cleanupStartScreenListeners() {
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
     window.boundStartSurvey = null;
   }
+  
+  stopShake(); // Always stop shake on cleanup
 }
 
 /**
- * Start the survey (called when start screen is clicked)
+ * Start the survey (called when start screen is clicked/touched)
  */
 function startSurvey(e) {
   const { globals, appState, dataHandlers } = getDependencies();
   const kioskStartScreen = globals?.kioskStartScreen;
   const kioskVideo = globals?.kioskVideo;
   
-  // Prevent multiple calls
   if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
     return;
   }
@@ -138,19 +143,17 @@ function startSurvey(e) {
   
   console.log('[START] Starting survey...');
   
-  // Remove event listeners immediately
+  // STOP SHAKE IMMEDIATELY on user touch
+  stopShake();
+  
   cleanupStartScreenListeners();
   
-  // Clean up shake classes
-  kioskStartScreen.classList.remove('shake-scale', 'shake');
   kioskStartScreen.classList.add('hidden');
   
   if (kioskVideo) {
     kioskVideo.pause();
-    kioskVideo.classList.remove('shake-scale', 'shake');
   }
   
-  // Generate ID if missing
   if (!appState.formData.id) {
     appState.formData.id = dataHandlers.generateUUID();
     console.log('[START] Generated new survey ID:', appState.formData.id);
@@ -159,7 +162,6 @@ function startSurvey(e) {
     appState.formData.timestamp = new Date().toISOString();
   }
   
-  // Start survey timer
   if (!appState.surveyStartTime) {
     appState.surveyStartTime = Date.now();
     saveState();
@@ -179,7 +181,7 @@ function startSurvey(e) {
 }
 
 /**
- * Show the start screen (welcome screen with video + scale shake)
+ * Show the start screen (welcome screen with INFINITE video + shake)
  */
 export function showStartScreen() {
   const { globals } = getDependencies();
@@ -190,7 +192,6 @@ export function showStartScreen() {
   const prevBtn = globals?.prevBtn;
   const progressBar = globals?.progressBar;
   
-  // Clear all timers
   if (window.uiHandlers && window.uiHandlers.clearAllTimers) {
     window.uiHandlers.clearAllTimers();
   }
@@ -202,7 +203,7 @@ export function showStartScreen() {
   if (nextBtn) nextBtn.disabled = true;
   if (prevBtn) prevBtn.disabled = true;
   
-  console.log('[START SCREEN] Showing start screen with scale+shake...');
+  console.log('[START SCREEN] Showing with INFINITE scale+shake...');
   
   if (kioskStartScreen) {
     if (!document.body.contains(kioskStartScreen)) {
@@ -210,22 +211,25 @@ export function showStartScreen() {
     }
     kioskStartScreen.classList.remove('hidden');
 
-    // iPad VIDEO FIRST (before shake) - ensures smooth loop
+    // VIDEO FIRST (iPad guaranteed loop)
     if (kioskVideo) {
       setupVideoLoop(kioskVideo);
     }
 
-    // IMMEDIATE scale+shake (works with video)
+    // INFINITE SHAKE LOOP
     startShake();
 
-    // Create bound function
-    window.boundStartSurvey = startSurvey.bind(null);
+    // Create bound function with shake stop
+    window.boundStartSurvey = (e) => {
+      stopShake();
+      startSurvey(e);
+    };
     
-    // Add event listeners with proper cleanup
+    // Event listeners (stops shake + starts survey)
     kioskStartScreen.addEventListener('click', window.boundStartSurvey, { once: true });
     kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { once: true, passive: false });
     
-    console.log('[START SCREEN] Event listeners attached');
+    console.log('[START SCREEN] Infinite shake + listeners attached');
   }
 
   if (progressBar) {

@@ -209,7 +209,7 @@ window.dataHandlers = {
     autoSync
 };
 
-// Export for ES6 modules
+// Export for ES6 modules (removed autoSync to avoid duplicate)
 export {
     // Storage utilities
     generateUUID,
@@ -223,8 +223,5 @@ export {
     
     // Analytics
     recordAnalytics,
-    syncAnalytics,
-    
-    // Auto sync
-    autoSync
+    syncAnalytics
 };

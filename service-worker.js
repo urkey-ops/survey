@@ -1,12 +1,11 @@
 // Service Worker for Kiosk Survey PWA
-// Version 2.0.0 - Updated with correct file paths
-// SYNCED with your project structure
+// Version 2.0.0 - Minimal icon set (9 icons only)
 
 const CACHE_NAME = 'kiosk-survey-v2.0.0';
 const OFFLINE_URL = '/offline.html';
 
 // Files to cache immediately on install
-// ✅ UPDATED to match your actual project files
+// Updated to only include icons you actually have
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -26,29 +25,23 @@ const PRECACHE_URLS = [
   // PWA Manifest
   '/manifest.json',
   
-  // Video (optional - comment out if too large or you have multiple)
+  // Video (optional - comment out if too large)
   '/asset/video/1.mp4',
   
-  // Icons (add these when you create them)
+  // Icons - ONLY the ones you have
   '/icons/icon-72x72.png',
   '/icons/icon-96x96.png',
-  '/icons/icon-128x128.png',
   '/icons/icon-144x144.png',
   '/icons/icon-152x152.png',
   '/icons/icon-192x192.png',
-  '/icons/icon-384x384.png',
   '/icons/icon-512x512.png',
-  '/icons/icon-maskable-192x192.png',
-  '/icons/icon-maskable-512x512.png',
   
-  // iOS Icons (add when created)
+  // iOS Icon
   '/icons/apple-touch-icon-180x180.png',
-  '/icons/apple-touch-icon-167x167.png',
-  '/icons/apple-touch-icon-152x152.png',
   
-  // Favicon
-  '/icons/favicon-32x32.png',
-  '/icons/favicon-16x16.png'
+  // Favicons
+  '/icons/favicon-16x16.png',
+  '/icons/favicon-32x32.png'
 ];
 
 // Install event - cache files
@@ -116,9 +109,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ────────────────────────────────────────────────────────────────
   // API REQUESTS - Network first, cache fallback
-  // ────────────────────────────────────────────────────────────────
   if (request.url.includes('/api/')) {
     event.respondWith(
       fetch(request)
@@ -159,9 +150,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ────────────────────────────────────────────────────────────────
   // STATIC ASSETS - Cache first, network fallback
-  // ────────────────────────────────────────────────────────────────
   event.respondWith(
     caches.match(request)
       .then((cachedResponse) => {
@@ -231,9 +220,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ────────────────────────────────────────────────────────────────
 // BACKGROUND SYNC - Sync data when connection restored
-// ────────────────────────────────────────────────────────────────
 self.addEventListener('sync', (event) => {
   console.log('[SW] Background sync triggered:', event.tag);
   
@@ -266,9 +253,7 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// ────────────────────────────────────────────────────────────────
 // PUSH NOTIFICATIONS (Optional - for admin alerts)
-// ────────────────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   console.log('[SW] Push notification received');
   
@@ -320,9 +305,7 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// ────────────────────────────────────────────────────────────────
 // MESSAGE HANDLING - Communication with main app
-// ────────────────────────────────────────────────────────────────
 self.addEventListener('message', (event) => {
   console.log('[SW] Message received:', event.data);
   
@@ -364,9 +347,7 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// ────────────────────────────────────────────────────────────────
 // ERROR HANDLING
-// ────────────────────────────────────────────────────────────────
 self.addEventListener('error', (event) => {
   console.error('[SW] Service worker error:', event.error);
 });
@@ -376,6 +357,6 @@ self.addEventListener('unhandledrejection', (event) => {
 });
 
 // Log service worker startup
-console.log('[SW] Service worker script loaded - Version 2.0.0');
+console.log('[SW] Service worker script loaded - Version 2.0.0 (Minimal icons)');
 console.log('[SW] Cache name:', CACHE_NAME);
 console.log('[SW] Files to cache:', PRECACHE_URLS.length);

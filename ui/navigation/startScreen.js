@@ -5,7 +5,7 @@
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 
 /**
- * Shake animation for start screen attention grabbing - FIXED VERSION
+ * ULTIMATE scale + shake attention grabber with iPad video loop guarantee
  */
 function startShake() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
@@ -14,34 +14,45 @@ function startShake() {
     return;
   }
 
-  console.log('[SHAKE] Starting shake animation...');
+  console.log('[SHAKE] Starting ULTIMATE scale+shake sequence...');
   
-  const originalTransform = kioskStartScreen.style.transform || '';
-  const shakeIntervals = [150, 150, 150, 5000];
+  // Target your exact elements
+  const targets = [
+    kioskStartScreen,                                    // Main container
+    window.globals?.kioskVideo,                          // #kioskVideo
+    kioskStartScreen.querySelector('.content'),          // Content area
+    kioskStartScreen.querySelector('h1, h2, .title')     // Title elements
+  ].filter(Boolean);
+  
+  const shakeIntervals = [700, 700, 700, 5000]; // Match 0.7s animation
   let index = 0;
-  
-  function forceRepaint() {
-    kioskStartScreen.offsetHeight; // Trigger reflow
-  }
   
   function shakeStep() {
     if (index >= shakeIntervals.length) {
-      console.log('[SHAKE] Shake sequence complete');
+      console.log('[SHAKE] Ultimate scale+shake sequence complete');
+      // Clean up classes
+      targets.forEach(target => {
+        target?.classList.remove('shake-scale', 'shake');
+      });
       return;
     }
     
-    console.log(`[SHAKE] Shake ${index + 1}/${shakeIntervals.length} (${shakeIntervals[index]}ms)`);
+    console.log(`[SHAKE] Scale+shake ${index + 1}/${shakeIntervals.length}`);
     
-    // Apply shake with forced repaint
-    kioskStartScreen.style.transform = 
-      `translateX(${Math.random() * 20 - 10}px) translateY(${Math.random() * 20 - 10}px) rotate(${Math.random() * 2 - 1}deg)`;
+    // Apply scale+shake class to ALL targets
+    targets.forEach(target => {
+      if (target) {
+        target.classList.remove('shake-scale', 'shake');
+        target.classList.add('shake-scale');
+        console.log(`[SHAKE] Applied scale+shake to:`, target.id || target.className || target.tagName);
+      }
+    });
     
-    forceRepaint();
-    
+    // Remove class after animation + interval
     setTimeout(() => {
-      // Reset with forced repaint
-      kioskStartScreen.style.transform = originalTransform;
-      forceRepaint();
+      targets.forEach(target => {
+        target?.classList.remove('shake-scale', 'shake');
+      });
       
       index++;
       shakeStep();
@@ -49,6 +60,49 @@ function startShake() {
   }
   
   shakeStep();
+}
+
+/**
+ * iPad-optimized video loop setup
+ */
+function setupVideoLoop(kioskVideo) {
+  if (!kioskVideo) return;
+  
+  console.log('[VIDEO] iPad-optimized loop setup...');
+  
+  // iPad essential attributes
+  kioskVideo.currentTime = 0;
+  kioskVideo.setAttribute('playsinline', '');
+  kioskVideo.setAttribute('webkit-playsinline', '');
+  kioskVideo.setAttribute('muted', 'muted');
+  kioskVideo.loop = true;
+  kioskVideo.preload = 'auto';
+  
+  // Force iPad video play with user gesture fallback
+  const playVideo = () => {
+    const playPromise = kioskVideo.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          console.log("[VIDEO] iPad autoplay SUCCESS - looping");
+        })
+        .catch(error => {
+          console.warn("[VIDEO] iPad autoplay blocked:", error.message);
+          // iPad fallback - wait for ANY touch
+          const iPadTouchFallback = () => {
+            kioskVideo.play().then(() => {
+              console.log("[VIDEO] iPad touch play SUCCESS");
+            }).catch(err => {
+              console.warn("[VIDEO] iPad touch play failed:", err);
+            });
+            document.removeEventListener('touchstart', iPadTouchFallback, { once: true });
+          };
+          document.addEventListener('touchstart', iPadTouchFallback, { once: true, passive: false });
+        });
+    }
+  };
+  
+  playVideo();
 }
 
 /**
@@ -87,10 +141,13 @@ function startSurvey(e) {
   // Remove event listeners immediately
   cleanupStartScreenListeners();
   
+  // Clean up shake classes
+  kioskStartScreen.classList.remove('shake-scale', 'shake');
   kioskStartScreen.classList.add('hidden');
   
   if (kioskVideo) {
     kioskVideo.pause();
+    kioskVideo.classList.remove('shake-scale', 'shake');
   }
   
   // Generate ID if missing
@@ -122,7 +179,7 @@ function startSurvey(e) {
 }
 
 /**
- * Show the start screen (welcome screen with video)
+ * Show the start screen (welcome screen with video + scale shake)
  */
 export function showStartScreen() {
   const { globals } = getDependencies();
@@ -145,7 +202,7 @@ export function showStartScreen() {
   if (nextBtn) nextBtn.disabled = true;
   if (prevBtn) prevBtn.disabled = true;
   
-  console.log('[START SCREEN] Showing start screen...');
+  console.log('[START SCREEN] Showing start screen with scale+shake...');
   
   if (kioskStartScreen) {
     if (!document.body.contains(kioskStartScreen)) {
@@ -153,39 +210,13 @@ export function showStartScreen() {
     }
     kioskStartScreen.classList.remove('hidden');
 
+    // iPad VIDEO FIRST (before shake) - ensures smooth loop
     if (kioskVideo) {
-      // iOS Video Fix
-      kioskVideo.currentTime = 0;
-      kioskVideo.setAttribute('playsinline', '');
-      kioskVideo.setAttribute('webkit-playsinline', '');
-      kioskVideo.muted = true;
-      kioskVideo.loop = true;
-      
-      const playPromise = kioskVideo.play();
-      
-      // Start shaking IMMEDIATELY regardless of autoplay success
-      startShake();
-      
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          console.log("[VIDEO] Video autoplay started successfully");
-        }).catch(error => {
-          console.warn("[VIDEO] Autoplay prevented:", error.message);
-          
-          // iOS fallback: Play on first touch
-          const playOnTouch = () => {
-            kioskVideo.play().catch(err => {
-              console.warn("[VIDEO] Manual play failed:", err);
-            });
-            document.removeEventListener('touchstart', playOnTouch);
-          };
-          document.addEventListener('touchstart', playOnTouch, { once: true });
-        });
-      }
-    } else {
-      console.log('[VIDEO] No kioskVideo found - starting shake anyway');
-      startShake();
+      setupVideoLoop(kioskVideo);
     }
+
+    // IMMEDIATE scale+shake (works with video)
+    startShake();
 
     // Create bound function
     window.boundStartSurvey = startSurvey.bind(null);

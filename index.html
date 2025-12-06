@@ -2,11 +2,94 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kiosk Survey</title>
+    
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- PWA CONFIGURATION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Theme Color (matches your gradient) -->
+    <meta name="theme-color" content="#667eea">
+    <meta name="msapplication-TileColor" content="#667eea">
+    
+    <!-- iOS Specific Meta Tags (CRITICAL for iPad PWA) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Survey Kiosk">
+    
+    <!-- iOS Touch Icons (iPad) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="/icons/apple-touch-icon-167x167.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152x152.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180x180.png">
+    
+    <!-- iPad Splash Screens (Optional - improves UX) -->
+    <!-- iPad Pro 12.9" (2048x2732) -->
+    <link rel="apple-touch-startup-image" 
+          media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+          href="/splash/splash-2048x2732.png">
+    <link rel="apple-touch-startup-image" 
+          media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)"
+          href="/splash/splash-2732x2048.png">
+    
+    <!-- iPad Pro 11" (1668x2388) -->
+    <link rel="apple-touch-startup-image" 
+          media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+          href="/splash/splash-1668x2388.png">
+    <link rel="apple-touch-startup-image" 
+          media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)"
+          href="/splash/splash-2388x1668.png">
+    
+    <!-- iPad 10.2" (1536x2048) -->
+    <link rel="apple-touch-startup-image" 
+          media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+          href="/splash/splash-1536x2048.png">
+    <link rel="apple-touch-startup-image" 
+          media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)"
+          href="/splash/splash-2048x1536.png">
+    
+    <!-- Standard Favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
+    <link rel="shortcut icon" href="/icons/favicon.ico">
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png">
+    <meta name="msapplication-config" content="/browserconfig.xml">
+    
+    <!-- SEO & Social Meta Tags -->
+    <meta name="description" content="Interactive survey kiosk for visitor feedback. Share your experience and help us improve!">
+    <meta name="keywords" content="survey, kiosk, feedback, visitor experience">
+    <meta name="author" content="Gwinnett County">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://yoursite.com/">
+    <meta property="og:title" content="Survey Kiosk - Share Your Visit Experience">
+    <meta property="og:description" content="Interactive survey kiosk for visitor feedback">
+    <meta property="og:image" content="/icons/icon-512x512.png">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://yoursite.com/">
+    <meta property="twitter:title" content="Survey Kiosk">
+    <meta property="twitter:description" content="Interactive survey kiosk for visitor feedback">
+    <meta property="twitter:image" content="/icons/icon-512x512.png">
+    
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- END PWA CONFIGURATION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    
+    <!-- Your Tailwind CSS -->
     <link rel="stylesheet" href="dist/output.css">
-
+    
+    <!-- Your Custom Styles -->
     <style>
+/* Animation Styles */
 @keyframes shake {
   0% { margin-left: 0px; }
   20% { margin-left: -8px; }
@@ -15,18 +98,107 @@
   80% { margin-left: 8px; }
   100% { margin-left: 0px; }
 }
+
 .shake { 
   animation: shake 0.6s ease-in-out !important; 
 }
+
 #kioskVideo.shake {
   animation: shake 0.6s ease-in-out !important;
 }
-</style>
 
+/* iOS PWA Fullscreen Support */
+:root {
+    /* Safe area insets for notched devices */
+    --safe-area-top: env(safe-area-inset-top);
+    --safe-area-bottom: env(safe-area-inset-bottom);
+    --safe-area-left: env(safe-area-inset-left);
+    --safe-area-right: env(safe-area-inset-right);
+}
 
+body {
+    /* Prevent overscroll bounce on iOS */
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+    
+    /* Account for safe areas on notched devices */
+    padding-top: var(--safe-area-top);
+    padding-bottom: var(--safe-area-bottom);
+    padding-left: var(--safe-area-left);
+    padding-right: var(--safe-area-right);
+}
+
+/* Fullscreen mode adjustments */
+body.standalone-mode {
+    /* Hide scrollbars in fullscreen */
+    overflow: hidden;
+    
+    /* Prevent text selection in kiosk mode */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Prevent accidental zoom on double-tap */
+button, input, textarea, a {
+    touch-action: manipulation;
+}
+
+/* Disable callouts and context menus on iOS */
+* {
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Make touch targets at least 44x44 (Apple guideline) */
+button, a, input[type="radio"], input[type="checkbox"] {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+/* PWA install prompt (optional) */
+.install-prompt {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    padding: 15px 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    z-index: 10000;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateX(-50%) translateY(100px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+    }
+}
+
+.install-prompt.show {
+    display: block;
+}
+    </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
     
+    <!-- Optional: PWA Install Prompt -->
+    <div class="install-prompt" id="installPrompt">
+        <p style="margin: 0 0 10px 0; font-weight: 600; color: #333;">Install Survey Kiosk</p>
+        <p style="margin: 0 0 15px 0; font-size: 14px; color: #666;">Add to home screen for the best experience</p>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="installPWA()" style="padding: 8px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">Install</button>
+            <button onclick="dismissInstallPrompt()" style="padding: 8px 20px; background: #e5e7eb; color: #333; border: none; border-radius: 5px; cursor: pointer;">Not Now</button>
+        </div>
+    </div>
+    
+    <!-- Start Screen -->
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
         <video id="kioskVideo" class="max-w-xl max-h-full" autoplay muted loop playsinline webkit-playsinline>
             <source src="asset/video/1.mp4" type="video/mp4">
@@ -37,6 +209,7 @@
         </div>
     </div>
     
+    <!-- Main Survey Content -->
     <main class="w-full max-w-2xl overflow-hidden min-h-[500px] flex flex-col">
         
         <header class="py-5 px-6 flex justify-between items-center relative">
@@ -71,6 +244,152 @@
             </div>
         </section>
     </main>
+    
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- PWA SERVICE WORKER REGISTRATION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <script>
+        // Check if running as installed PWA
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                            window.navigator.standalone === true;
+        
+        if (isStandalone) {
+            console.log('[PWA] Running as installed app');
+            document.body.classList.add('standalone-mode');
+        } else {
+            console.log('[PWA] Running in browser');
+        }
+        
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then((registration) => {
+                        console.log('[PWA] Service Worker registered successfully:', registration.scope);
+                        
+                        // Check for updates every hour
+                        setInterval(() => {
+                            registration.update();
+                            console.log('[PWA] Checking for updates...');
+                        }, 3600000); // 1 hour
+                        
+                        // Listen for updates
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            console.log('[PWA] New service worker found');
+                            
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('[PWA] New version available');
+                                    // Optionally show update notification
+                                    if (confirm('New version available! Reload to update?')) {
+                                        window.location.reload();
+                                    }
+                                }
+                            });
+                        });
+                    })
+                    .catch((error) => {
+                        console.error('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+
+            // Listen for messages from service worker
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                console.log('[PWA] Message from service worker:', event.data);
+                
+                if (event.data.type === 'BACKGROUND_SYNC') {
+                    console.log('[PWA] Background sync requested');
+                    if (window.dataHandlers && window.dataHandlers.autoSync) {
+                        window.dataHandlers.autoSync();
+                    }
+                }
+            });
+            
+            // Handle service worker updates
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log('[PWA] Service worker controller changed - reloading');
+                window.location.reload();
+            });
+        } else {
+            console.warn('[PWA] Service Workers not supported in this browser');
+        }
+
+        // PWA Install Prompt Handler
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('[PWA] Install prompt available');
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Show custom install prompt (optional)
+            // Only show if not already installed
+            if (!isStandalone) {
+                setTimeout(() => {
+                    const installPrompt = document.getElementById('installPrompt');
+                    if (installPrompt) {
+                        installPrompt.classList.add('show');
+                    }
+                }, 5000); // Show after 5 seconds
+            }
+        });
+        
+        // Install PWA function
+        function installPWA() {
+            if (!deferredPrompt) {
+                console.log('[PWA] Install prompt not available');
+                return;
+            }
+            
+            deferredPrompt.prompt();
+            
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('[PWA] User accepted install');
+                } else {
+                    console.log('[PWA] User dismissed install');
+                }
+                deferredPrompt = null;
+                dismissInstallPrompt();
+            });
+        }
+        
+        // Dismiss install prompt
+        function dismissInstallPrompt() {
+            const installPrompt = document.getElementById('installPrompt');
+            if (installPrompt) {
+                installPrompt.classList.remove('show');
+            }
+        }
+        
+        // Handle successful installation
+        window.addEventListener('appinstalled', () => {
+            console.log('[PWA] App installed successfully');
+            dismissInstallPrompt();
+            deferredPrompt = null;
+        });
+        
+        // Online/Offline detection
+        window.addEventListener('online', () => {
+            console.log('[PWA] Connection restored');
+            // Trigger sync if needed
+            if (window.dataHandlers && window.dataHandlers.autoSync) {
+                window.dataHandlers.autoSync();
+            }
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('[PWA] Connection lost - entering offline mode');
+        });
+        
+        // Log initial online status
+        console.log('[PWA] Online status:', navigator.onLine ? 'Online' : 'Offline');
+    </script>
+    
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- YOUR APPLICATION SCRIPTS (Load in correct order) -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
     
     <!-- CRITICAL: config.js must load FIRST -->
     <script src="config.js"></script>

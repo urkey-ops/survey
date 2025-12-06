@@ -617,129 +617,138 @@
     // --- VIDEO START SCREEN LOGIC ---
     // ---------------------------------------------------------------------
     
-    function cleanupStartScreenListeners() {
-        const kioskStartScreen = window.globals.kioskStartScreen;
-        
-        if (boundStartSurvey && kioskStartScreen) {
-            kioskStartScreen.removeEventListener('click', boundStartSurvey);
-            kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
-            boundStartSurvey = null;
-        }
+  function cleanupStartScreenListeners() {
+    const kioskStartScreen = window.globals.kioskStartScreen;
+    
+    if (boundStartSurvey && kioskStartScreen) {
+        kioskStartScreen.removeEventListener('click', boundStartSurvey);
+        kioskStartScreen.removeEventListener('touchstart', boundStartSurvey);
+        boundStartSurvey = null;
+    }
+}
+
+function startSurvey(e) {
+    const kioskStartScreen = window.globals.kioskStartScreen;
+    const kioskVideo = window.globals.kioskVideo;
+    
+    // Prevent multiple calls
+    if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
+        return;
     }
     
-    function startSurvey(e) {
-        const kioskStartScreen = window.globals.kioskStartScreen;
-        const kioskVideo = window.globals.kioskVideo;
-        
-        // Prevent multiple calls
-        if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
-            return;
-        }
-        
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        
-        console.log('[START] Starting survey...');
-        
-        // Remove event listeners immediately
-        cleanupStartScreenListeners();
-        
-        kioskStartScreen.classList.add('hidden');
-        
-        if (kioskVideo) {
-            kioskVideo.pause();
-        }
-        
-        // PRIORITY FIX #1: Use proper reference to generateUUID
-        if (!appState.formData.id) {
-            appState.formData.id = window.dataHandlers.generateUUID();
-            console.log('[START] Generated new survey ID:', appState.formData.id);
-        }
-        if (!appState.formData.timestamp) {
-            appState.formData.timestamp = new Date().toISOString();
-        }
-        
-        // Start survey timer
-        startSurveyTimer();
-        
-        showQuestion(appState.currentQuestionIndex);
-        resetInactivityTimer();
-
-        setTimeout(() => {
-            if(kioskStartScreen && document.body.contains(kioskStartScreen)) {
-                kioskStartScreen.remove();
-            }
-        }, 400); 
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
     }
+    
+    console.log('[START] Starting survey...');
+    
+    // Remove event listeners immediately
+    cleanupStartScreenListeners();
+    
+    kioskStartScreen.classList.add('hidden');
+    
+    if (kioskVideo) {
+        kioskVideo.pause();
+    }
+    
+    // PRIORITY FIX #1: Use proper reference to generateUUID
+    if (!appState.formData.id) {
+        appState.formData.id = window.dataHandlers.generateUUID();
+        console.log('[START] Generated new survey ID:', appState.formData.id);
+    }
+    if (!appState.formData.timestamp) {
+        appState.formData.timestamp = new Date().toISOString();
+    }
+    
+    // Start survey timer
+    startSurveyTimer();
+    
+    showQuestion(appState.currentQuestionIndex);
+    resetInactivityTimer();
 
-    function showStartScreen() {
-        const kioskStartScreen = window.globals.kioskStartScreen;
-        const kioskVideo = window.globals.kioskVideo;
-        const questionContainer = window.globals.questionContainer;
-        const nextBtn = window.globals.nextBtn;
-        const prevBtn = window.globals.prevBtn;
-        const progressBar = window.globals.progressBar;
-        
-        clearAllTimers();
-        cleanupStartScreenListeners();
-        cleanupInputFocusScroll();
+    setTimeout(() => {
+        if (kioskStartScreen && document.body.contains(kioskStartScreen)) {
+            kioskStartScreen.remove();
+        }
+    }, 400); 
+}
 
-        if (questionContainer) questionContainer.innerHTML = '';
-        if (nextBtn) nextBtn.disabled = true;
-        if (prevBtn) prevBtn.disabled = true;
-        
-        console.log('[START SCREEN] Showing start screen...');
-        
-        if (kioskStartScreen) {
-            if (!document.body.contains(kioskStartScreen)) {
-                document.body.appendChild(kioskStartScreen);
-            }
-            kioskStartScreen.classList.remove('hidden');
+function showStartScreen() {
+    const kioskStartScreen = window.globals.kioskStartScreen;
+    const kioskVideo = window.globals.kioskVideo;
+    const questionContainer = window.globals.questionContainer;
+    const nextBtn = window.globals.nextBtn;
+    const prevBtn = window.globals.prevBtn;
+    const progressBar = window.globals.progressBar;
+    
+    clearAllTimers();
+    cleanupStartScreenListeners();
+    cleanupInputFocusScroll();
 
-            if (kioskVideo) {
-                // iOS Video Fix
-                kioskVideo.currentTime = 0;
-                kioskVideo.setAttribute('playsinline', '');
-                kioskVideo.setAttribute('webkit-playsinline', '');
-                kioskVideo.muted = true;
-                kioskVideo.loop = true;
-                
+    if (questionContainer) questionContainer.innerHTML = '';
+    if (nextBtn) nextBtn.disabled = true;
+    if (prevBtn) prevBtn.disabled = true;
+    
+    console.log('[START SCREEN] Showing start screen...');
+    
+    if (kioskStartScreen) {
+        // Ensure the start screen is attached and visible BEFORE we try to play video
+        if (!document.body.contains(kioskStartScreen)) {
+            document.body.appendChild(kioskStartScreen);
+        }
+        kioskStartScreen.classList.remove('hidden');
+
+        if (kioskVideo) {
+            // iOS video requirements: muted + inline + visible.[web:3][web:7]
+            kioskVideo.currentTime = 0;
+            kioskVideo.muted = true;
+            kioskVideo.setAttribute('muted', '');
+            kioskVideo.setAttribute('playsinline', '');
+            kioskVideo.setAttribute('webkit-playsinline', '');
+            kioskVideo.loop = true;
+
+            // Small defer so layout (including header) settles before play.
+            setTimeout(() => {
                 const playPromise = kioskVideo.play();
-                
-                if (playPromise !== undefined) {
+
+                if (playPromise && playPromise.then) {
                     playPromise.then(() => {
-                        console.log("[VIDEO] Video autoplay started successfully");
+                        console.log('[VIDEO] Video autoplay started successfully');
                     }).catch(error => {
-                        console.warn("[VIDEO] Autoplay prevented:", error.message);
-                        
-                        // iOS fallback: Play on first touch
-                        const playOnTouch = () => {
+                        console.warn('[VIDEO] Autoplay prevented:', error && error.message);
+
+                        // iOS fallback: first user gesture will start video.[web:6]
+                        const playOnUserGesture = () => {
                             kioskVideo.play().catch(err => {
-                                console.warn("[VIDEO] Manual play failed:", err);
+                                console.warn('[VIDEO] Manual play failed:', err);
                             });
-                            document.removeEventListener('touchstart', playOnTouch);
+                            document.removeEventListener('touchstart', playOnUserGesture);
+                            document.removeEventListener('click', playOnUserGesture);
                         };
-                        document.addEventListener('touchstart', playOnTouch, { once: true });
+
+                        document.addEventListener('touchstart', playOnUserGesture, { once: true, passive: true });
+                        document.addEventListener('click', playOnUserGesture, { once: true });
                     });
                 }
-            }
-
-            // Create bound function
-            boundStartSurvey = startSurvey.bind(null);
-            
-            // Add event listeners with proper cleanup
-            kioskStartScreen.addEventListener('click', boundStartSurvey, { once: true });
-            kioskStartScreen.addEventListener('touchstart', boundStartSurvey, { once: true, passive: false });
-            
-            console.log('[START SCREEN] Event listeners attached');
+            }, 50);
         }
 
-        if (progressBar) {
-            progressBar.style.width = '0%';
-        }
+        // Create bound function
+        boundStartSurvey = startSurvey.bind(null);
+        
+        // Add event listeners with proper cleanup
+        kioskStartScreen.addEventListener('click', boundStartSurvey, { once: true });
+        kioskStartScreen.addEventListener('touchstart', boundStartSurvey, { once: true, passive: false });
+        
+        console.log('[START SCREEN] Event listeners attached');
     }
+
+    if (progressBar) {
+        progressBar.style.width = '0%';
+    }
+}
+
 
     // ---------------------------------------------------------------------
     // --- SUBMISSION ---

@@ -5,31 +5,47 @@
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 
 /**
- * Shake animation for start screen attention grabbing
+ * Shake animation for start screen attention grabbing - FIXED VERSION
  */
 function startShake() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
-  if (!kioskStartScreen) return;
+  if (!kioskStartScreen) {
+    console.warn('[SHAKE] No kioskStartScreen found');
+    return;
+  }
 
-  const originalTransform = kioskStartScreen.style.transform || 'none';
+  console.log('[SHAKE] Starting shake animation...');
   
+  const originalTransform = kioskStartScreen.style.transform || '';
   const shakeIntervals = [150, 150, 150, 5000];
   let index = 0;
   
+  function forceRepaint() {
+    kioskStartScreen.offsetHeight; // Trigger reflow
+  }
+  
   function shakeStep() {
-    if (index < shakeIntervals.length) {
-      // Apply shake transform
-      kioskStartScreen.style.transform = 
-        `translateX(${Math.random() * 10 - 5}px) translateY(${Math.random() * 10 - 5}px)`;
-      
-      setTimeout(() => {
-        // Reset transform
-        kioskStartScreen.style.transform = originalTransform;
-        
-        index++;
-        shakeStep();
-      }, shakeIntervals[index]);
+    if (index >= shakeIntervals.length) {
+      console.log('[SHAKE] Shake sequence complete');
+      return;
     }
+    
+    console.log(`[SHAKE] Shake ${index + 1}/${shakeIntervals.length} (${shakeIntervals[index]}ms)`);
+    
+    // Apply shake with forced repaint
+    kioskStartScreen.style.transform = 
+      `translateX(${Math.random() * 20 - 10}px) translateY(${Math.random() * 20 - 10}px) rotate(${Math.random() * 2 - 1}deg)`;
+    
+    forceRepaint();
+    
+    setTimeout(() => {
+      // Reset with forced repaint
+      kioskStartScreen.style.transform = originalTransform;
+      forceRepaint();
+      
+      index++;
+      shakeStep();
+    }, shakeIntervals[index]);
   }
   
   shakeStep();
@@ -166,6 +182,9 @@ export function showStartScreen() {
           document.addEventListener('touchstart', playOnTouch, { once: true });
         });
       }
+    } else {
+      console.log('[VIDEO] No kioskVideo found - starting shake anyway');
+      startShake();
     }
 
     // Create bound function

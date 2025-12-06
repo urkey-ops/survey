@@ -1,113 +1,111 @@
+// FILE: index.html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kiosk Survey</title>
-    <link rel="stylesheet" href="dist/output.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk Survey</title>
+    <link rel="stylesheet" href="dist/output.css">
 
 
 <style>
-  /* --- 1. ATTRACT MODE: Subtle Pulse & Glow --- */
-  /* Replaces the aggressive 'shake-scale' */
-  @keyframes subtle-pulse {
-    0% { 
-      transform: scale(1); 
-      filter: brightness(100%);
-    }
-    50% { 
-      transform: scale(1.025); /* Gentle 2.5% scale up */
-      filter: brightness(110%); /* Slight glow effect */
-    }
-    100% { 
-      transform: scale(1); 
-      filter: brightness(100%);
-    }
-  }
+  /* --- 1. ATTRACT MODE: Subtle Pulse & Glow --- */
+  /* Replaces the aggressive 'shake-scale' */
+  @keyframes subtle-pulse {
+    0% { 
+      transform: scale(1); 
+      filter: brightness(100%);
+    }
+    50% { 
+      transform: scale(1.025); /* Gentle 2.5% scale up */
+      filter: brightness(110%); /* Slight glow effect */
+    }
+    100% { 
+      transform: scale(1); 
+      filter: brightness(100%);
+    }
+  }
 
-  .animate-pulse {
-    animation: subtle-pulse 3s infinite ease-in-out !important;
-    will-change: transform, filter; /* Optimizes performance for iPad */
-  }
+  .animate-pulse {
+    animation: subtle-pulse 3s infinite ease-in-out !important;
+    will-change: transform, filter; /* Optimizes performance for iPad */
+  }
 
-  /* --- 2. INTERACTION: Immediate Touch Feedback --- */
-  /* This runs immediately when the user taps, creating a tactile "click" feel */
-  .active-press {
-    transform: scale(0.96) !important; /* Shrinks slightly to look "pressed" */
-    opacity: 0.8 !important;
-    transition: transform 0.05s ease-out !important; /* Very fast response */
-    animation: none !important; /* Stops the pulse immediately */
-  }
+  /* --- 2. INTERACTION: Immediate Touch Feedback --- */
+  /* This runs immediately when the user taps, creating a tactile "click" feel */
+  .active-press {
+    transform: scale(0.96) !important; /* Shrinks slightly to look "pressed" */
+    opacity: 0.8 !important;
+    transition: transform 0.05s ease-out !important; /* Very fast response */
+    animation: none !important; /* Stops the pulse immediately */
+  }
 
-  /* --- 3. SAFETY: Prevent Video Movement --- */
-  /* Ensures the video background remains stable */
-  #kioskVideo {
-    transform: none !important;
-    animation: none !important;
-    margin: 0 !important;
-  }
+  /* --- 3. SAFETY: Prevent Video Movement --- */
+  /* Ensures the video background remains stable */
+  #kioskVideo {
+    transform: none !important;
+    animation: none !important;
+    margin: 0 !important;
+  }
 </style>
 
 
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
-    
-    <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
-        <video id="kioskVideo" class="max-w-xl max-h-full" autoplay muted loop playsinline webkit-playsinline>
-            <source src="asset/video/1.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-        </video>
-        <div class="mt-12">
-            <p id="rotatingQuestion" class="tap-prompt text-xl">Tap anywhere to begin</p>
-        </div>
-    </div>
-    
-    <main class="w-full max-w-2xl overflow-hidden min-h-[500px] flex flex-col">
-        
-        <header class="py-5 px-6 flex justify-between items-center relative">
-            <h1 id="mainTitle" class="cursor-pointer">Share Your Visit Experience</h1>
-            
-            <div id="adminControls" class="flex flex-col items-end space-y-2">
-                <p class="text-xs font-medium text-emerald-600">Unsynced Records: <span id="unsyncedCountDisplay">0</span></p>
-                
-                <div class="flex items-center space-x-2">
-                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
-                    
-                    <button id="syncButton">Sync Data</button>
-                    <button id="syncAnalyticsButton">Sync Analytics</button>
-                    <button id="adminClearButton">Clear Local</button>
-                    <button id="hideAdminButton">Hide</button>
-                </div>
-            </div>
-            
-            <div class="absolute inset-x-0 bottom-0">
-                <div id="progressBarContainer" class="w-full">
-                    <div id="progressBar" class="h-full" style="width: 0;"></div>
-                </div>
-            </div>
-        </header>
-        
-        <section id="surveyContent" class="p-8 flex-1 flex flex-col justify-center">
-            <div id="questionContainer" class="flex-1 flex flex-col justify-center"></div>
-            
-            <div id="buttonContainer" class="flex justify-between items-center pt-6">
-                <button id="prevBtn" type="button" class="px-6 py-2.5">Back</button>
-                <button id="nextBtn" type="button" class="px-6 py-2.5">Next</button>
-            </div>
-        </section>
-    </main>
-    
-   <!-- Load dependencies first -->
-<script src="config.js"></script>
+    
+    <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
+        <video id="kioskVideo" class="max-w-xl max-h-full" autoplay muted loop playsinline webkit-playsinline>
+            <source src="asset/video/1.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+                <div class="mt-12 content"> 
+            <p id="rotatingQuestion" class="tap-prompt text-xl">Tap anywhere to begin</p>
+        </div>
+    </div>
+    
+    <main class="w-full max-w-2xl overflow-hidden min-h-[500px] flex flex-col">
+        
+        <header class="py-5 px-6 flex justify-between items-center relative">
+            <h1 id="mainTitle" class="cursor-pointer">Share Your Visit Experience</h1>
+            
+            <div id="adminControls" class="flex flex-col items-end space-y-2">
+                <p class="text-xs font-medium text-emerald-600">Unsynced Records: <span id="unsyncedCountDisplay">0</span></p>
+                
+                <div class="flex items-center space-x-2">
+                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
+                    
+                    <button id="syncButton">Sync Data</button>
+                    <button id="syncAnalyticsButton">Sync Analytics</button>
+                    <button id="adminClearButton">Clear Local</button>
+                    <button id="hideAdminButton">Hide</button>
+                </div>
+            </div>
+            
+            <div class="absolute inset-x-0 bottom-0">
+                <div id="progressBarContainer" class="w-full">
+                    <div id="progressBar" class="h-full" style="width: 0;"></div>
+                </div>
+            </div>
+        </header>
+        
+        <section id="surveyContent" class="p-8 flex-1 flex flex-col justify-center">
+            <div id="questionContainer" class="flex-1 flex flex-col justify-center"></div>
+            
+            <div id="buttonContainer" class="flex justify-between items-center pt-6">
+                <button id="prevBtn" type="button" class="px-6 py-2.5">Back</button>
+                <button id="nextBtn" type="button" class="px-6 py-2.5">Next</button>
+            </div>
+        </section>
+    </main>
+    
+   <script src="config.js"></script>
 <script src="appState.js"></script>
 <script src="data-util.js"></script>
 <script type="module" src="sync/dataSync.js"></script>
 
-<!-- Load the bridge file as a module - it will load all other modules -->
 <script type="module" src="uiHandlers.js"></script>
 
-<!-- Load main.js AFTER the module loads -->
-<script type="module" src="main/index.js"></script> 
+<script type="module" src="main/index.js"></script> 
 
 </body>
 </html>

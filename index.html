@@ -72,25 +72,17 @@
         </section>
     </main>
     
-    <!-- CRITICAL: config.js must load FIRST -->
+   <!-- Load dependencies first -->
 <script src="config.js"></script>
-
 <script src="appState.js"></script>
-<script src="dataSync.js"></script>
 <script src="data-util.js"></script>
-    
+<script src="dataSync.js"></script>
 
-<!-- --- NEW: timers --- -->
-<script src="timers/timerManager.js"></script>
-<script src="timers/inactivityHandler.js"></script>
+<!-- Load the bridge file as a module - it will load all other modules -->
+<script type="module" src="uiHandlers.js"></script>
 
-<!-- --- NEW: ui components --- -->
-<script src="ui/navigation.js"></script>
-<script src="ui/typewriterEffect.js"></script>
-<script src="ui/validation.js"></script>
-
-<!-- main.js MUST be last -->
-<script src="main.js"></script>
+<!-- Load main.js AFTER the module loads -->
+<script src="main.js" defer></script>
 
 </body>
 </html>

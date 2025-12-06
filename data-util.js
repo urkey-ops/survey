@@ -1,9 +1,13 @@
 // FILE: data-util.js
-// UPDATED: Use kioskId from config
+// UPDATED: All priority fixes applied - uses configurable AUTO_ADVANCE_DELAY_MS instead of hardcoded values
+
 window.dataUtils = (function() {
 
     // Get kiosk ID from config, fallback to default
     const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
+    
+    // PRIORITY FIX #3: Get auto-advance delay from constants (fallback to 50ms)
+    const AUTO_ADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
     
     const surveyQuestions = [
         
@@ -22,7 +26,7 @@ window.dataUtils = (function() {
         },
         
         {
-            id: 'enjoyed_most', // Renamed ID for clarity, kept name 'comments' for existing data keys
+            id: 'enjoyed_most',
             name: 'comments',
             type: 'textarea',
             question: 'What did you enjoy most about your visit today?',
@@ -35,8 +39,6 @@ window.dataUtils = (function() {
                 "Which aspects of your visit exceeded your expectations?"
             ]
         },
-        
-       
         
         {
             id: 'cleanliness',
@@ -118,7 +120,6 @@ window.dataUtils = (function() {
     const questionRenderers = {
 
         'textarea': {
-            // NOTE: Using q.id for the label/textarea IDs, which is 'enjoyed_most'
             render: (q, data) => `
                 <label id="rotatingQuestion" for="${q.id}" class="block text-gray-700 font-semibold mb-2" aria-live="polite">${q.question}</label>
                 <textarea id="${q.id}" name="${q.name}" rows="4" class="shadow-sm resize-none appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="${q.placeholder}" ${q.required ? 'required' : ''}>${data[q.name] || ''}</textarea>
@@ -159,7 +160,8 @@ window.dataUtils = (function() {
                 container.addEventListener('change', (e) => {
                     if (e.target.name === q.name) {
                         updateData(q.name, e.target.value);
-                        setTimeout(() => handleNextQuestion(), 50);
+                        // PRIORITY FIX: Use configurable delay
+                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                     }
                 });
             }
@@ -186,7 +188,8 @@ window.dataUtils = (function() {
                 container.addEventListener('change', (e) => {
                     if (e.target.name === q.name) {
                         updateData(q.name, e.target.value);
-                        setTimeout(() => handleNextQuestion(), 50);
+                        // PRIORITY FIX: Use configurable delay
+                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                     }
                 });
             }
@@ -212,7 +215,8 @@ window.dataUtils = (function() {
                 container.addEventListener('change', (e) => {
                     if (e.target.name === q.name) {
                         updateData(q.name, e.target.value);
-                        setTimeout(() => handleNextQuestion(), 50);
+                        // PRIORITY FIX: Use configurable delay
+                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                     }
                 });
             }
@@ -253,7 +257,8 @@ window.dataUtils = (function() {
                         } else {
                             otherContainer.classList.add('hidden');
                             updateData('other_location', '');
-                            setTimeout(() => handleNextQuestion(), 50);
+                            // PRIORITY FIX: Use configurable delay
+                            setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                         }
                     }
                 });
@@ -286,7 +291,8 @@ window.dataUtils = (function() {
                 container.addEventListener('change', (e) => {
                     if (e.target.name === q.name) {
                         updateData(q.name, e.target.value);
-                        setTimeout(() => handleNextQuestion(), 50);
+                        // PRIORITY FIX: Use configurable delay
+                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                     }
                 });
             }

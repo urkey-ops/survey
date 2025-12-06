@@ -107,7 +107,7 @@ window.dataUtils = (function() {
             id: 'gift_shop_visit',
             name: 'gift_shop_visit',
             type: 'emoji-radio',
-            question: 'Have you visited Shyona Cafe & the Gift Shop today?',
+            question: 'Have you visited Shayona Cafe & the Gift Shop today?',
             options: [
                 { value: 'Yes', label: 'Yes', emoji: '👍' },
                 { value: 'Going Now', label: 'Going Now', emoji: '🏃‍♂️' },

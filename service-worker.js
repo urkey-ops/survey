@@ -1,10 +1,19 @@
+// SERVICE WORKER - OFFLINE FIRST STRATEGY
 const CACHE_NAME = 'kiosk-survey-v1';
-const urlsToCache = [
+const RUNTIME_CACHE = 'kiosk-runtime-v1';
+
+// Critical files that MUST be cached for offline operation
+const CRITICAL_CACHE = [
   '/',
   '/index.html',
+  '/manifest.json',
+  
+  // Styles
   '/dist/output.css',
   '/custom.css',
   '/input.css',
+  
+  // Core JavaScript
   '/config.js',
   '/appState.js',
   '/data-util.js',
@@ -18,7 +27,7 @@ const urlsToCache = [
   '/main/uiElements.js',
   '/main/visibilityHandler.js',
   
-  // Sync modules
+  // Sync modules (critical for offline-first)
   '/sync/dataSync.js',
   '/sync/analyticsManager.js',
   '/sync/networkHandler.js',
@@ -40,7 +49,7 @@ const urlsToCache = [
   // Assets
   '/asset/video/1.mp4',
   
-  // Icons
+  // Icons (essential for PWA)
   '/icons/icon-72x72.png',
   '/icons/icon-96x96.png',
   '/icons/icon-144x144.png',
@@ -52,93 +61,201 @@ const urlsToCache = [
   '/icons/favicon-32x32.png'
 ];
 
-// Install event - cache resources
+// Install event - Aggressive caching for offline-first
 self.addEventListener('install', event => {
+  console.log('[SW] Installing service worker...');
+  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache).catch(err => {
-          console.error('Cache addAll failed:', err);
-        });
+        console.log('[SW] Caching critical resources');
+        return cache.addAll(CRITICAL_CACHE);
       })
-  );
-  self.skipWaiting(); // Forces the waiting service worker to become active
-});
-
-// Fetch event - Network first for API calls, Cache first for assets
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  
-  // Network first strategy for API calls
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => {
-          return new Response(
-            JSON.stringify({ error: 'Offline - request queued' }), 
-            { 
-              status: 503,
-              headers: { 'Content-Type': 'application/json' }
-            }
-          );
-        })
-    );
-    return;
-  }
-  
-  // Cache first strategy for everything else
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        
-        return fetch(event.request).then(response => {
-          // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type === 'error') {
-            return response;
-          }
-          
-          // Clone the response
-          const responseToCache = response.clone();
-          
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseToCache);
-          });
-          
-          return response;
-        });
+      .then(() => {
+        console.log('[SW] All critical resources cached');
+        return self.skipWaiting(); // Activate immediately
       })
-      .catch(() => {
-        // Return offline page or fallback
-        return new Response('Offline', { status: 503 });
+      .catch(error => {
+        console.error('[SW] Cache installation failed:', error);
       })
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - Clean old caches and take control
 self.addEventListener('activate', event => {
+  console.log('[SW] Activating service worker...');
+  
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => {
-      return self.clients.claim(); // Take control of all pages immediately
+    Promise.all([
+      // Clean old caches
+      caches.keys().then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => {
+            if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE) {
+              console.log('[SW] Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      // Take control of all pages immediately
+      self.clients.claim()
+    ]).then(() => {
+      console.log('[SW] Service worker activated and ready');
     })
   );
 });
 
-// Listen for messages from the client
+// Fetch event - OFFLINE FIRST strategy
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  
+  // Handle API calls specially (Background Sync pattern)
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(handleAPIRequest(event.request));
+    return;
+  }
+  
+  // For all other requests: Cache First, Network Fallback
+  event.respondWith(
+    caches.match(event.request)
+      .then(cachedResponse => {
+        if (cachedResponse) {
+          // Found in cache - return immediately
+          console.log('[SW] Serving from cache:', url.pathname);
+          
+          // Update cache in background (stale-while-revalidate)
+          fetchAndUpdateCache(event.request);
+          
+          return cachedResponse;
+        }
+        
+        // Not in cache - fetch from network and cache it
+        return fetchAndCache(event.request);
+      })
+      .catch(error => {
+        console.error('[SW] Fetch failed for:', url.pathname, error);
+        return new Response('Offline - Resource not available', {
+          status: 503,
+          statusText: 'Service Unavailable'
+        });
+      })
+  );
+});
+
+/**
+ * Handle API requests - Always try network, queue if offline
+ */
+async function handleAPIRequest(request) {
+  try {
+    // Try network first for API calls
+    const networkResponse = await fetch(request);
+    
+    if (networkResponse.ok) {
+      return networkResponse;
+    }
+    
+    // Server error - return error response
+    return new Response(
+      JSON.stringify({ 
+        error: 'Server error', 
+        status: networkResponse.status,
+        offline: false
+      }), 
+      { 
+        status: networkResponse.status,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+    
+  } catch (error) {
+    // Network failed - return offline indicator
+    console.log('[SW] API call failed - Device offline');
+    return new Response(
+      JSON.stringify({ 
+        error: 'Offline - request will be queued',
+        offline: true
+      }), 
+      { 
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
+
+/**
+ * Fetch from network and add to cache
+ */
+async function fetchAndCache(request) {
+  try {
+    const networkResponse = await fetch(request);
+    
+    // Only cache successful GET requests
+    if (networkResponse.ok && request.method === 'GET') {
+      const cache = await caches.open(RUNTIME_CACHE);
+      cache.put(request, networkResponse.clone());
+    }
+    
+    return networkResponse;
+    
+  } catch (error) {
+    console.error('[SW] Network fetch failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update cache in background (don't wait for response)
+ */
+function fetchAndUpdateCache(request) {
+  if (request.method !== 'GET') return;
+  
+  fetch(request)
+    .then(response => {
+      if (response.ok) {
+        caches.open(RUNTIME_CACHE)
+          .then(cache => cache.put(request, response));
+      }
+    })
+    .catch(() => {
+      // Silently fail - we already served from cache
+    });
+}
+
+// Listen for messages from the app
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    event.waitUntil(
+      caches.keys().then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => caches.delete(cacheName))
+        );
+      }).then(() => {
+        self.clients.matchAll().then(clients => {
+          clients.forEach(client => {
+            client.postMessage({ type: 'CACHE_CLEARED' });
+          });
+        });
+      })
+    );
+  }
+});
+
+// Background Sync (when browser supports it)
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-surveys') {
+    console.log('[SW] Background sync triggered');
+    event.waitUntil(
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({ type: 'BACKGROUND_SYNC' });
+        });
+      })
+    );
   }
 });

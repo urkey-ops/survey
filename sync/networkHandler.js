@@ -29,7 +29,7 @@ export async function sendRequest(endpoint, payload, maxRetries = null) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-
+            
             if (!response.ok) {
                 throw new Error(`Server returned status: ${response.status}`);
             }

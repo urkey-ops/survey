@@ -377,5 +377,5 @@ export {
     
     // Enhanced sync
     forceSyncWithWait,
-    getSyncStatus
+   
 };

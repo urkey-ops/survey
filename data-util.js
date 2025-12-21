@@ -25,20 +25,7 @@ window.dataUtils = (function() {
             required: true
         },
         
-        {
-            id: 'enjoyed_most',
-            name: 'comments',
-            type: 'textarea',
-            question: 'What did you enjoy most about your visit today?',
-            placeholder: 'Type your comments here...',
-            required: true,
-            rotatingText: [
-                "What did you enjoy most about your visit today?",
-                "Which part of your visit made you happiest?",
-                "What was the most memorable part of your experience today?",
-                "Which aspects of your visit exceeded your expectations?"
-            ]
-        },
+       
         
         {
             id: 'cleanliness',
@@ -114,6 +101,17 @@ window.dataUtils = (function() {
                 { value: 'Maybe Later', label: 'Maybe Later', emoji: '🤔' }
             ],
             required: true
+        },
+         {
+            id: 'enjoyed_most',
+            name: 'comments',
+            type: 'textarea',
+            question: 'What did you enjoy most about your visit today?',
+            placeholder: 'Type your comments here...',
+            required: true,
+            rotatingText: [
+                "Write us about your experience today. Any comment or suggestion?",
+            ]
         }
     ];
 

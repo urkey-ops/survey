@@ -1,7 +1,6 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
 // DEPENDENCIES: core.js
-
 import { getDependencies, stopQuestionTimer } from './core.js';
 
 /**
@@ -47,8 +46,8 @@ export function submitSurvey() {
   // Add to queue
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 100;
   const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-
   const submissionQueue = dataHandlers.getSubmissionQueue();
+
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
     console.warn(`[QUEUE] Queue full (${MAX_QUEUE_SIZE} records) - removing oldest entry`);
     submissionQueue.shift();
@@ -69,12 +68,12 @@ export function submitSurvey() {
     progressBar.style.width = '100%';
   }
 
-  // Show completion screen
+  // Show completion screen with FIXED SVG viewBox and path
   questionContainer.innerHTML = `
     <div class="checkmark-container">
       <div class="checkmark-circle">
-        <svg class="checkmark-icon" viewBox="0 0 52 52">
-          <path d="M14 27l9 9 19-19"/>
+        <svg class="checkmark-icon" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 30 L25 40 L45 20" fill="none"/>
         </svg>
       </div>
       <div class="text-center">
@@ -94,7 +93,6 @@ export function submitSurvey() {
   appState.countdownInterval = setInterval(() => {
     timeLeft--;
     const countdownEl = document.getElementById('resetCountdown');
-
     if (countdownEl) {
       countdownEl.textContent = `Kiosk resetting in ${timeLeft} seconds...`;
     }

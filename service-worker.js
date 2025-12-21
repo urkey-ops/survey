@@ -1,24 +1,27 @@
-// SERVICE WORKER - OFFLINE FIRST STRATEGY
-const CACHE_NAME = 'kiosk-survey-v1';
-const RUNTIME_CACHE = 'kiosk-runtime-v1';
+// SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS 26 KIOSK SAFE)
+
+// 🔒 Bump versions on every deploy
+const CACHE_NAME = 'kiosk-survey-v2';
+const RUNTIME_CACHE = 'kiosk-runtime-v2';
 
 // Critical files that MUST be cached for offline operation
+// ❗ Do NOT include large media (video) here – iOS install can fail
 const CRITICAL_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
-  
+
   // Styles
   '/dist/output.css',
   '/custom.css',
   '/input.css',
-  
+
   // Core JavaScript
   '/config.js',
   '/appState.js',
   '/data-util.js',
   '/uiHandlers.js',
-  
+
   // Main modules
   '/main/index.js',
   '/main/adminPanel.js',
@@ -26,18 +29,18 @@ const CRITICAL_CACHE = [
   '/main/networkStatus.js',
   '/main/uiElements.js',
   '/main/visibilityHandler.js',
-  
-  // Sync modules (critical for offline-first)
+
+  // Sync modules
   '/sync/dataSync.js',
   '/sync/analyticsManager.js',
   '/sync/networkHandler.js',
   '/sync/queueManager.js',
   '/sync/storageUtils.js',
-  
+
   // Timer modules
   '/timers/inactivityHandler.js',
   '/timers/timerManager.js',
-  
+
   // UI modules
   '/ui/navigation/core.js',
   '/ui/navigation/index.js',
@@ -45,11 +48,8 @@ const CRITICAL_CACHE = [
   '/ui/navigation/submit.js',
   '/ui/typewriterEffect.js',
   '/ui/validation.js',
-  
-  // Assets
-  '/asset/video/1.mp4',
-  
-  // Icons (essential for PWA)
+
+  // Icons
   '/icons/icon-72x72.png',
   '/icons/icon-96x96.png',
   '/icons/icon-144x144.png',
@@ -61,122 +61,120 @@ const CRITICAL_CACHE = [
   '/icons/favicon-32x32.png'
 ];
 
-// Install event - Aggressive caching for offline-first
+// ----------------------------
+// INSTALL
+// ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing service worker...');
-  
+  console.log('[SW] Installing…');
+
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('[SW] Caching critical resources');
-        return cache.addAll(CRITICAL_CACHE);
-      })
-      .then(() => {
-        console.log('[SW] All critical resources cached');
-        return self.skipWaiting(); // Activate immediately
-      })
-      .catch(error => {
-        console.error('[SW] Cache installation failed:', error);
-      })
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      // Use allSettled so ONE bad file does not kill install (iOS safe)
+      await Promise.allSettled(
+        CRITICAL_CACHE.map(url => cache.add(url))
+      );
+
+      await self.skipWaiting();
+      console.log('[SW] Installed');
+    })()
   );
 });
 
-// Activate event - Clean old caches and take control
+// ----------------------------
+// ACTIVATE
+// ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating service worker...');
-  
+  console.log('[SW] Activating…');
+
   event.waitUntil(
-    Promise.all([
-      // Clean old caches
-      caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => {
-            if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE) {
-              console.log('[SW] Deleting old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      }),
-      // Take control of all pages immediately
-      self.clients.claim()
-    ]).then(() => {
-      console.log('[SW] Service worker activated and ready');
-    })
+    (async () => {
+      const keys = await caches.keys();
+
+      await Promise.all(
+        keys.map(key => {
+          if (key !== CACHE_NAME && key !== RUNTIME_CACHE) {
+            console.log('[SW] Deleting old cache:', key);
+            return caches.delete(key);
+          }
+        })
+      );
+
+      await self.clients.claim();
+      console.log('[SW] Activated');
+    })()
   );
 });
 
-// Fetch event - OFFLINE FIRST strategy
+// ----------------------------
+// FETCH
+// ----------------------------
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  
-  // Handle API calls specially (Background Sync pattern)
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(handleAPIRequest(event.request));
+  const request = event.request;
+  const url = new URL(request.url);
+
+  // ✅ Offline-safe navigation fallback (critical for kiosks)
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      caches.match('/index.html').then(res => res || fetch(request))
+    );
     return;
   }
-  
-  // For all other requests: Cache First, Network Fallback
-  event.respondWith(
-    caches.match(event.request)
-      .then(cachedResponse => {
-        if (cachedResponse) {
-          // Found in cache - return immediately
-          console.log('[SW] Serving from cache:', url.pathname);
-          
-          // Update cache in background (stale-while-revalidate)
-          fetchAndUpdateCache(event.request);
-          
-          return cachedResponse;
+
+  // API requests (network-first, offline-aware)
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(handleAPIRequest(request));
+    return;
+  }
+
+  // Cache-first for all other GET requests
+  if (request.method === 'GET') {
+    event.respondWith(
+      caches.match(request).then(cached => {
+        if (cached) {
+          // Update cache in background
+          fetchAndUpdateCache(request);
+          return cached;
         }
-        
-        // Not in cache - fetch from network and cache it
-        return fetchAndCache(event.request);
+        return fetchAndCache(request);
+      }).catch(() => {
+        return new Response('Offline', { status: 503 });
       })
-      .catch(error => {
-        console.error('[SW] Fetch failed for:', url.pathname, error);
-        return new Response('Offline - Resource not available', {
-          status: 503,
-          statusText: 'Service Unavailable'
-        });
-      })
-  );
+    );
+  }
 });
 
-/**
- * Handle API requests - Always try network, queue if offline
- */
+// ----------------------------
+// API HANDLER
+// ----------------------------
 async function handleAPIRequest(request) {
   try {
-    // Try network first for API calls
-    const networkResponse = await fetch(request);
-    
-    if (networkResponse.ok) {
-      return networkResponse;
+    const response = await fetch(request);
+
+    if (response.ok) {
+      return response;
     }
-    
-    // Server error - return error response
+
     return new Response(
-      JSON.stringify({ 
-        error: 'Server error', 
-        status: networkResponse.status,
+      JSON.stringify({
+        error: 'Server error',
+        status: response.status,
         offline: false
-      }), 
-      { 
-        status: networkResponse.status,
+      }),
+      {
+        status: response.status,
         headers: { 'Content-Type': 'application/json' }
       }
     );
-    
-  } catch (error) {
-    // Network failed - return offline indicator
-    console.log('[SW] API call failed - Device offline');
+
+  } catch {
     return new Response(
-      JSON.stringify({ 
-        error: 'Offline - request will be queued',
+      JSON.stringify({
+        error: 'Offline - request queued',
         offline: true
-      }), 
-      { 
+      }),
+      {
         status: 503,
         headers: { 'Content-Type': 'application/json' }
       }
@@ -184,77 +182,72 @@ async function handleAPIRequest(request) {
   }
 }
 
-/**
- * Fetch from network and add to cache
- */
+// ----------------------------
+// FETCH & CACHE
+// ----------------------------
 async function fetchAndCache(request) {
-  try {
-    const networkResponse = await fetch(request);
-    
-    // Only cache successful GET requests
-    if (networkResponse.ok && request.method === 'GET') {
-      const cache = await caches.open(RUNTIME_CACHE);
-      cache.put(request, networkResponse.clone());
-    }
-    
-    return networkResponse;
-    
-  } catch (error) {
-    console.error('[SW] Network fetch failed:', error);
-    throw error;
+  const response = await fetch(request);
+
+  if (response.ok) {
+    const cache = await caches.open(RUNTIME_CACHE);
+    await cache.put(request, response.clone());
   }
+
+  return response;
 }
 
-/**
- * Update cache in background (don't wait for response)
- */
+// ----------------------------
+// STALE-WHILE-REVALIDATE
+// ----------------------------
 function fetchAndUpdateCache(request) {
-  if (request.method !== 'GET') return;
-  
   fetch(request)
     .then(response => {
       if (response.ok) {
-        caches.open(RUNTIME_CACHE)
-          .then(cache => cache.put(request, response));
+        caches.open(RUNTIME_CACHE).then(cache => {
+          cache.put(request, response.clone());
+        });
       }
     })
     .catch(() => {
-      // Silently fail - we already served from cache
+      // Silent fail – kiosk already served cached version
     });
 }
 
-// Listen for messages from the app
+// ----------------------------
+// MESSAGE HANDLING
+// ----------------------------
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (!event.data) return;
+
+  if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
-  if (event.data && event.data.type === 'CLEAR_CACHE') {
+
+  if (event.data.type === 'CLEAR_CACHE') {
     event.waitUntil(
-      caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => caches.delete(cacheName))
+      (async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(key => caches.delete(key)));
+
+        const clients = await self.clients.matchAll();
+        clients.forEach(client =>
+          client.postMessage({ type: 'CACHE_CLEARED' })
         );
-      }).then(() => {
-        self.clients.matchAll().then(clients => {
-          clients.forEach(client => {
-            client.postMessage({ type: 'CACHE_CLEARED' });
-          });
-        });
-      })
+      })()
     );
   }
 });
 
-// Background Sync (when browser supports it)
+// ----------------------------
+// BACKGROUND SYNC (NO-OP ON iOS, SAFE)
+// ----------------------------
 self.addEventListener('sync', event => {
   if (event.tag === 'sync-surveys') {
-    console.log('[SW] Background sync triggered');
     event.waitUntil(
       self.clients.matchAll().then(clients => {
-        clients.forEach(client => {
-          client.postMessage({ type: 'BACKGROUND_SYNC' });
-        });
+        clients.forEach(client =>
+          client.postMessage({ type: 'BACKGROUND_SYNC' })
+        );
       })
     );
   }

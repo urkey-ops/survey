@@ -68,50 +68,20 @@ export function submitSurvey() {
     progressBar.style.width = '100%';
   }
 
-  console.log('[SUBMIT] About to show checkmark - questionContainer:', questionContainer);
-
-  // Show completion screen - using DOM creation instead of innerHTML
-  questionContainer.innerHTML = ''; // Clear first
-  
-  const container = document.createElement('div');
-  container.className = 'checkmark-container';
-  
-  const circle = document.createElement('div');
-  circle.className = 'checkmark-circle';
-  
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'checkmark-icon');
-  svg.setAttribute('viewBox', '0 0 60 60');
-  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', 'M15 30 L25 40 L45 20');
-  path.setAttribute('fill', 'none');
-  
-  svg.appendChild(path);
-  circle.appendChild(svg);
-  
-  const textCenter = document.createElement('div');
-  textCenter.className = 'text-center';
-  
-  const heading = document.createElement('h2');
-  heading.className = 'text-2xl font-bold text-gray-800 mb-2';
-  heading.textContent = 'Thank you for your feedback!';
-  
-  const countdown = document.createElement('p');
-  countdown.id = 'resetCountdown';
-  countdown.className = 'text-gray-500 text-lg font-medium';
-  countdown.textContent = 'Kiosk resetting in 5 seconds...';
-  
-  textCenter.appendChild(heading);
-  textCenter.appendChild(countdown);
-  
-  container.appendChild(circle);
-  container.appendChild(textCenter);
-  
-  questionContainer.appendChild(container);
-  
-  console.log('[SUBMIT] Checkmark added to DOM');
+  // Show completion screen with FIXED SVG viewBox and path
+  questionContainer.innerHTML = `
+    <div class="checkmark-container">
+      <div class="checkmark-circle">
+        <svg class="checkmark-icon" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 30 L25 40 L45 20" fill="none"/>
+        </svg>
+      </div>
+      <div class="text-center">
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">Thank you for your feedback!</h2>
+        <p id="resetCountdown" class="text-gray-500 text-lg font-medium">Kiosk resetting in 5 seconds...</p>
+      </div>
+    </div>
+  `;
 
   prevBtn.disabled = true;
   nextBtn.disabled = true;

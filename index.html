@@ -85,10 +85,16 @@
 <body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
     
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
-        <video id="kioskVideo" class="max-w-xl max-h-full" autoplay muted loop playsinline webkit-playsinline>
-            <source src="asset/video/1.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-        </video>
+       <video id="kioskVideo"
+       class="max-w-xl max-h-full"
+       autoplay
+       muted
+       loop
+       playsinline
+       webkit-playsinline>
+  <source src="/asset/video/1.mp4" type="video/mp4">
+</video>
+
         <div class="mt-12 content"> 
             <p id="rotatingQuestion" class="tap-prompt text-xl">Tap anywhere to begin</p>
         </div>

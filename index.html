@@ -28,16 +28,23 @@
     <link rel="stylesheet" href="dist/output.css">
   
 <style>
+  /* iOS kiosk hard lock - Prevent all zoom */
+  html, body {
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+  }
+  
   /* Disable zoom and touch manipulation */
   * {
-    touch-action: pan-x pan-y;
+    touch-action: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
   
-  input, textarea {
+  input, textarea, button, select {
     touch-action: manipulation;
     -webkit-user-select: text;
+    font-size: 16px !important; /* Prevent iOS zoom on focus */
   }
 
   @keyframes subtle-pulse {
@@ -176,9 +183,9 @@
         lastTouchEnd = now;
       }, false);
       
-      // Prevent pinch zoom
+      // Prevent pinch zoom - catches all multi-touch gestures
       document.addEventListener('touchmove', function(e) {
-        if (e.scale !== 1) {
+        if (e.touches && e.touches.length > 1) {
           e.preventDefault();
         }
       }, { passive: false });

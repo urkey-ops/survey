@@ -27,7 +27,6 @@
     
     <link rel="stylesheet" href="dist/output.css">
   
-
 <style>
   @keyframes subtle-pulse {
     0% { 
@@ -65,22 +64,6 @@
 
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
-
-   <button id="testCheckmarkBtn" onclick="document.getElementById('questionContainer').innerHTML = `
-  <div class='checkmark-container'>
-    <div class='checkmark-circle'>
-      <svg class='checkmark-icon' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'>
-        <path d='M15 30 L25 40 L45 20' fill='none'/>
-      </svg>
-    </div>
-    <div class='text-center'>
-      <h2 class='text-2xl font-bold text-gray-800 mb-2'>Thank you for your feedback!</h2>
-      <p class='text-gray-500 text-lg font-medium'>Test successful!</p>
-    </div>
-  </div>
-`" style="display: none;">
-  Test Checkmark
-</button>
     
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
         <video id="kioskVideo" class="max-w-xl max-h-full" autoplay muted loop playsinline webkit-playsinline>
@@ -133,6 +116,31 @@
     <script type="module" src="sync/dataSync.js"></script>
     <script type="module" src="uiHandlers.js"></script>
     <script type="module" src="main/index.js"></script>
+    
+    <!-- Production-safe checkmark display function -->
+    <script>
+      window.showCheckmark = function() {
+        const container = document.getElementById('questionContainer');
+        if (container) {
+          container.innerHTML = `
+            <div class='checkmark-container'>
+              <div class='checkmark-circle'>
+                <svg class='checkmark-icon' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'>
+                  <path d='M15 30 L25 40 L45 20' fill='none'/>
+                </svg>
+              </div>
+              <div class='text-center'>
+                <h2 class='text-2xl font-bold text-gray-800 mb-2'>Thank you for your feedback!</h2>
+                <p id='resetCountdown' class='text-gray-500 text-lg font-medium'>Kiosk resetting in 5 seconds...</p>
+              </div>
+            </div>
+          `;
+          console.log('[CHECKMARK] Display function executed successfully');
+        } else {
+          console.error('[CHECKMARK] questionContainer not found');
+        }
+      };
+    </script>
     
     <!-- Service Worker Registration -->
     <script>

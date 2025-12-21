@@ -34,11 +34,16 @@
     -webkit-text-size-adjust: 100%;
   }
   
-  /* Disable zoom and touch manipulation */
-  * {
+  /* Disable zoom and touch manipulation - BUT NOT ON VIDEO */
+  body, main, header, section, div:not(#kioskStartScreen) {
     touch-action: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+  }
+  
+  /* CRITICAL: Allow touch on video and start screen for iOS playback */
+  #kioskStartScreen, #kioskVideo, video {
+    touch-action: auto !important;
   }
   
   input, textarea, button, select {
@@ -92,7 +97,8 @@
        loop
        playsinline
        webkit-playsinline>
-  <source src="/asset/video/1.mp4" type="video/mp4">
+  <source src="asset/video/1.mp4" type="video/mp4">
+  Your browser does not support the video tag.
 </video>
 
         <div class="mt-12 content"> 
@@ -208,7 +214,7 @@
                     .catch(error => {
                         console.log('ServiceWorker registration failed:', error);
                     });
-            });
+                });
         }
     </script>
 </body>

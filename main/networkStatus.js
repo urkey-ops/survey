@@ -62,14 +62,19 @@ function handleOffline() {
         syncStatusMessage.style.color = '#ea580c'; // orange-600
     }
     
-    // Show persistent offline indicator
-    showOfflineIndicator();
+    // DISABLED: Visual offline indicator removed
+    // showOfflineIndicator();
 }
 
 /**
- * Show persistent offline indicator
+ * Show persistent offline indicator - DISABLED
  */
 function showOfflineIndicator() {
+    // DISABLED: No visual indicator will be shown
+    console.log('[NETWORK] Offline indicator disabled - running silently');
+    return;
+    
+    /* ORIGINAL CODE KEPT FOR REFERENCE - COMMENTED OUT
     // Check if indicator already exists
     let indicator = document.getElementById('offline-indicator');
     
@@ -93,6 +98,7 @@ function showOfflineIndicator() {
         indicator.textContent = '📱 Offline Mode';
         document.body.appendChild(indicator);
     }
+    */
 }
 
 /**
@@ -118,7 +124,8 @@ function checkInitialStatus() {
             syncStatusMessage.textContent = '📱 Starting in offline mode';
             syncStatusMessage.style.color = '#ea580c';
         }
-        showOfflineIndicator();
+        // DISABLED: No visual indicator
+        // showOfflineIndicator();
         console.log('[NETWORK] ⚠️ Starting in OFFLINE mode');
     } else {
         isCurrentlyOnline = true;

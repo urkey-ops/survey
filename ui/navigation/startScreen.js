@@ -7,7 +7,7 @@ import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } fro
 
 // BATTERY CONFIG: Adjust PLAY_INTERVAL to control how often video plays
 const VIDEO_CONFIG = {
-  PLAY_INTERVAL: 30000,  // Play video every 60 seconds (change to 45000 for 45s, 30000 for 30s)
+  PLAY_INTERVAL: 20000,  // Play video every 60 seconds (change to 45000 for 45s, 30000 for 30s)
   VIDEO_DURATION: 5000,  // Your video is 5 seconds long
 };
 
@@ -62,49 +62,54 @@ function setupVideoLoop(kioskVideo) {
   console.log(`[VIDEO] Playing 5s every ${VIDEO_CONFIG.PLAY_INTERVAL / 1000}s`);
   
   // Setup video attributes (no loop - we control it manually)
-  kioskVideo.currentTime = 0;
   kioskVideo.setAttribute('playsinline', '');
   kioskVideo.setAttribute('webkit-playsinline', '');
   kioskVideo.setAttribute('muted', 'muted');
+  kioskVideo.muted = true; // Extra insurance for iOS
   kioskVideo.loop = false; // Important: we control playback manually
   kioskVideo.preload = 'auto';
   
   const playVideoOnce = () => {
-    if (!kioskVideo || kioskVideo.paused === false) return;
+    if (!kioskVideo) return;
     
+    // Reset to start
     kioskVideo.currentTime = 0;
-    const playPromise = kioskVideo.play();
     
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => {
-          console.log("[VIDEO] ▶️ Playing 5-second clip...");
-          
-          // Auto-pause after video ends
-          setTimeout(() => {
-            if (kioskVideo && !kioskVideo.paused) {
-              kioskVideo.pause();
-              console.log("[VIDEO] ⏸️ Paused - Battery saving");
-            }
-          }, VIDEO_CONFIG.VIDEO_DURATION);
-        })
-        .catch(error => {
-          console.warn("[VIDEO] iPad autoplay blocked:", error.message);
-          // iPad touch fallback
-          document.addEventListener('touchstart', () => {
-            playVideoOnce();
-          }, { once: true });
-        });
-    }
+    // Small delay to ensure video is ready (fixes race condition)
+    setTimeout(() => {
+      if (!kioskVideo || kioskVideo.paused === false) return;
+      
+      const playPromise = kioskVideo.play();
+      
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log("[VIDEO] ▶️ Playing 5-second clip...");
+            
+            // Auto-pause after video ends
+            setTimeout(() => {
+              if (kioskVideo && !kioskVideo.paused) {
+                kioskVideo.pause();
+                console.log("[VIDEO] ⏸️ Paused - Battery saving");
+              }
+            }, VIDEO_CONFIG.VIDEO_DURATION);
+          })
+          .catch(error => {
+            console.warn("[VIDEO] Autoplay failed:", error.message);
+            console.log("[VIDEO] Will retry on next interval or user touch");
+          });
+      }
+    }, 100); // 100ms delay allows DOM to settle
   };
   
-  // Play immediately when start screen loads
-  playVideoOnce();
-  
-  // Clear any existing interval
+  // Clear any existing interval first
   if (videoPlaybackInterval) {
     clearInterval(videoPlaybackInterval);
+    videoPlaybackInterval = null;
   }
+  
+  // Play immediately when start screen loads (after small delay)
+  playVideoOnce();
   
   // Setup interval to replay video periodically
   videoPlaybackInterval = setInterval(() => {
@@ -263,6 +268,16 @@ export function showStartScreen() {
 
     // BATTERY OPTIMIZATION: Setup intermittent video playback
     if (kioskVideo) {
+      // Add one-time touch listener as fallback for iOS autoplay issues
+      const touchFallback = () => {
+        if (kioskVideo.paused) {
+          kioskVideo.play().catch(err => 
+            console.warn('[VIDEO] Touch fallback failed:', err)
+          );
+        }
+      };
+      kioskStartScreen.addEventListener('touchstart', touchFallback, { once: true, passive: true });
+      
       setupVideoLoop(kioskVideo);
     }
 

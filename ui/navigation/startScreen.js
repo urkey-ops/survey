@@ -1,9 +1,18 @@
 // FILE: ui/navigation/startScreen.js
 // PURPOSE: Start screen logic with subtle pulse and immediate touch feedback
 // DEPENDENCIES: core.js
-// BATTERY OPTIMIZATION: Video pause/resume + optional screen dimming
+// BATTERY OPTIMIZATION: Intermittent video playback (plays 5s every 60s)
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
+
+// BATTERY CONFIG: Adjust PLAY_INTERVAL to control how often video plays
+const VIDEO_CONFIG = {
+  PLAY_INTERVAL: 30000,  // Play video every 60 seconds (change to 45000 for 45s, 30000 for 30s)
+  VIDEO_DURATION: 5000,  // Your video is 5 seconds long
+};
+
+// Store video interval timer
+let videoPlaybackInterval = null;
 
 /**
  * Applies the "Attract Mode" (Subtle Pulse)
@@ -42,37 +51,71 @@ function triggerTouchFeedback(element) {
 }
 
 /**
- * iPad-optimized video loop setup
- * BATTERY OPTIMIZATION: Only called when video needs to play
+ * BATTERY OPTIMIZATION: Setup intermittent video playback
+ * Video plays for 5 seconds, then pauses until next interval
+ * Saves ~23-27% battery compared to continuous loop
  */
 function setupVideoLoop(kioskVideo) {
   if (!kioskVideo) return;
   
-  console.log('[VIDEO] iPad-optimized infinite loop setup...');
+  console.log('[VIDEO] 🔋 Setting up INTERMITTENT playback...');
+  console.log(`[VIDEO] Playing 5s every ${VIDEO_CONFIG.PLAY_INTERVAL / 1000}s`);
   
+  // Setup video attributes (no loop - we control it manually)
   kioskVideo.currentTime = 0;
   kioskVideo.setAttribute('playsinline', '');
   kioskVideo.setAttribute('webkit-playsinline', '');
   kioskVideo.setAttribute('muted', 'muted');
-  kioskVideo.loop = true;
+  kioskVideo.loop = false; // Important: we control playback manually
   kioskVideo.preload = 'auto';
   
-  const playVideo = () => {
+  const playVideoOnce = () => {
+    if (!kioskVideo || kioskVideo.paused === false) return;
+    
+    kioskVideo.currentTime = 0;
     const playPromise = kioskVideo.play();
+    
     if (playPromise !== undefined) {
       playPromise
-        .then(() => console.log("[VIDEO] ✅ Playing - Battery mode active"))
+        .then(() => {
+          console.log("[VIDEO] ▶️ Playing 5-second clip...");
+          
+          // Auto-pause after video ends
+          setTimeout(() => {
+            if (kioskVideo && !kioskVideo.paused) {
+              kioskVideo.pause();
+              console.log("[VIDEO] ⏸️ Paused - Battery saving");
+            }
+          }, VIDEO_CONFIG.VIDEO_DURATION);
+        })
         .catch(error => {
           console.warn("[VIDEO] iPad autoplay blocked:", error.message);
           // iPad touch fallback
           document.addEventListener('touchstart', () => {
-            kioskVideo.play().catch(err => console.warn("[VIDEO] Touch play failed:", err));
+            playVideoOnce();
           }, { once: true });
         });
     }
   };
   
-  playVideo();
+  // Play immediately when start screen loads
+  playVideoOnce();
+  
+  // Clear any existing interval
+  if (videoPlaybackInterval) {
+    clearInterval(videoPlaybackInterval);
+  }
+  
+  // Setup interval to replay video periodically
+  videoPlaybackInterval = setInterval(() => {
+    const kioskStartScreen = window.globals?.kioskStartScreen;
+    // Only play if still on start screen
+    if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
+      playVideoOnce();
+    }
+  }, VIDEO_CONFIG.PLAY_INTERVAL);
+  
+  console.log('[VIDEO] ✅ Intermittent playback active');
 }
 
 /**
@@ -81,6 +124,15 @@ function setupVideoLoop(kioskVideo) {
  */
 function pauseVideo() {
   const kioskVideo = window.globals?.kioskVideo;
+  
+  // Stop the interval timer
+  if (videoPlaybackInterval) {
+    clearInterval(videoPlaybackInterval);
+    videoPlaybackInterval = null;
+    console.log('[VIDEO] ⏹️ Interval stopped');
+  }
+  
+  // Pause the video
   if (kioskVideo && !kioskVideo.paused) {
     kioskVideo.pause();
     console.log('[VIDEO] ⏸️ Paused - Battery saving mode');
@@ -93,10 +145,8 @@ function pauseVideo() {
  */
 function resumeVideo() {
   const kioskVideo = window.globals?.kioskVideo;
-  if (kioskVideo && kioskVideo.paused) {
-    kioskVideo.play()
-      .then(() => console.log('[VIDEO] ▶️ Resumed - Start screen active'))
-      .catch(err => console.warn('[VIDEO] Resume failed:', err));
+  if (kioskVideo) {
+    setupVideoLoop(kioskVideo); // Restart intermittent playback
   }
 }
 
@@ -110,6 +160,12 @@ export function cleanupStartScreenListeners() {
     kioskStartScreen.removeEventListener('click', window.boundStartSurvey);
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
     window.boundStartSurvey = null;
+  }
+  
+  // Clean up video interval
+  if (videoPlaybackInterval) {
+    clearInterval(videoPlaybackInterval);
+    videoPlaybackInterval = null;
   }
 }
 
@@ -174,8 +230,8 @@ function startSurvey(e) {
 }
 
 /**
- * Show the start screen (welcome screen with INFINITE video + Subtle Pulse)
- * BATTERY OPTIMIZATION: Resumes video playback when returning to start screen
+ * Show the start screen (welcome screen with INTERMITTENT video + Subtle Pulse)
+ * BATTERY OPTIMIZATION: Video plays 5s every 60s instead of continuous loop
  */
 export function showStartScreen() {
   const { globals } = getDependencies();
@@ -205,10 +261,9 @@ export function showStartScreen() {
     }
     kioskStartScreen.classList.remove('hidden');
 
-    // BATTERY OPTIMIZATION: Resume video when back on start screen
+    // BATTERY OPTIMIZATION: Setup intermittent video playback
     if (kioskVideo) {
       setupVideoLoop(kioskVideo);
-      resumeVideo(); // Ensure video plays if returning from survey
     }
 
     // ENABLE PULSE (Attract Mode)

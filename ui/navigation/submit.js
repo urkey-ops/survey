@@ -68,20 +68,28 @@ export function submitSurvey() {
     progressBar.style.width = '100%';
   }
 
-  // Show completion screen with FIXED SVG viewBox and path
-  questionContainer.innerHTML = `
-    <div class="checkmark-container">
-      <div class="checkmark-circle">
-        <svg class="checkmark-icon" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15 30 L25 40 L45 20" fill="none"/>
-        </svg>
+  console.log('[SUBMIT] About to display checkmark...');
+
+  // Show completion screen using global function
+  if (typeof window.showCheckmark === 'function') {
+    window.showCheckmark();
+  } else {
+    console.error('[SUBMIT] window.showCheckmark function not found!');
+    // Fallback: direct innerHTML
+    questionContainer.innerHTML = `
+      <div class="checkmark-container">
+        <div class="checkmark-circle">
+          <svg class="checkmark-icon" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 30 L25 40 L45 20" fill="none"/>
+          </svg>
+        </div>
+        <div class="text-center">
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">Thank you for your feedback!</h2>
+          <p id="resetCountdown" class="text-gray-500 text-lg font-medium">Kiosk resetting in 5 seconds...</p>
+        </div>
       </div>
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-800 mb-2">Thank you for your feedback!</h2>
-        <p id="resetCountdown" class="text-gray-500 text-lg font-medium">Kiosk resetting in 5 seconds...</p>
-      </div>
-    </div>
-  `;
+    `;
+  }
 
   prevBtn.disabled = true;
   nextBtn.disabled = true;

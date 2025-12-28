@@ -1,11 +1,12 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS 26 KIOSK SAFE)
+// UPDATED: Now caches video with special handling for large media files
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v2';
-const RUNTIME_CACHE = 'kiosk-runtime-v2';
+const CACHE_NAME = 'kiosk-survey-v3'; // BUMPED from v2 to v3
+const RUNTIME_CACHE = 'kiosk-runtime-v3'; // BUMPED from v2 to v3
+const MEDIA_CACHE = 'kiosk-media-v1'; // NEW: Separate cache for video
 
 // Critical files that MUST be cached for offline operation
-// ❗ Do NOT include large media (video) here – iOS install can fail
 const CRITICAL_CACHE = [
   '/',
   '/index.html',
@@ -61,23 +62,64 @@ const CRITICAL_CACHE = [
   '/icons/favicon-32x32.png'
 ];
 
+// NEW: Media files cached separately to prevent install failures
+const MEDIA_FILES = [
+  '/asset/video/1.mp4'
+];
+
 // ----------------------------
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing…');
+  console.log('[SW] Installing v3 with video caching...');
 
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(CACHE_NAME);
-
+      // Step 1: Cache critical files first (must succeed)
+      const criticalCache = await caches.open(CACHE_NAME);
+      
       // Use allSettled so ONE bad file does not kill install (iOS safe)
-      await Promise.allSettled(
-        CRITICAL_CACHE.map(url => cache.add(url))
+      const criticalResults = await Promise.allSettled(
+        CRITICAL_CACHE.map(url => criticalCache.add(url))
       );
+      
+      const criticalFailed = criticalResults.filter(r => r.status === 'rejected');
+      if (criticalFailed.length > 0) {
+        console.warn('[SW] Some critical files failed to cache:', criticalFailed.length);
+      }
+      
+      // Step 2: Cache media files separately (can fail without breaking install)
+      const mediaCache = await caches.open(MEDIA_CACHE);
+      
+      const mediaResults = await Promise.allSettled(
+        MEDIA_FILES.map(async (url) => {
+          try {
+            // Use fetch with no-cors mode for better compatibility
+            const response = await fetch(url, { 
+              mode: 'no-cors',
+              cache: 'force-cache' 
+            });
+            
+            if (response.ok || response.type === 'opaque') {
+              await mediaCache.put(url, response);
+              console.log('[SW] ✅ Cached video:', url);
+              return url;
+            } else {
+              throw new Error(`Failed to fetch ${url}: ${response.status}`);
+            }
+          } catch (error) {
+            console.warn('[SW] ⚠️ Could not cache video:', url, error.message);
+            // Don't throw - allow install to succeed even if video caching fails
+            return null;
+          }
+        })
+      );
+      
+      const mediaSuccessCount = mediaResults.filter(r => r.status === 'fulfilled' && r.value).length;
+      console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] Installed');
+      console.log('[SW] ✅ Installed v3');
     })()
   );
 });
@@ -86,15 +128,16 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating…');
+  console.log('[SW] Activating v3...');
 
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
 
+      // Clean up old caches but keep current ones
       await Promise.all(
         keys.map(key => {
-          if (key !== CACHE_NAME && key !== RUNTIME_CACHE) {
+          if (key !== CACHE_NAME && key !== RUNTIME_CACHE && key !== MEDIA_CACHE) {
             console.log('[SW] Deleting old cache:', key);
             return caches.delete(key);
           }
@@ -102,7 +145,7 @@ self.addEventListener('activate', event => {
       );
 
       await self.clients.claim();
-      console.log('[SW] Activated');
+      console.log('[SW] ✅ Activated v3');
     })()
   );
 });
@@ -119,6 +162,12 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       caches.match('/index.html').then(res => res || fetch(request))
     );
+    return;
+  }
+
+  // NEW: Special handling for video files
+  if (url.pathname.startsWith('/asset/video/')) {
+    event.respondWith(handleVideoRequest(request));
     return;
   }
 
@@ -144,6 +193,58 @@ self.addEventListener('fetch', event => {
     );
   }
 });
+
+// ----------------------------
+// VIDEO HANDLER (NEW)
+// ----------------------------
+async function handleVideoRequest(request) {
+  try {
+    // Try media cache first (fast path for offline)
+    const mediaCache = await caches.open(MEDIA_CACHE);
+    const cached = await mediaCache.match(request);
+    
+    if (cached) {
+      console.log('[SW] Serving video from cache');
+      return cached;
+    }
+    
+    // If not in cache, try to fetch
+    console.log('[SW] Video not in cache, fetching...');
+    const response = await fetch(request, {
+      cache: 'force-cache' // Use browser cache if available
+    });
+    
+    if (response.ok) {
+      // Cache the video for next time
+      const responseToCache = response.clone();
+      mediaCache.put(request, responseToCache).catch(err => {
+        console.warn('[SW] Could not cache video:', err);
+      });
+      
+      return response;
+    }
+    
+    throw new Error('Video fetch failed');
+    
+  } catch (error) {
+    console.error('[SW] Video request failed:', error);
+    
+    // Last resort: try runtime cache or main cache
+    const runtimeCache = await caches.open(RUNTIME_CACHE);
+    const fallback = await runtimeCache.match(request);
+    
+    if (fallback) {
+      console.log('[SW] Serving video from fallback cache');
+      return fallback;
+    }
+    
+    // Return error response
+    return new Response('Video unavailable offline', { 
+      status: 503,
+      statusText: 'Service Unavailable'
+    });
+  }
+}
 
 // ----------------------------
 // API HANDLER
@@ -232,6 +333,34 @@ self.addEventListener('message', event => {
         const clients = await self.clients.matchAll();
         clients.forEach(client =>
           client.postMessage({ type: 'CACHE_CLEARED' })
+        );
+      })()
+    );
+  }
+  
+  // NEW: Force video re-cache
+  if (event.data.type === 'RECACHE_VIDEO') {
+    event.waitUntil(
+      (async () => {
+        console.log('[SW] Re-caching video...');
+        const mediaCache = await caches.open(MEDIA_CACHE);
+        
+        for (const videoUrl of MEDIA_FILES) {
+          try {
+            await mediaCache.delete(videoUrl);
+            const response = await fetch(videoUrl, { cache: 'reload' });
+            if (response.ok) {
+              await mediaCache.put(videoUrl, response);
+              console.log('[SW] ✅ Re-cached:', videoUrl);
+            }
+          } catch (error) {
+            console.error('[SW] ❌ Failed to re-cache:', videoUrl, error);
+          }
+        }
+        
+        const clients = await self.clients.matchAll();
+        clients.forEach(client =>
+          client.postMessage({ type: 'VIDEO_RECACHED' })
         );
       })()
     );

@@ -1,6 +1,7 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel functionality and debug commands
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, window.globals
+// UPDATED: Added PWA update check button handler
 
 /**
  * Get dependencies
@@ -243,6 +244,52 @@ function setupDebugCommands() {
 }
 
 /**
+ * NEW: Setup Check Update button
+ * Allows manual PWA update checking
+ */
+function setupCheckUpdateButton() {
+    const checkUpdateButton = document.getElementById('checkUpdateButton');
+    
+    if (!checkUpdateButton) {
+        console.warn('[ADMIN] Check Update button not found in HTML');
+        return;
+    }
+    
+    checkUpdateButton.addEventListener('click', async () => {
+        console.log('[ADMIN] 🔄 Manual update check triggered');
+        
+        // Disable button during check
+        checkUpdateButton.disabled = true;
+        const originalText = checkUpdateButton.textContent;
+        checkUpdateButton.textContent = 'Checking...';
+        
+        try {
+            if (window.pwaUpdateManager) {
+                // Force update check and apply if available
+                await window.pwaUpdateManager.forceUpdate();
+            } else {
+                console.error('[ADMIN] PWA Update Manager not initialized');
+                alert('Update manager not available. Please refresh the page.');
+            }
+        } catch (error) {
+            console.error('[ADMIN] Update check failed:', error);
+            alert('Update check failed. Check console for details.');
+        } finally {
+            // Re-enable button after 2 seconds
+            setTimeout(() => {
+                checkUpdateButton.disabled = false;
+                checkUpdateButton.textContent = originalText;
+            }, 2000);
+        }
+        
+        // Reset admin panel timer
+        resetAdminPanelTimer();
+    });
+    
+    console.log('[ADMIN] ✅ Check Update button configured');
+}
+
+/**
  * Setup all admin panel functionality
  */
 export function setupAdminPanel() {
@@ -339,6 +386,9 @@ export function setupAdminPanel() {
             resetAdminPanelTimer();
         });
     }
+    
+    // NEW: Setup Check Update button
+    setupCheckUpdateButton();
     
     // Keep admin panel open on interaction
     if (adminControls) {

@@ -93,16 +93,20 @@
         <div class="mb-8 content">
             <h2 class="text-3xl font-bold text-center animate-pulse">Share Your Visit Experience</h2>
         </div>
-        
+
+
         <video id="kioskVideo"
        class="max-w-xl max-h-full"
        autoplay
        muted
        playsinline
-       webkit-playsinline>
+       webkit-playsinline
+       preload="auto"
+       disableRemotePlayback
+       x-webkit-airplay="deny">
   <source src="asset/video/1.mp4" type="video/mp4">
   Your browser does not support the video tag.
-</video>
+
 
         <div class="mt-12 content"> 
             <p id="rotatingQuestion" class="tap-prompt text-xl">Tap anywhere to begin</p>

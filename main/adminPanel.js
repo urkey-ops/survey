@@ -1,6 +1,7 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel functionality and debug commands
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, window.globals
+// UPDATED: Added PWA update check button handler
 
 /**
  * Get dependencies
@@ -243,6 +244,102 @@ function setupDebugCommands() {
 }
 
 /**
+ * NEW: Setup Check Update button
+ * Allows manual PWA update checking
+ */
+function setupCheckUpdateButton() {
+    const checkUpdateButton = document.getElementById('checkUpdateButton');
+    
+    if (!checkUpdateButton) {
+        console.warn('[ADMIN] Check Update button not found in HTML');
+        return;
+    }
+    
+    checkUpdateButton.addEventListener('click', async () => {
+        console.log('[ADMIN] 🔄 Manual update check triggered');
+        
+        // Disable button during check
+        checkUpdateButton.disabled = true;
+        const originalText = checkUpdateButton.textContent;
+        checkUpdateButton.textContent = 'Checking...';
+        
+        try {
+            if (window.pwaUpdateManager) {
+                // Force update check and apply if available
+                await window.pwaUpdateManager.forceUpdate();
+            } else {
+                console.error('[ADMIN] PWA Update Manager not initialized');
+                alert('Update manager not available. Please refresh the page.');
+            }
+        } catch (error) {
+            console.error('[ADMIN] Update check failed:', error);
+            alert('Update check failed. Check console for details.');
+        } finally {
+            // Re-enable button after 2 seconds
+            setTimeout(() => {
+                checkUpdateButton.disabled = false;
+                checkUpdateButton.textContent = originalText;
+            }, 2000);
+        }
+        
+        // Reset admin panel timer
+        resetAdminPanelTimer();
+    });
+    
+    console.log('[ADMIN] ✅ Check Update button configured');
+}
+
+/**
+ * NEW: Setup Fix Video button
+ * Emergency nuclear reload for video after battery death
+ */
+function setupFixVideoButton() {
+    const fixVideoButton = document.getElementById('fixVideoButton');
+    
+    if (!fixVideoButton) {
+        console.warn('[ADMIN] Fix Video button not found in HTML');
+        return;
+    }
+    
+    fixVideoButton.addEventListener('click', async () => {
+        console.log('[ADMIN] 🎬 Manual video fix triggered');
+        
+        // Disable button during fix
+        fixVideoButton.disabled = true;
+        const originalText = fixVideoButton.textContent;
+        fixVideoButton.textContent = 'Fixing...';
+        
+        try {
+            // Import startScreen module and trigger nuclear reload
+            const startScreenModule = await import('../ui/navigation/startScreen.js');
+            
+            if (startScreenModule.triggerNuclearReload) {
+                startScreenModule.triggerNuclearReload();
+                console.log('[ADMIN] ✅ Video nuclear reload triggered');
+                alert('Video has been reset. Check if it plays now.');
+            } else {
+                console.error('[ADMIN] Nuclear reload function not available');
+                alert('Video fix function not available');
+            }
+        } catch (error) {
+            console.error('[ADMIN] Video fix failed:', error);
+            alert('Video fix failed. Try reloading the page.');
+        } finally {
+            // Re-enable button after 2 seconds
+            setTimeout(() => {
+                fixVideoButton.disabled = false;
+                fixVideoButton.textContent = originalText;
+            }, 2000);
+        }
+        
+        // Reset admin panel timer
+        resetAdminPanelTimer();
+    });
+    
+    console.log('[ADMIN] ✅ Fix Video button configured');
+}
+
+/**
  * Setup all admin panel functionality
  */
 export function setupAdminPanel() {
@@ -339,6 +436,12 @@ export function setupAdminPanel() {
             resetAdminPanelTimer();
         });
     }
+    
+    // NEW: Setup Check Update button
+    setupCheckUpdateButton();
+    
+    // NEW: Setup Fix Video button (for battery death recovery)
+    setupFixVideoButton();
     
     // Keep admin panel open on interaction
     if (adminControls) {

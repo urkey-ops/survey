@@ -94,6 +94,55 @@ function handlePageShow(event) {
         } else {
             window.isKioskVisible = true;
         }
+    } else {
+        // Page loaded fresh (not from cache)
+        // This happens after iPad battery death + restart
+        console.log('[VISIBILITY] 🔋 Fresh page load detected (possible battery death recovery)');
+        
+        // Give iPad time to fully wake up, then check video
+        setTimeout(() => {
+            checkVideoHealthAfterBatteryDeath();
+        }, 2000);
+    }
+}
+
+/**
+ * Check video health after potential battery death
+ * iPad battery death causes aggressive cache clearing
+ */
+function checkVideoHealthAfterBatteryDeath() {
+    const kioskVideo = window.globals?.kioskVideo;
+    const kioskStartScreen = window.globals?.kioskStartScreen;
+    
+    // Only check if on start screen
+    if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
+        return;
+    }
+    
+    if (!kioskVideo) {
+        console.error('[VISIBILITY] ⚠️ Video element missing after page load');
+        return;
+    }
+    
+    // Check if video is in a broken state
+    const hasSrc = kioskVideo.src || kioskVideo.currentSrc;
+    const hasValidState = kioskVideo.readyState > 0;
+    const hasSource = kioskVideo.querySelector('source');
+    
+    if (!hasSrc && !hasSource) {
+        console.error('[VISIBILITY] 💥 Video completely corrupted - triggering nuclear reload');
+        
+        // Import and trigger nuclear reload
+        import('../ui/navigation/startScreen.js').then(module => {
+            if (module.triggerNuclearReload) {
+                module.triggerNuclearReload();
+            }
+        });
+    } else if (!hasValidState) {
+        console.warn('[VISIBILITY] ⚠️ Video in invalid state - forcing reload');
+        handleVideoOnVisible();
+    } else {
+        console.log('[VISIBILITY] ✅ Video health check passed');
     }
 }
 

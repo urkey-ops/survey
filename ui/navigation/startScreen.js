@@ -63,7 +63,74 @@ function reloadVideoSource(video) {
       videoState.hasLoaded = false; // Reset load state
       console.log('[VIDEO] Source reloaded');
     }, 100);
+  } else {
+    // CRITICAL: If no source found, video is completely corrupted
+    console.error('[VIDEO] 💥 Video source lost - attempting nuclear reload');
+    nuclearVideoReload(video);
   }
+}
+
+/**
+ * NUCLEAR OPTION: Completely reconstruct video element
+ * Used when iPad battery died and video element is corrupted beyond repair
+ */
+function nuclearVideoReload(video) {
+  if (!video) return;
+  
+  console.log('[VIDEO] ☢️ Nuclear reload - reconstructing video element');
+  
+  const parent = video.parentElement;
+  const videoId = video.id;
+  const videoClasses = video.className;
+  
+  // Store original video source from HTML
+  const videoSrc = 'asset/video/1.mp4';
+  
+  // Remove corrupted video
+  video.remove();
+  
+  // Create fresh video element
+  const newVideo = document.createElement('video');
+  newVideo.id = videoId;
+  newVideo.className = videoClasses;
+  newVideo.setAttribute('autoplay', '');
+  newVideo.setAttribute('muted', '');
+  newVideo.setAttribute('playsinline', '');
+  newVideo.setAttribute('webkit-playsinline', '');
+  newVideo.setAttribute('preload', 'auto');
+  newVideo.setAttribute('disableRemotePlayback', '');
+  newVideo.setAttribute('x-webkit-airplay', 'deny');
+  newVideo.muted = true;
+  newVideo.loop = false;
+  
+  // Create source element
+  const source = document.createElement('source');
+  source.src = videoSrc;
+  source.type = 'video/mp4';
+  newVideo.appendChild(source);
+  
+  // Insert back into DOM
+  parent.insertBefore(newVideo, parent.children[1]); // After title, before tap prompt
+  
+  // Update global reference
+  if (window.globals) {
+    window.globals.kioskVideo = newVideo;
+  }
+  
+  // Force load
+  newVideo.load();
+  
+  console.log('[VIDEO] ✅ Video element reconstructed');
+  
+  // Setup event listeners on new element
+  setTimeout(() => {
+    setupVideoEventListeners(newVideo);
+    
+    // Try to play after a delay
+    setTimeout(() => {
+      playVideoOnce(newVideo);
+    }, 500);
+  }, 200);
 }
 
 /**
@@ -381,6 +448,19 @@ export function handleVideoVisibilityChange(isVisible) {
     // App is now hidden
     console.log('[VIDEO] 🙈 App hidden, pausing...');
     pauseVideo();
+  }
+}
+
+/**
+ * NUCLEAR RELOAD TRIGGER: Export for emergency use
+ * Can be called from visibilityHandler or manually
+ */
+export function triggerNuclearReload() {
+  const kioskVideo = window.globals?.kioskVideo;
+  if (kioskVideo) {
+    nuclearVideoReload(kioskVideo);
+  } else {
+    console.error('[VIDEO] Cannot nuclear reload - video element not found');
   }
 }
 

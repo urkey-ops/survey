@@ -121,14 +121,16 @@
             <div id="adminControls" class="flex flex-col items-end space-y-2">
                 <p class="text-xs font-medium text-emerald-600">Unsynced Records: <span id="unsyncedCountDisplay">0</span></p>
                 
-                <div class="flex items-center space-x-2">
-                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
-                    
-                    <button id="syncButton">Sync Data</button>
-                    <button id="syncAnalyticsButton">Sync Analytics</button>
-                    <button id="adminClearButton">Clear Local</button>
-                    <button id="hideAdminButton">Hide</button>
-                </div>
+               <div class="flex items-center space-x-2">
+    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
+    
+    <button id="syncButton">Sync Data</button>
+    <button id="syncAnalyticsButton">Sync Analytics</button>
+    <button id="adminClearButton">Clear Local</button>
+    <button id="checkUpdateButton">Check Update</button>  <!-- NEW -->
+                   <button id="fixVideoButton" style="background: #ef4444;">Fix Video</button>
+    <button id="hideAdminButton">Hide</button>
+</div>
             </div>
             
             <div class="absolute inset-x-0 bottom-0">
@@ -147,7 +149,7 @@
             </div>
         </section>
     </main>
-    
+    <script src="pwa-update-manager.js"></script>
     <script src="config.js"></script>
     <script src="appState.js"></script>
     <script src="data-util.js"></script>

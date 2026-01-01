@@ -46,20 +46,48 @@ window.dataUtils = (function() {
             max: 5,
             required: true
         },
+ {
+    id: 'location',
+    name: 'location',
+    type: 'radio',
+    question: 'Where are you visiting from today?',
+    options: [
         {
-            id: 'location',
-            name: 'location',
-            type: 'radio-with-other',
-            question: 'Where are you visiting from today?',
-            options: [
-                { value: 'Lilburn/Gwinnett County', label: 'Lilburn / Gwinnett County' },
-                { value: 'Greater Atlanta Area', label: 'Greater Atlanta Area' },
-                { value: 'Georgia (outside Atlanta)', label: 'Georgia (outside Atlanta)' },
-                { value: 'United States (outside Georgia)', label: 'United States (outside Georgia)' },
-                { value: 'Other', label: 'Other' }
-            ],
-            required: true
+            value: 'Lilburn / Gwinnett County, GA',
+            label: 'Lilburn / Gwinnett County, GA'
         },
+        {
+            value: 'Metro Atlanta (not Gwinnett)',
+            label: {
+                line1: 'Metro Atlanta',
+                line2: '(not Gwinnett)'
+            }
+        },
+        {
+            value: 'Georgia (outside Metro Atlanta)',
+            label: {
+                line1: 'Georgia',
+                line2: '(outside Metro Atlanta)'
+            }
+        },
+        {
+            value: 'U.S. (outside Georgia)',
+            label: {
+                line1: 'U.S.',
+                line2: '(outside Georgia)'
+            }
+        },
+        {
+            value: 'Outside the U.S. (International)',
+            label: {
+                line1: 'Outside the U.S.',
+                line2: '(International)'
+            }
+        }
+    ],
+    required: true
+},
+
         {
             id: 'age',
             name: 'age',
@@ -106,7 +134,7 @@ window.dataUtils = (function() {
             id: 'enjoyed_most',
             name: 'comments',
             type: 'textarea',
-            question: 'What did you enjoy most about your visit today?',
+            question: 'Write us about your experience today. Any comment or suggestion?',
             placeholder: 'Type your comments here...',
             required: true,
             rotatingText: [
@@ -272,10 +300,16 @@ window.dataUtils = (function() {
         'radio': {
             render: (q, data) => `
                 <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-                <div class="age-radio-group grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">
+                <div class="age-radio-group grid grid-cols-3 grid-flow-row gap-2" role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">
+
                     ${q.options.map(opt => `
                         <input type="radio" id="${q.id + opt.value}" name="${q.name}" value="${opt.value}" class="visually-hidden" ${data[q.name] === opt.value ? 'checked' : ''} aria-checked="${data[q.name] === opt.value}">
-                        <label for="${q.id + opt.value}" class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 border-gray-300 rounded-lg" role="radio">${opt.label}</label>
+                        <label for="${q.id + opt.value}" class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 border-gray-300 rounded-lg" role="radio">
+    ${typeof opt.label === 'object' ? `
+        <span>${opt.label.line1}</span><br>
+        <span>${opt.label.line2}</span>
+    ` : opt.label}
+</label>
                     `).join('')}
                 </div>
                 <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`,

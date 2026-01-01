@@ -49,7 +49,7 @@ window.dataUtils = (function() {
  {
     id: 'location',
     name: 'location',
-    type: 'radio-with-other',
+    type: 'radio',
     question: 'Where are you visiting from today?',
     options: [
         {

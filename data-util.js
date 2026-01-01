@@ -52,11 +52,11 @@ window.dataUtils = (function() {
             type: 'radio-with-other',
             question: 'Where are you visiting from today?',
             options: [
-                { value: 'Lilburn/Gwinnett County', label: 'Lilburn / Gwinnett County' },
-                { value: 'Greater Atlanta Area', label: 'Greater Atlanta Area' },
-                { value: 'Georgia (outside Atlanta)', label: 'Georgia (outside Atlanta)' },
-                { value: 'United States (outside Georgia)', label: 'United States (outside Georgia)' },
-                { value: 'Other', label: 'Other' }
+                { value: 'Lilburn / Gwinnett County, GA', label: 'Lilburn / Gwinnett County, GA' },
+                { value: 'Metro Atlanta (not Gwinnett)', label: 'Metro Atlanta (not Gwinnett)' },
+                { value: 'Georgia (outside Metro Atlanta)', label: 'Georgia (outside Metro Atlanta)' },
+                { value: 'U.S. (outside Georgia)', label: 'U.S. (outside Georgia)' },
+                { value: 'Outside the U.S. (International)', label: 'Outside the U.S. (International)' }
             ],
             required: true
         },
@@ -106,7 +106,6 @@ window.dataUtils = (function() {
             id: 'enjoyed_most',
             name: 'comments',
             type: 'textarea',
-            question: 'What did you enjoy most about your visit today?',
             placeholder: 'Type your comments here...',
             required: true,
             rotatingText: [

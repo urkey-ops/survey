@@ -8,7 +8,7 @@ import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } fro
 
 // BATTERY CONFIG: Adjust PLAY_INTERVAL to control how often video plays
 const VIDEO_CONFIG = {
-  PLAY_INTERVAL: 20000,  // Play video every 20 seconds
+  PLAY_INTERVAL: 30000,  // Play video every 20 seconds
   VIDEO_DURATION: 5000,  // Your video is 5 seconds long
   MAX_PLAY_ATTEMPTS: 3,  // Retry failed plays up to 3 times
   PLAY_RETRY_DELAY: 1000 // Wait 1s between retries

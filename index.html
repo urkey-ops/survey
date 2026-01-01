@@ -68,9 +68,9 @@
   }
 
   .animate-pulse {
-    animation: subtle-pulse 3s infinite ease-in-out !important;
-    will-change: transform, filter;
-  }
+  animation: subtle-pulse 6s infinite ease-in-out !important; /* BATTERY: 6s instead of 3s */
+  will-change: transform; /* BATTERY: Removed filter from will-change */
+}
 
   .active-press {
     transform: scale(0.96) !important;

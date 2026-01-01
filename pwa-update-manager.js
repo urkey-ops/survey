@@ -10,7 +10,7 @@
 class PWAUpdateManager {
     constructor() {
         this.registration = null;
-        this.updateCheckInterval = 60000; // Check every 60 seconds
+        this.updateCheckInterval = 86400000; // Check every 60 seconds
         this.hasUpdate = false;
         this.isUpdating = false;
         

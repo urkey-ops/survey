@@ -38,7 +38,7 @@ window.KIOSK_CONFIG = {
      *   - 30 minutes: 1800000
      *   - 1 hour:     3600000
      */
-    SYNC_INTERVAL_MS: 900000, // 15 minutes
+    SYNC_INTERVAL_MS: 86400000, // 24 hours
     
     /**
      * Analytics sync interval - How often to sync analytics data

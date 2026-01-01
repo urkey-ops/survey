@@ -46,20 +46,48 @@ window.dataUtils = (function() {
             max: 5,
             required: true
         },
+ {
+    id: 'location',
+    name: 'location',
+    type: 'radio-with-other',
+    question: 'Where are you visiting from today?',
+    options: [
         {
-            id: 'location',
-            name: 'location',
-            type: 'radio-with-other',
-            question: 'Where are you visiting from today?',
-            options: [
-                { value: 'Lilburn / Gwinnett County, GA', label: 'Lilburn / Gwinnett County, GA' },
-                { value: 'Metro Atlanta (not Gwinnett)', label: 'Metro Atlanta (not Gwinnett)' },
-                { value: 'Georgia (outside Metro Atlanta)', label: 'Georgia (outside Metro Atlanta)' },
-                { value: 'U.S. (outside Georgia)', label: 'U.S. (outside Georgia)' },
-                { value: 'Outside the U.S. (International)', label: 'Outside the U.S. (International)' }
-            ],
-            required: true
+            value: 'Lilburn / Gwinnett County, GA',
+            label: 'Lilburn / Gwinnett County, GA'
         },
+        {
+            value: 'Metro Atlanta (not Gwinnett)',
+            label: {
+                line1: 'Metro Atlanta',
+                line2: '(not Gwinnett)'
+            }
+        },
+        {
+            value: 'Georgia (outside Metro Atlanta)',
+            label: {
+                line1: 'Georgia',
+                line2: '(outside Metro Atlanta)'
+            }
+        },
+        {
+            value: 'U.S. (outside Georgia)',
+            label: {
+                line1: 'U.S.',
+                line2: '(outside Georgia)'
+            }
+        },
+        {
+            value: 'Outside the U.S. (International)',
+            label: {
+                line1: 'Outside the U.S.',
+                line2: '(International)'
+            }
+        }
+    ],
+    required: true
+},
+
         {
             id: 'age',
             name: 'age',

@@ -2,8 +2,8 @@
 // UPDATED: Now caches video with special handling for large media files
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v5'; // BUMPED from v3 to v4
-const RUNTIME_CACHE = 'kiosk-runtime-v5'; // BUMPED from v3 to v4
+const CACHE_NAME = 'kiosk-survey-v6'; // BUMPED from v3 to v4
+const RUNTIME_CACHE = 'kiosk-runtime-v6'; // BUMPED from v3 to v4
 const MEDIA_CACHE = 'kiosk-media-v1'; // NEW: Separate cache for video
 
 // Critical files that MUST be cached for offline operation

@@ -1,17 +1,100 @@
 // FILE: ui/navigation/startScreen.js
 // PURPOSE: Start screen logic with iOS-safe video playback
 // DEPENDENCIES: core.js
-// BATTERY OPTIMIZATION: Intermittent video playback (plays 5s every 20s)
+// BATTERY OPTIMIZATION: Time-of-day video scheduling (EST TIMEZONE)
+// VERSION: 2.1.0 - Time-based scheduling with EST support
+// SCHEDULE: 
+//   6:30pm-9am EST: NO VIDEO (massive battery savings)
+//   9am-1pm EST: Every 20 seconds (peak hours)
+//   1pm-3pm EST: Every 60 seconds (afternoon slowdown)
+//   3pm-6:30pm EST: Every 20 seconds (evening rush)
 // FIX: Robust video event handling for iPad PWA offline mode
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 
-// BATTERY CONFIG: Adjust PLAY_INTERVAL to control how often video plays
+/**
+ * Get video play interval based on time of day
+ * Custom schedule for maximum battery efficiency
+ * Monday-Sunday (same schedule every day)
+ * TIMEZONE: EST (Eastern Standard Time - America/New_York)
+ */
+function getSmartVideoInterval() {
+  // CRITICAL: Get time in EST timezone
+  const now = new Date();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hour = estTime.getHours();
+  const minute = estTime.getMinutes();
+  
+  // Convert to minutes since midnight for easier comparison
+  const currentMinutes = hour * 60 + minute;
+  
+  // Define schedule boundaries (in minutes since midnight)
+  const morningStart = 9 * 60;           // 9:00am = 540 minutes
+  const afternoonStart = 13 * 60;        // 1:00pm = 780 minutes
+  const eveningStart = 15 * 60;          // 3:00pm = 900 minutes
+  const eveningEnd = 18 * 60 + 30;       // 6:30pm = 1110 minutes
+  
+  // 6:30pm - 9am next day: NO VIDEO (sleep mode)
+  if (currentMinutes >= eveningEnd || currentMinutes < morningStart) {
+    console.log('[VIDEO] 😴 Sleep mode (6:30pm-9am) - Video disabled');
+    return null; // null = don't play video at all
+  }
+  
+  // 9am - 1pm: Peak hours - play every 20 seconds
+  if (currentMinutes >= morningStart && currentMinutes < afternoonStart) {
+    return 20000; // 20 seconds
+  }
+  
+  // 1pm - 3pm: Afternoon slowdown - play every 60 seconds
+  if (currentMinutes >= afternoonStart && currentMinutes < eveningStart) {
+    return 60000; // 60 seconds
+  }
+  
+  // 3pm - 6:30pm: Evening rush - play every 20 seconds
+  if (currentMinutes >= eveningStart && currentMinutes < eveningEnd) {
+    return 20000; // 20 seconds
+  }
+  
+  // Fallback (should never reach here)
+  return 60000;
+}
+
+/**
+ * Get human-readable schedule description
+ */
+function getScheduleDescription() {
+  // CRITICAL: Get time in EST timezone
+  const now = new Date();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hour = estTime.getHours();
+  const minute = estTime.getMinutes();
+  const currentMinutes = hour * 60 + minute;
+  
+  const morningStart = 9 * 60;
+  const afternoonStart = 13 * 60;
+  const eveningStart = 15 * 60;
+  const eveningEnd = 18 * 60 + 30;
+  
+  if (currentMinutes >= eveningEnd || currentMinutes < morningStart) {
+    return 'Sleep Mode (6:30pm-9am)';
+  } else if (currentMinutes >= morningStart && currentMinutes < afternoonStart) {
+    return 'Peak Hours (9am-1pm)';
+  } else if (currentMinutes >= afternoonStart && currentMinutes < eveningStart) {
+    return 'Afternoon (1pm-3pm)';
+  } else if (currentMinutes >= eveningStart && currentMinutes < eveningEnd) {
+    return 'Evening Rush (3pm-6:30pm)';
+  }
+  return 'Unknown';
+}
+
+// BATTERY CONFIG with smart scheduling
 const VIDEO_CONFIG = {
-  PLAY_INTERVAL: 30000,  // Play video every 20 seconds
-  VIDEO_DURATION: 5000,  // Your video is 5 seconds long
-  MAX_PLAY_ATTEMPTS: 3,  // Retry failed plays up to 3 times
-  PLAY_RETRY_DELAY: 1000 // Wait 1s between retries
+  get PLAY_INTERVAL() {
+    return getSmartVideoInterval();
+  },
+  VIDEO_DURATION: 5000,
+  MAX_PLAY_ATTEMPTS: 3,
+  PLAY_RETRY_DELAY: 1000
 };
 
 // Store video interval timer and state
@@ -20,7 +103,8 @@ let videoState = {
   isPlaying: false,
   playAttempts: 0,
   lastPlayTime: 0,
-  hasLoaded: false
+  hasLoaded: false,
+  currentSchedule: null
 };
 
 /**
@@ -29,13 +113,8 @@ let videoState = {
 function isVideoReady(video) {
   if (!video) return false;
   
-  // Check readyState: 4 = HAVE_ENOUGH_DATA
   const hasData = video.readyState >= 3;
-  
-  // Check if video has duration (confirms it loaded)
   const hasDuration = video.duration > 0 && !isNaN(video.duration);
-  
-  // Check if video source exists
   const hasSource = video.src || (video.currentSrc && video.currentSrc !== '');
   
   return hasData && hasDuration && hasSource;
@@ -43,7 +122,6 @@ function isVideoReady(video) {
 
 /**
  * iOS-SAFE: Force reload video source
- * This fixes iOS PWA offline cache corruption
  */
 function reloadVideoSource(video) {
   if (!video) return;
@@ -53,18 +131,16 @@ function reloadVideoSource(video) {
   const currentSrc = video.src || video.querySelector('source')?.src;
   
   if (currentSrc) {
-    // Force reload by setting src to empty then back
     video.src = '';
     video.load();
     
     setTimeout(() => {
       video.src = currentSrc;
       video.load();
-      videoState.hasLoaded = false; // Reset load state
+      videoState.hasLoaded = false;
       console.log('[VIDEO] Source reloaded');
     }, 100);
   } else {
-    // CRITICAL: If no source found, video is completely corrupted
     console.error('[VIDEO] 💥 Video source lost - attempting nuclear reload');
     nuclearVideoReload(video);
   }
@@ -72,7 +148,6 @@ function reloadVideoSource(video) {
 
 /**
  * NUCLEAR OPTION: Completely reconstruct video element
- * Used when iPad battery died and video element is corrupted beyond repair
  */
 function nuclearVideoReload(video) {
   if (!video) return;
@@ -82,14 +157,10 @@ function nuclearVideoReload(video) {
   const parent = video.parentElement;
   const videoId = video.id;
   const videoClasses = video.className;
-  
-  // Store original video source from HTML
   const videoSrc = 'asset/video/1.mp4';
   
-  // Remove corrupted video
   video.remove();
   
-  // Create fresh video element
   const newVideo = document.createElement('video');
   newVideo.id = videoId;
   newVideo.className = videoClasses;
@@ -103,30 +174,22 @@ function nuclearVideoReload(video) {
   newVideo.muted = true;
   newVideo.loop = false;
   
-  // Create source element
   const source = document.createElement('source');
   source.src = videoSrc;
   source.type = 'video/mp4';
   newVideo.appendChild(source);
   
-  // Insert back into DOM
-  parent.insertBefore(newVideo, parent.children[1]); // After title, before tap prompt
+  parent.insertBefore(newVideo, parent.children[1]);
   
-  // Update global reference
   if (window.globals) {
     window.globals.kioskVideo = newVideo;
   }
   
-  // Force load
   newVideo.load();
-  
   console.log('[VIDEO] ✅ Video element reconstructed');
   
-  // Setup event listeners on new element
   setTimeout(() => {
     setupVideoEventListeners(newVideo);
-    
-    // Try to play after a delay
     setTimeout(() => {
       playVideoOnce(newVideo);
     }, 500);
@@ -139,7 +202,6 @@ function nuclearVideoReload(video) {
 function setupVideoEventListeners(video) {
   if (!video) return;
   
-  // Remove existing listeners first
   const eventTypes = ['ended', 'error', 'canplaythrough', 'loadedmetadata', 'stalled', 'suspend'];
   eventTypes.forEach(type => {
     const oldListener = video[`_${type}Handler`];
@@ -148,7 +210,6 @@ function setupVideoEventListeners(video) {
     }
   });
   
-  // CRITICAL: Handle video end
   const endedHandler = () => {
     console.log('[VIDEO] 📺 Video ended naturally');
     videoState.isPlaying = false;
@@ -158,21 +219,15 @@ function setupVideoEventListeners(video) {
   video.addEventListener('ended', endedHandler);
   video._endedHandler = endedHandler;
   
-  // CRITICAL: Handle video errors
   const errorHandler = (e) => {
     console.error('[VIDEO] ❌ Error:', e);
     videoState.isPlaying = false;
     videoState.hasLoaded = false;
-    
-    // Try to reload video source on error
-    setTimeout(() => {
-      reloadVideoSource(video);
-    }, 1000);
+    setTimeout(() => reloadVideoSource(video), 1000);
   };
   video.addEventListener('error', errorHandler);
   video._errorHandler = errorHandler;
   
-  // Track when video is ready
   const canPlayHandler = () => {
     console.log('[VIDEO] ✅ Can play through');
     videoState.hasLoaded = true;
@@ -180,14 +235,12 @@ function setupVideoEventListeners(video) {
   video.addEventListener('canplaythrough', canPlayHandler);
   video._canplaythroughHandler = canPlayHandler;
   
-  // Track metadata load
   const metadataHandler = () => {
     console.log('[VIDEO] 📋 Metadata loaded');
   };
   video.addEventListener('loadedmetadata', metadataHandler);
   video._loadedmetadataHandler = metadataHandler;
   
-  // Handle iOS suspension issues
   const stalledHandler = () => {
     console.warn('[VIDEO] ⚠️ Playback stalled');
     if (videoState.isPlaying) {
@@ -202,7 +255,6 @@ function setupVideoEventListeners(video) {
   video.addEventListener('stalled', stalledHandler);
   video._stalledHandler = stalledHandler;
   
-  // Handle iOS network suspension
   const suspendHandler = () => {
     console.warn('[VIDEO] ⏸️ Network suspended');
   };
@@ -218,17 +270,14 @@ function setupVideoEventListeners(video) {
 async function playVideoOnce(video, isRetry = false) {
   if (!video) return false;
   
-  // Prevent multiple simultaneous plays
   if (videoState.isPlaying) {
     console.log('[VIDEO] Already playing, skipping...');
     return false;
   }
   
-  // Check if video is ready
   if (!isVideoReady(video)) {
     console.warn('[VIDEO] Video not ready, waiting...');
     
-    // Wait for video to be ready
     return new Promise((resolve) => {
       const checkReady = setInterval(() => {
         if (isVideoReady(video)) {
@@ -237,7 +286,6 @@ async function playVideoOnce(video, isRetry = false) {
         }
       }, 500);
       
-      // Timeout after 5 seconds
       setTimeout(() => {
         clearInterval(checkReady);
         console.error('[VIDEO] Timeout waiting for video ready');
@@ -247,7 +295,6 @@ async function playVideoOnce(video, isRetry = false) {
     });
   }
   
-  // Reset to start
   video.currentTime = 0;
   videoState.isPlaying = true;
   videoState.lastPlayTime = Date.now();
@@ -258,19 +305,16 @@ async function playVideoOnce(video, isRetry = false) {
     if (playPromise !== undefined) {
       await playPromise;
       console.log('[VIDEO] ▶️ Playing 5-second clip...');
-      videoState.playAttempts = 0; // Reset attempts on success
+      videoState.playAttempts = 0;
       
-      // Auto-pause after duration using ended event as primary
-      // But keep setTimeout as fallback for iOS quirks
       const safetyTimeout = setTimeout(() => {
         if (video && !video.paused && videoState.isPlaying) {
           console.log('[VIDEO] ⏸️ Safety pause triggered');
           video.pause();
           videoState.isPlaying = false;
         }
-      }, VIDEO_CONFIG.VIDEO_DURATION + 500); // Add 500ms buffer
+      }, VIDEO_CONFIG.VIDEO_DURATION + 500);
       
-      // Clear timeout if video ends naturally
       const endHandler = () => {
         clearTimeout(safetyTimeout);
         video.removeEventListener('ended', endHandler);
@@ -284,10 +328,8 @@ async function playVideoOnce(video, isRetry = false) {
     videoState.isPlaying = false;
     videoState.playAttempts++;
     
-    // Retry logic
     if (!isRetry && videoState.playAttempts < VIDEO_CONFIG.MAX_PLAY_ATTEMPTS) {
       console.log(`[VIDEO] Retrying... (${videoState.playAttempts}/${VIDEO_CONFIG.MAX_PLAY_ATTEMPTS})`);
-      
       await new Promise(resolve => setTimeout(resolve, VIDEO_CONFIG.PLAY_RETRY_DELAY));
       return playVideoOnce(video, true);
     } else if (videoState.playAttempts >= VIDEO_CONFIG.MAX_PLAY_ATTEMPTS) {
@@ -300,9 +342,6 @@ async function playVideoOnce(video, isRetry = false) {
   }
 }
 
-/**
- * Applies the "Attract Mode" (Subtle Pulse)
- */
 function startAttractMode() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
   if (!kioskStartScreen) return;
@@ -319,9 +358,6 @@ function startAttractMode() {
   });
 }
 
-/**
- * Visual Feedback on Touch
- */
 function triggerTouchFeedback(element) {
   if (element) {
     element.classList.remove('animate-pulse');
@@ -330,37 +366,66 @@ function triggerTouchFeedback(element) {
 }
 
 /**
- * BATTERY OPTIMIZATION: Setup intermittent video playback
- * iOS-SAFE: With proper event handling and error recovery
+ * BATTERY OPTIMIZATION: Setup time-based video playback
+ * Respects your custom schedule
  */
 function setupVideoLoop(kioskVideo) {
   if (!kioskVideo) return;
   
-  console.log('[VIDEO] 🔋 Setting up INTERMITTENT playback...');
-  console.log(`[VIDEO] Playing 5s every ${VIDEO_CONFIG.PLAY_INTERVAL / 1000}s`);
+  const interval = VIDEO_CONFIG.PLAY_INTERVAL;
+  const schedule = getScheduleDescription();
   
-  // Setup video attributes for iOS
+  // DEBUG: Log current time and interval
+  const now = new Date();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  console.log(`[VIDEO] 🕐 Current EST time: ${estTime.getHours()}:${estTime.getMinutes().toString().padStart(2, '0')}`);
+  console.log(`[VIDEO] 📊 Calculated interval: ${interval}ms (${interval ? interval/1000 + 's' : 'DISABLED'})`);
+  
+  // If interval is null, we're in sleep mode - don't play video at all
+  if (interval === null) {
+    console.log('[VIDEO] 😴 SLEEP MODE - Video disabled until 9am');
+    console.log('[VIDEO] 🔋 Maximum battery savings active');
+    
+    // Clear any existing interval
+    if (videoPlaybackInterval) {
+      clearInterval(videoPlaybackInterval);
+      videoPlaybackInterval = null;
+    }
+    
+    // Check again in 5 minutes to see if we've entered active hours
+    setTimeout(() => {
+      const kioskStartScreen = window.globals?.kioskStartScreen;
+      if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
+        setupVideoLoop(kioskVideo);
+      }
+    }, 300000); // Check every 5 minutes
+    
+    return;
+  }
+  
+  console.log('[VIDEO] 🔋 Setting up SMART playback...');
+  console.log(`[VIDEO] Schedule: ${schedule}`);
+  console.log(`[VIDEO] Playing 5s every ${interval / 1000}s`);
+  
   kioskVideo.setAttribute('playsinline', '');
   kioskVideo.setAttribute('webkit-playsinline', '');
   kioskVideo.setAttribute('muted', 'muted');
   kioskVideo.muted = true;
-  kioskVideo.loop = false; // We control playback manually
+  kioskVideo.loop = false;
   kioskVideo.preload = 'auto';
   
-  // Setup event listeners
   setupVideoEventListeners(kioskVideo);
   
-  // Clear any existing interval
   if (videoPlaybackInterval) {
     clearInterval(videoPlaybackInterval);
     videoPlaybackInterval = null;
   }
   
-  // Reset state
   videoState.playAttempts = 0;
   videoState.isPlaying = false;
+  videoState.currentSchedule = schedule;
   
-  // Play immediately after short delay
+  // Play immediately
   setTimeout(() => {
     playVideoOnce(kioskVideo);
   }, 300);
@@ -369,31 +434,38 @@ function setupVideoLoop(kioskVideo) {
   videoPlaybackInterval = setInterval(() => {
     const kioskStartScreen = window.globals?.kioskStartScreen;
     
-    // Only play if still on start screen and not currently playing
+    // Check if schedule has changed
+    const newInterval = VIDEO_CONFIG.PLAY_INTERVAL;
+    const newSchedule = getScheduleDescription();
+    
+    if (newInterval !== interval || newSchedule !== videoState.currentSchedule) {
+      console.log(`[VIDEO] 🕐 Schedule changed: ${videoState.currentSchedule} → ${newSchedule}`);
+      clearInterval(videoPlaybackInterval);
+      setupVideoLoop(kioskVideo);
+      return;
+    }
+    
+    // Only play if on start screen and not playing and not in sleep mode
     if (kioskStartScreen && 
         !kioskStartScreen.classList.contains('hidden') && 
-        !videoState.isPlaying) {
+        !videoState.isPlaying &&
+        newInterval !== null) {
       playVideoOnce(kioskVideo);
     }
-  }, VIDEO_CONFIG.PLAY_INTERVAL);
+  }, interval);
   
-  console.log('[VIDEO] ✅ Intermittent playback active');
+  console.log('[VIDEO] ✅ Smart time-based playback active');
 }
 
-/**
- * BATTERY OPTIMIZATION: Pause video when survey is active
- */
 function pauseVideo() {
   const kioskVideo = window.globals?.kioskVideo;
   
-  // Stop the interval timer
   if (videoPlaybackInterval) {
     clearInterval(videoPlaybackInterval);
     videoPlaybackInterval = null;
     console.log('[VIDEO] ⏹️ Interval stopped');
   }
   
-  // Pause the video
   if (kioskVideo && !kioskVideo.paused) {
     kioskVideo.pause();
     videoState.isPlaying = false;
@@ -401,22 +473,15 @@ function pauseVideo() {
   }
 }
 
-/**
- * BATTERY OPTIMIZATION: Resume video when returning to start screen
- * iOS-SAFE: Checks video state and reloads if necessary
- */
 function resumeVideo() {
   const kioskVideo = window.globals?.kioskVideo;
   if (!kioskVideo) return;
   
   console.log('[VIDEO] 🔄 Resuming video...');
   
-  // Check if video needs reload (common after iPad sleep)
   if (!isVideoReady(kioskVideo)) {
     console.log('[VIDEO] Video not ready, reloading...');
     reloadVideoSource(kioskVideo);
-    
-    // Wait for reload before setting up loop
     setTimeout(() => {
       setupVideoLoop(kioskVideo);
     }, 1000);
@@ -425,10 +490,6 @@ function resumeVideo() {
   }
 }
 
-/**
- * VISIBILITY CHANGE HANDLER: Export for use in visibilityHandler.js
- * Called when app becomes visible after being hidden
- */
 export function handleVideoVisibilityChange(isVisible) {
   const kioskVideo = window.globals?.kioskVideo;
   const kioskStartScreen = window.globals?.kioskStartScreen;
@@ -436,25 +497,17 @@ export function handleVideoVisibilityChange(isVisible) {
   if (!kioskVideo) return;
   
   if (isVisible) {
-    // App is now visible
     console.log('[VIDEO] 👁️ App visible');
-    
-    // Only resume if on start screen
     if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
       console.log('[VIDEO] On start screen, resuming...');
       resumeVideo();
     }
   } else {
-    // App is now hidden
     console.log('[VIDEO] 🙈 App hidden, pausing...');
     pauseVideo();
   }
 }
 
-/**
- * NUCLEAR RELOAD TRIGGER: Export for emergency use
- * Can be called from visibilityHandler or manually
- */
 export function triggerNuclearReload() {
   const kioskVideo = window.globals?.kioskVideo;
   if (kioskVideo) {
@@ -464,9 +517,6 @@ export function triggerNuclearReload() {
   }
 }
 
-/**
- * Cleanup start screen event listeners
- */
 export function cleanupStartScreenListeners() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
   
@@ -476,20 +526,15 @@ export function cleanupStartScreenListeners() {
     window.boundStartSurvey = null;
   }
   
-  // Clean up video interval
   if (videoPlaybackInterval) {
     clearInterval(videoPlaybackInterval);
     videoPlaybackInterval = null;
   }
   
-  // Reset state
   videoState.isPlaying = false;
   videoState.playAttempts = 0;
 }
 
-/**
- * Start the survey
- */
 function startSurvey(e) {
   const { globals, appState, dataHandlers } = getDependencies();
   const kioskStartScreen = globals?.kioskStartScreen;
@@ -501,7 +546,6 @@ function startSurvey(e) {
   if (e) {
     e.preventDefault();
     e.stopPropagation();
-    
     const targetElement = e.target.closest('.content') || kioskStartScreen.querySelector('.content');
     triggerTouchFeedback(targetElement);
   }
@@ -510,11 +554,8 @@ function startSurvey(e) {
 
   setTimeout(() => {
     console.log('[START] Transitioning to survey...');
-    
     cleanupStartScreenListeners();
     kioskStartScreen.classList.add('hidden');
-    
-    // BATTERY OPTIMIZATION: Pause video during survey
     pauseVideo();
     
     if (!appState.formData.id) {
@@ -543,9 +584,6 @@ function startSurvey(e) {
   }, 200);
 }
 
-/**
- * Show the start screen with iOS-safe video
- */
 export function showStartScreen() {
   const { globals } = getDependencies();
   const kioskStartScreen = globals?.kioskStartScreen;
@@ -574,9 +612,7 @@ export function showStartScreen() {
     }
     kioskStartScreen.classList.remove('hidden');
 
-    // Setup video with iOS-safe handling
     if (kioskVideo) {
-      // Touch fallback for iOS autoplay restrictions
       const touchFallback = () => {
         if (kioskVideo.paused && !videoState.isPlaying) {
           console.log('[VIDEO] Touch fallback triggered');
@@ -605,5 +641,4 @@ export function showStartScreen() {
   }
 }
 
-// Export battery optimization functions
 export { pauseVideo, resumeVideo };

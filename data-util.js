@@ -303,7 +303,12 @@ window.dataUtils = (function() {
                 <div class="age-radio-group grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">
                     ${q.options.map(opt => `
                         <input type="radio" id="${q.id + opt.value}" name="${q.name}" value="${opt.value}" class="visually-hidden" ${data[q.name] === opt.value ? 'checked' : ''} aria-checked="${data[q.name] === opt.value}">
-                        <label for="${q.id + opt.value}" class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 border-gray-300 rounded-lg" role="radio">${opt.label}</label>
+                        <label for="${q.id + opt.value}" class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 border-gray-300 rounded-lg" role="radio">
+    ${typeof opt.label === 'object' ? `
+        <span>${opt.label.line1}</span><br>
+        <span>${opt.label.line2}</span>
+    ` : opt.label}
+</label>
                     `).join('')}
                 </div>
                 <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`,

@@ -106,6 +106,7 @@ window.dataUtils = (function() {
             id: 'enjoyed_most',
             name: 'comments',
             type: 'textarea',
+            question: 'What did you enjoy most about your visit today?',
             placeholder: 'Type your comments here...',
             required: true,
             rotatingText: [

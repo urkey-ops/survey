@@ -1,12 +1,13 @@
 // FILE: ui/navigation/startScreen.js
 // PURPOSE: Start screen logic with iOS-safe video playback
 // DEPENDENCIES: core.js
-// BATTERY OPTIMIZATION: Time-of-day video scheduling
+// BATTERY OPTIMIZATION: Time-of-day video scheduling (EST TIMEZONE)
+// VERSION: 2.1.0 - Time-based scheduling with EST support
 // SCHEDULE: 
-//   6:30pm-9am: NO VIDEO (massive battery savings)
-//   9am-1pm: Every 20 seconds (peak hours)
-//   1pm-3pm: Every 60 seconds (afternoon slowdown)
-//   3pm-6:30pm: Every 20 seconds (evening rush)
+//   6:30pm-9am EST: NO VIDEO (massive battery savings)
+//   9am-1pm EST: Every 20 seconds (peak hours)
+//   1pm-3pm EST: Every 60 seconds (afternoon slowdown)
+//   3pm-6:30pm EST: Every 20 seconds (evening rush)
 // FIX: Robust video event handling for iPad PWA offline mode
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
@@ -15,11 +16,14 @@ import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } fro
  * Get video play interval based on time of day
  * Custom schedule for maximum battery efficiency
  * Monday-Sunday (same schedule every day)
+ * TIMEZONE: EST (Eastern Standard Time - America/New_York)
  */
 function getSmartVideoInterval() {
+  // CRITICAL: Get time in EST timezone
   const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hour = estTime.getHours();
+  const minute = estTime.getMinutes();
   
   // Convert to minutes since midnight for easier comparison
   const currentMinutes = hour * 60 + minute;
@@ -59,9 +63,11 @@ function getSmartVideoInterval() {
  * Get human-readable schedule description
  */
 function getScheduleDescription() {
+  // CRITICAL: Get time in EST timezone
   const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hour = estTime.getHours();
+  const minute = estTime.getMinutes();
   const currentMinutes = hour * 60 + minute;
   
   const morningStart = 9 * 60;
@@ -368,6 +374,12 @@ function setupVideoLoop(kioskVideo) {
   
   const interval = VIDEO_CONFIG.PLAY_INTERVAL;
   const schedule = getScheduleDescription();
+  
+  // DEBUG: Log current time and interval
+  const now = new Date();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  console.log(`[VIDEO] 🕐 Current EST time: ${estTime.getHours()}:${estTime.getMinutes().toString().padStart(2, '0')}`);
+  console.log(`[VIDEO] 📊 Calculated interval: ${interval}ms (${interval ? interval/1000 + 's' : 'DISABLED'})`);
   
   // If interval is null, we're in sleep mode - don't play video at all
   if (interval === null) {

@@ -1,12 +1,13 @@
 // FILE: ui/navigation/videoPlayer.js
 // PURPOSE: iOS-safe video playback with retry logic
 // DEPENDENCIES: None
-// VERSION: 2.1.0
+// VERSION: 3.0.0 - Battery optimized (event-based, no polling)
 
 const VIDEO_CONFIG = {
   VIDEO_DURATION: 5000,
   MAX_PLAY_ATTEMPTS: 3,
-  PLAY_RETRY_DELAY: 1000
+  PLAY_RETRY_DELAY: 1000,
+  READY_TIMEOUT: 5000
 };
 
 // Video state
@@ -29,6 +30,51 @@ export function isVideoReady(video) {
   const hasSource = video.src || (video.currentSrc && video.currentSrc !== '');
   
   return hasData && hasDuration && hasSource;
+}
+
+/**
+ * Wait for video to be ready using events (battery efficient)
+ * Replaces polling with event listeners
+ */
+function waitForVideoReady(video, timeout = VIDEO_CONFIG.READY_TIMEOUT) {
+  return new Promise((resolve, reject) => {
+    // Check if already ready
+    if (isVideoReady(video)) {
+      resolve(true);
+      return;
+    }
+    
+    let timeoutId;
+    
+    const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      video.removeEventListener('canplaythrough', onReady);
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('loadedmetadata', onReady);
+    };
+    
+    const onReady = () => {
+      if (isVideoReady(video)) {
+        cleanup();
+        console.log('[VIDEO] Ready event fired');
+        resolve(true);
+      }
+    };
+    
+    // Timeout handler
+    timeoutId = setTimeout(() => {
+      cleanup();
+      console.error('[VIDEO] Timeout waiting for video ready');
+      reject(new Error('Video ready timeout'));
+    }, timeout);
+    
+    // Listen for ready events
+    video.addEventListener('canplaythrough', onReady, { once: true });
+    video.addEventListener('loadeddata', onReady, { once: true });
+    video.addEventListener('loadedmetadata', onReady, { once: true });
+    
+    console.log('[VIDEO] Waiting for ready events...');
+  });
 }
 
 /**
@@ -178,6 +224,7 @@ export function setupVideoEventListeners(video) {
 
 /**
  * Play video with retry logic
+ * BATTERY OPTIMIZED: Event-based waiting instead of polling
  */
 export async function playVideoOnce(video, isRetry = false) {
   if (!video) return false;
@@ -187,24 +234,18 @@ export async function playVideoOnce(video, isRetry = false) {
     return false;
   }
   
+  // Wait for video to be ready using events (not polling)
   if (!isVideoReady(video)) {
-    console.warn('[VIDEO] Video not ready, waiting...');
+    console.warn('[VIDEO] Video not ready, waiting for events...');
     
-    return new Promise((resolve) => {
-      const checkReady = setInterval(() => {
-        if (isVideoReady(video)) {
-          clearInterval(checkReady);
-          playVideoOnce(video, true).then(resolve);
-        }
-      }, 500);
-      
-      setTimeout(() => {
-        clearInterval(checkReady);
-        console.error('[VIDEO] Timeout waiting for video ready');
-        reloadVideoSource(video);
-        resolve(false);
-      }, 5000);
-    });
+    try {
+      await waitForVideoReady(video);
+      console.log('[VIDEO] Video ready, playing...');
+    } catch (error) {
+      console.error('[VIDEO] Failed waiting for ready:', error.message);
+      reloadVideoSource(video);
+      return false;
+    }
   }
   
   video.currentTime = 0;

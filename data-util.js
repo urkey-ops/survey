@@ -164,34 +164,31 @@ window.dataUtils = (function() {
         },
 
         'emoji-radio': {
-            render: (q, data) => `
-                <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-                <div class="emoji-radio-group flex justify-around items-center space-x-4" role="radiogroup" aria-labelledby="${q.id}Label">
-                    ${q.options.map(opt => `
-                        <input type="radio" id="${q.id + opt.value}" name="${q.name}" value="${opt.value}" class="visually-hidden" ${data[q.name] === opt.value ? 'checked' : ''} aria-checked="${data[q.name] === opt.value}">
-                        <label for="${q.id + opt.value}" class="flex flex-col items-center p-4 sm:p-6 bg-white border-2 border-transparent rounded-full hover:bg-gray-50 transition-all duration-300 cursor-pointer" role="radio" aria-label="${opt.label}">
-                            <span class="emoji-kiosk" aria-hidden="true">${opt.emoji}</span>
-                            <span class="text-sm font-medium text-gray-600">${opt.label}</span>
-                        </label>
-                    `).join('')}
-                </div>
-                <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`,
-            setupEvents: (q, { handleNextQuestion, updateData }) => {
-                const container = document.querySelector('.emoji-radio-group');
-                if (!container) {
-                    console.warn(`[emoji-radio] Container not found for question '${q.name}'`);
-                    return;
-                }
-                
-                container.addEventListener('change', (e) => {
-                    if (e.target.name === q.name) {
-                        updateData(q.name, e.target.value);
-                        // PRIORITY FIX: Use configurable delay
-                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
-                    }
-                });
+    render: (q, data) => `
+        <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
+        <div class="emoji-radio-group flex justify-around items-center space-x-4" role="radiogroup" aria-labelledby="${q.id}Label">
+            ${q.options.map(opt => `
+                <input type="radio" id="${q.id + opt.value}" name="${q.name}" value="${opt.value}" class="visually-hidden" ${data[q.name] === opt.value ? 'checked' : ''} aria-checked="${data[q.name] === opt.value}">
+                <label for="${q.id + opt.value}" class="emoji-label flex flex-col items-center justify-center cursor-pointer border-2 border-transparent transition-all duration-300 rounded-full p-0">
+                    <span class="emoji-kiosk" aria-hidden="true">${opt.emoji}</span>
+                    <span class="emoji-label-text">${opt.label}</span>
+                </label>
+            `).join('')}
+        </div>
+        <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>
+    `,
+    setupEvents: (q, { handleNextQuestion, updateData }) => {
+        const container = document.querySelector('.emoji-radio-group');
+        if (!container) return;
+        
+        container.addEventListener('change', (e) => {
+            if (e.target.name === q.name) {
+                updateData(q.name, e.target.value);
+                setTimeout(() => handleNextQuestion(), window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50);
             }
-        },
+        });
+    }
+}
 
         'number-scale': {
             render: (q, data) => `

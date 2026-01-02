@@ -1,5 +1,6 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS 26 KIOSK SAFE)
-// UPDATED: Now caches video with special handling for large media files
+// UPDATED: Battery optimized with throttled background updates
+// VERSION: 9.0.0
 
 // 🔒 Bump versions on every deploy
 const CACHE_NAME = 'kiosk-survey-v8'; // BUMPED from v3 to v4
@@ -62,16 +63,23 @@ const CRITICAL_CACHE = [
   '/icons/favicon-32x32.png'
 ];
 
-// NEW: Media files cached separately to prevent install failures
+// Media files cached separately to prevent install failures
 const MEDIA_FILES = [
   '/asset/video/1.mp4'
 ];
+
+// BATTERY OPTIMIZATION: Track recently updated resources
+// Map<url, timestamp> to prevent excessive background fetches
+const recentlyUpdated = new Map();
+const THROTTLE_MS = 300000; // 5 minutes
+const CLEANUP_INTERVAL = 600000; // 10 minutes
+const CLEANUP_AGE = 3600000; // 1 hour
 
 // ----------------------------
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v3 with video caching...');
+  console.log('[SW] Installing v9 with video caching...');
 
   event.waitUntil(
     (async () => {
@@ -119,7 +127,7 @@ self.addEventListener('install', event => {
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v3');
+      console.log('[SW] ✅ Installed v9');
     })()
   );
 });
@@ -128,7 +136,7 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v3...');
+  console.log('[SW] Activating v9...');
 
   event.waitUntil(
     (async () => {
@@ -145,7 +153,11 @@ self.addEventListener('activate', event => {
       );
 
       await self.clients.claim();
-      console.log('[SW] ✅ Activated v3');
+      
+      // Start periodic cleanup of recentlyUpdated Map
+      startPeriodicCleanup();
+      
+      console.log('[SW] ✅ Activated v9 (battery optimized)');
     })()
   );
 });
@@ -165,7 +177,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // NEW: Special handling for video files
+  // Special handling for video files
   if (url.pathname.startsWith('/asset/video/')) {
     event.respondWith(handleVideoRequest(request));
     return;
@@ -182,7 +194,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       caches.match(request).then(cached => {
         if (cached) {
-          // Update cache in background
+          // BATTERY OPTIMIZED: Throttled background update
           fetchAndUpdateCache(request);
           return cached;
         }
@@ -195,7 +207,7 @@ self.addEventListener('fetch', event => {
 });
 
 // ----------------------------
-// VIDEO HANDLER (NEW)
+// VIDEO HANDLER
 // ----------------------------
 async function handleVideoRequest(request) {
   try {
@@ -298,20 +310,61 @@ async function fetchAndCache(request) {
 }
 
 // ----------------------------
-// STALE-WHILE-REVALIDATE
+// STALE-WHILE-REVALIDATE (BATTERY OPTIMIZED)
 // ----------------------------
 function fetchAndUpdateCache(request) {
+  const url = request.url;
+  
+  // BATTERY OPTIMIZATION: Only update if online
+  if (!self.navigator.onLine) {
+    return; // Don't attempt fetch when offline
+  }
+  
+  // BATTERY OPTIMIZATION: Check if we updated this resource recently
+  const lastUpdate = recentlyUpdated.get(url);
+  const now = Date.now();
+  
+  if (lastUpdate && (now - lastUpdate) < THROTTLE_MS) {
+    // Skip update - too soon since last update
+    return;
+  }
+  
+  // Attempt background update
   fetch(request)
     .then(response => {
       if (response.ok) {
         caches.open(RUNTIME_CACHE).then(cache => {
           cache.put(request, response.clone());
+          recentlyUpdated.set(url, now);
+          console.log(`[SW] 🔋 Updated cache for ${url.substring(url.lastIndexOf('/'))}`);
         });
       }
     })
     .catch(() => {
-      // Silent fail – kiosk already served cached version
+      // Silent fail – offline or network error
+      // This is fine, we already served from cache
     });
+}
+
+// ----------------------------
+// PERIODIC CLEANUP (BATTERY OPTIMIZATION)
+// ----------------------------
+function startPeriodicCleanup() {
+  setInterval(() => {
+    const now = Date.now();
+    let cleaned = 0;
+    
+    for (const [url, timestamp] of recentlyUpdated.entries()) {
+      if (now - timestamp > CLEANUP_AGE) {
+        recentlyUpdated.delete(url);
+        cleaned++;
+      }
+    }
+    
+    if (cleaned > 0) {
+      console.log(`[SW] 🧹 Cleaned ${cleaned} old entries from throttle map`);
+    }
+  }, CLEANUP_INTERVAL);
 }
 
 // ----------------------------
@@ -329,6 +382,9 @@ self.addEventListener('message', event => {
       (async () => {
         const keys = await caches.keys();
         await Promise.all(keys.map(key => caches.delete(key)));
+        
+        // Clear throttle map
+        recentlyUpdated.clear();
 
         const clients = await self.clients.matchAll();
         clients.forEach(client =>
@@ -338,7 +394,7 @@ self.addEventListener('message', event => {
     );
   }
   
-  // NEW: Force video re-cache
+  // Force video re-cache
   if (event.data.type === 'RECACHE_VIDEO') {
     event.waitUntil(
       (async () => {

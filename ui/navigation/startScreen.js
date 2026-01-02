@@ -20,19 +20,28 @@ export const triggerNuclearReload = videoNuclearReload;
 /**
  * Start attract mode animation
  */
+// In startScreen.js - modify startAttractMode()
 function startAttractMode() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
   if (!kioskStartScreen) return;
 
-  const attractTargets = [
-    kioskStartScreen.querySelector('.content'),
-    kioskStartScreen.querySelector('.title'),
-    kioskStartScreen.querySelector('.btn-start')
-  ].filter(Boolean);
+  // Import sleep mode check
+  import('./videoScheduler.js').then(({ isInSleepMode }) => {
+    if (isInSleepMode()) {
+      console.log('[ATTRACT] Skipping animation - sleep mode');
+      return; // Don't start pulse animation
+    }
 
-  console.log('[ATTRACT] Enabling subtle pulse effect...');
-  attractTargets.forEach(target => {
-    target.classList.add('animate-pulse');
+    const attractTargets = [
+      kioskStartScreen.querySelector('.content'),
+      kioskStartScreen.querySelector('.title'),
+      kioskStartScreen.querySelector('.btn-start')
+    ].filter(Boolean);
+
+    console.log('[ATTRACT] Enabling subtle pulse effect...');
+    attractTargets.forEach(target => {
+      target.classList.add('animate-pulse');
+    });
   });
 }
 

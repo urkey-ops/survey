@@ -566,5 +566,39 @@ textarea:hover:not(:focus) {
     z-index: 100;
 }
 
+/* ===== ENLARGED EMOJIS FOR KIOSK MODE ===== */
+.emoji-radio-group label {
+    min-width: 180px;       /* larger container so emoji isn’t cut off */
+    min-height: 180px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+/* Emoji span inside the label */
+.emoji-radio-group label span:first-of-type,
+.emoji-kiosk {
+    font-size: 6rem;        /* default emoji size */
+    line-height: 1;
+    display: block;
+}
+
+/* Responsive adjustments for larger iPads */
+@media (min-width: 768px) {
+    .emoji-radio-group label span:first-of-type,
+    .emoji-kiosk {
+        font-size: 7rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .emoji-radio-group label span:first-of-type,
+    .emoji-kiosk {
+        font-size: 8rem;
+    }
+}
 
 

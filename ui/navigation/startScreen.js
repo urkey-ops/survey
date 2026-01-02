@@ -155,15 +155,15 @@ export function showStartScreen() {
     kioskStartScreen.classList.remove('hidden');
 
     if (kioskVideo) {
-      const touchFallback = () => {
-        if (kioskVideo.paused) {
-          console.log('[VIDEO] Touch fallback triggered');
-          const { playVideoOnce, videoState } = await import('./videoPlayer.js');
-          if (!videoState.isPlaying) {
-            playVideoOnce(kioskVideo);
-          }
-        }
-      };
+     const touchFallback = async () => {
+  if (kioskVideo.paused) {
+    console.log('[VIDEO] Touch fallback triggered');
+    const { playVideoOnce, videoState } = await import('./videoPlayer.js');
+    if (!videoState.isPlaying) {
+      playVideoOnce(kioskVideo);
+    }
+  }
+};
       kioskStartScreen.addEventListener('touchstart', touchFallback, { once: true, passive: true });
       
       setupVideoLoop(kioskVideo);

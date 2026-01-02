@@ -173,6 +173,35 @@ export function resumeVideo() {
 
 /**
  * Handle app visibility changes
- * BATTERY OPTIMIZATION: Pause when hidden, resume when visible
  */
 export function handleVideoVisibilityChange(isVisible) {
+  const kioskVideo = window.globals?.kioskVideo;
+  const kioskStartScreen = window.globals?.kioskStartScreen;
+  
+  if (!kioskVideo) return;
+  
+  if (isVisible) {
+    console.log('[VIDEO] 👁️ App visible');
+    if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
+      console.log('[VIDEO] On start screen, resuming...');
+      resumeVideo();
+    }
+  } else {
+    console.log('[VIDEO] 🙈 App hidden, pausing...');
+    pauseVideo();
+  }
+}
+
+/**
+ * Trigger nuclear reload from external module
+ */
+
+export async function triggerNuclearReload() {
+  const kioskVideo = window.globals?.kioskVideo;
+  if (kioskVideo) {
+    const { nuclearVideoReload } = await import('./videoPlayer.js');
+    nuclearVideoReload(kioskVideo);
+  } else {
+    console.error('[VIDEO] Cannot nuclear reload - video element not found');
+  }
+}

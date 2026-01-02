@@ -170,7 +170,7 @@ window.dataUtils = (function() {
                     ${q.options.map(opt => `
                         <input type="radio" id="${q.id + opt.value}" name="${q.name}" value="${opt.value}" class="visually-hidden" ${data[q.name] === opt.value ? 'checked' : ''} aria-checked="${data[q.name] === opt.value}">
                         <label for="${q.id + opt.value}" class="flex flex-col items-center p-4 sm:p-6 bg-white border-2 border-transparent rounded-full hover:bg-gray-50 transition-all duration-300 cursor-pointer" role="radio" aria-label="${opt.label}">
-                            <span class="text-4xl sm:text-5xl mb-2" aria-hidden="true">${opt.emoji}</span>
+                            <span class="emoji-kiosk mb-2" aria-hidden="true">${opt.emoji}</span>
                             <span class="text-sm font-medium text-gray-600">${opt.label}</span>
                         </label>
                     `).join('')}

@@ -28,25 +28,43 @@ export function setupVideoLoop(kioskVideo) {
   console.log(`[VIDEO] 📊 Calculated interval: ${interval}ms (${interval ? interval/1000 + 's' : 'DISABLED'})`);
   
   // Sleep mode - don't play video at all
-  if (interval === null) {
-    console.log('[VIDEO] 😴 SLEEP MODE - Video disabled until 9am');
-    console.log('[VIDEO] 🔋 Maximum battery savings active');
-    
-    if (videoPlaybackInterval) {
-      clearInterval(videoPlaybackInterval);
-      videoPlaybackInterval = null;
-    }
-    
-    // Check again in 5 minutes
-    setTimeout(() => {
-      const kioskStartScreen = window.globals?.kioskStartScreen;
-      if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
-        setupVideoLoop(kioskVideo);
-      }
-    }, 300000);
-    
-    return;
+  
+  // In videoLoopManager.js - replace setTimeout with smart calculation
+if (interval === null) {
+  console.log('[VIDEO] 😴 SLEEP MODE - Video disabled until 9am');
+  
+  if (videoPlaybackInterval) {
+    clearInterval(videoPlaybackInterval);
+    videoPlaybackInterval = null;
   }
+  
+  // Calculate time until 9am instead of checking every 5 min
+  const now = new Date();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const currentMinutes = estTime.getHours() * 60 + estTime.getMinutes();
+  const morningStart = 9 * 60;
+  
+  // Calculate minutes until 9am
+  let minutesUntil9am;
+  if (currentMinutes < morningStart) {
+    minutesUntil9am = morningStart - currentMinutes;
+  } else {
+    minutesUntil9am = (24 * 60) - currentMinutes + morningStart;
+  }
+  
+  const msUntil9am = minutesUntil9am * 60 * 1000;
+  console.log(`[VIDEO] 🔋 Next check in ${Math.round(minutesUntil9am / 60)} hours`);
+  
+  // Only check once when we hit 9am
+  setTimeout(() => {
+    const kioskStartScreen = window.globals?.kioskStartScreen;
+    if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
+      setupVideoLoop(kioskVideo);
+    }
+  }, msUntil9am + 60000); // Add 1 min buffer
+  
+  return;
+}
   
   console.log('[VIDEO] 🔋 Setting up SMART playback...');
   console.log(`[VIDEO] Schedule: ${schedule}`);

@@ -2,6 +2,7 @@
 // EXTRACTED FROM: kioskUI.js (Lines 415-580)
 // PURPOSE: Handle user inactivity detection and auto-reset functionality
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
+// VERSION: 2.0.0 - Battery optimized with throttling
 
 /**
  * Inactivity Handler
@@ -11,6 +12,8 @@
 
 // Store bound event handlers for proper cleanup
 let boundResetInactivityTimer = null;
+let throttleTimeout = null;
+const THROTTLE_DELAY = 2000; // Only reset timer every 2 seconds
 
 /**
  * Get dependencies from global scope
@@ -26,6 +29,21 @@ function getDependencies() {
         dataUtils: window.dataUtils,
         timerManager: window.timerManager || window.timerManager
     };
+}
+
+/**
+ * Throttled version of resetInactivityTimer
+ * Prevents excessive timer resets on rapid user input
+ */
+function throttledResetInactivityTimer() {
+    if (throttleTimeout) {
+        return; // Already scheduled, skip this event
+    }
+    
+    throttleTimeout = setTimeout(() => {
+        resetInactivityTimer();
+        throttleTimeout = null;
+    }, THROTTLE_DELAY);
 }
 
 /**
@@ -152,16 +170,26 @@ export function resetInactivityTimer() {
 /**
  * Add event listeners for user activity
  * Listens for mouse, keyboard, and touch events
+ * BATTERY OPTIMIZED: Only active when visible, throttled, passive
  */
 export function addInactivityListeners() {
     // Remove existing listeners first
     removeInactivityListeners();
     
-    boundResetInactivityTimer = resetInactivityTimer.bind(null);
+    // Only add listeners if page is visible (battery saving)
+    if (document.hidden) {
+        console.log('[INACTIVITY] Page hidden - listeners not added');
+        return;
+    }
     
-    document.addEventListener('mousemove', boundResetInactivityTimer);
-    document.addEventListener('keydown', boundResetInactivityTimer);
-    document.addEventListener('touchstart', boundResetInactivityTimer);
+    boundResetInactivityTimer = throttledResetInactivityTimer;
+    
+    // Passive events for better scroll performance
+    document.addEventListener('mousemove', boundResetInactivityTimer, { passive: true });
+    document.addEventListener('keydown', boundResetInactivityTimer, { passive: true });
+    document.addEventListener('touchstart', boundResetInactivityTimer, { passive: true });
+    
+    console.log('[INACTIVITY] Listeners active (throttled)');
 }
 
 /**
@@ -175,6 +203,42 @@ export function removeInactivityListeners() {
         document.removeEventListener('touchstart', boundResetInactivityTimer);
         boundResetInactivityTimer = null;
     }
+    
+    // Clear any pending throttle
+    if (throttleTimeout) {
+        clearTimeout(throttleTimeout);
+        throttleTimeout = null;
+    }
+}
+
+/**
+ * Handle visibility changes to pause/resume listeners
+ * BATTERY OPTIMIZATION: Remove listeners when hidden
+ */
+function handleInactivityVisibilityChange() {
+    if (document.hidden) {
+        console.log('[INACTIVITY] Hidden - removing listeners');
+        removeInactivityListeners();
+    } else {
+        console.log('[INACTIVITY] Visible - adding listeners');
+        addInactivityListeners();
+    }
+}
+
+/**
+ * Setup visibility handler for inactivity
+ * Call this once during app initialization
+ */
+export function setupInactivityVisibilityHandler() {
+    document.addEventListener('visibilitychange', handleInactivityVisibilityChange);
+    console.log('[INACTIVITY] Visibility handler active');
+}
+
+/**
+ * Cleanup visibility handler
+ */
+export function cleanupInactivityVisibilityHandler() {
+    document.removeEventListener('visibilitychange', handleInactivityVisibilityChange);
 }
 
 /**
@@ -324,6 +388,8 @@ export default {
     resetInactivityTimer,
     addInactivityListeners,
     removeInactivityListeners,
+    setupInactivityVisibilityHandler,
+    cleanupInactivityVisibilityHandler,
     startPeriodicSync,
     performKioskReset,
     isInactivityTimerActive,

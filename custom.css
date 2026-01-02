@@ -566,37 +566,41 @@ textarea:hover:not(:focus) {
     z-index: 100;
 }
 
-/* Emoji fills the circular label dynamically */
-.emoji-radio-group label {
-    position: relative;       /* Required for absolute positioning inside */
-    min-width: 140px;
-    min-height: 140px;
+/* === Emoji Buttons === */
+.emoji-radio-group label.emoji-label {
+    width: 140px;           /* fixed circle size, can increase for bigger emojis */
+    height: 140px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    text-align: center;
-    overflow: hidden;         /* Prevent overflow if emoji is large */
+    border-radius: 50%;
+    padding: 0;
+    overflow: hidden;
+    background: #fff;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
 }
 
-/* Emoji itself scales automatically */
-.emoji-radio-group label .emoji-kiosk {
-    font-size: 6vw;           /* Scales with viewport width */
-    max-font-size: 9rem;      /* Optional maximum size */
+/* Emoji fills max vertical space inside circle */
+.emoji-radio-group label.emoji-label .emoji-kiosk {
+    flex: 1 1 auto;          /* grows to fill remaining space above label text */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(1.5em + 1vw);  /* responsive scaling for iPad and larger screens */
     line-height: 1;
 }
 
-/* Optional: Adjust scaling for tablets and desktops */
-@media (min-width: 768px) {
-    .emoji-radio-group label .emoji-kiosk {
-        font-size: 8vw;
-    }
+/* Text label stays below emoji */
+.emoji-radio-group label.emoji-label .emoji-label-text {
+    font-size: 0.85rem;
+    margin-top: 4px;
+    text-align: center;
 }
 
-@media (min-width: 1024px) {
-    .emoji-radio-group label .emoji-kiosk {
-        font-size: 6rem;
-    }
+/* Checked state */
+.emoji-radio-group input:checked + label {
+    border-color: #171717;
+    background: #fafafa;
 }
-
-

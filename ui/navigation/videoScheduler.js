@@ -81,3 +81,13 @@ export function getCurrentESTTime() {
   const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   return `${estTime.getHours()}:${estTime.getMinutes().toString().padStart(2, '0')}`;
 }
+
+// In videoScheduler.js - add export
+export function isInSleepMode() {
+  const now = new Date();
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const currentMinutes = estTime.getHours() * 60 + estTime.getMinutes();
+  const eveningEnd = 18 * 60 + 30;
+  const morningStart = 9 * 60;
+  return currentMinutes >= eveningEnd || currentMinutes < morningStart;
+}

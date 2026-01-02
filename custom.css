@@ -566,3 +566,13 @@ textarea:hover:not(:focus) {
     z-index: 100;
 }
 
+/* Ensure animations can be paused */
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  /* animation-play-state will be controlled by JS */
+}
+
+/* When explicitly paused by JS */
+.animate-pulse[style*="animation-play-state: paused"] {
+  /* Optionally show paused state differently */
+}

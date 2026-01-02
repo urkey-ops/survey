@@ -1,7 +1,7 @@
 // FILE: ui/navigation/videoLoopManager.js
 // PURPOSE: Manages video playback loop with time-based scheduling
 // DEPENDENCIES: videoScheduler.js, videoPlayer.js
-// VERSION: 2.1.0
+// VERSION: 3.0.0 - Battery optimized (visibility-aware)
 
 import { getSmartVideoInterval, getScheduleDescription, getCurrentESTTime } from './videoScheduler.js';
 import { 
@@ -17,6 +17,7 @@ let videoPlaybackInterval = null;
 
 /**
  * Setup time-based video playback loop
+ * BATTERY OPTIMIZED: Checks visibility before playing
  */
 export function setupVideoLoop(kioskVideo) {
   if (!kioskVideo) return;
@@ -28,43 +29,41 @@ export function setupVideoLoop(kioskVideo) {
   console.log(`[VIDEO] 📊 Calculated interval: ${interval}ms (${interval ? interval/1000 + 's' : 'DISABLED'})`);
   
   // Sleep mode - don't play video at all
-  
-  // In videoLoopManager.js - replace setTimeout with smart calculation
-if (interval === null) {
-  console.log('[VIDEO] 😴 SLEEP MODE - Video disabled until 9am');
-  
-  if (videoPlaybackInterval) {
-    clearInterval(videoPlaybackInterval);
-    videoPlaybackInterval = null;
-  }
-  
-  // Calculate time until 9am instead of checking every 5 min
-  const now = new Date();
-  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const currentMinutes = estTime.getHours() * 60 + estTime.getMinutes();
-  const morningStart = 9 * 60;
-  
-  // Calculate minutes until 9am
-  let minutesUntil9am;
-  if (currentMinutes < morningStart) {
-    minutesUntil9am = morningStart - currentMinutes;
-  } else {
-    minutesUntil9am = (24 * 60) - currentMinutes + morningStart;
-  }
-  
-  const msUntil9am = minutesUntil9am * 60 * 1000;
-  console.log(`[VIDEO] 🔋 Next check in ${Math.round(minutesUntil9am / 60)} hours`);
-  
-  // Only check once when we hit 9am
-  setTimeout(() => {
-    const kioskStartScreen = window.globals?.kioskStartScreen;
-    if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
-      setupVideoLoop(kioskVideo);
+  if (interval === null) {
+    console.log('[VIDEO] 😴 SLEEP MODE - Video disabled until 9am');
+    
+    if (videoPlaybackInterval) {
+      clearInterval(videoPlaybackInterval);
+      videoPlaybackInterval = null;
     }
-  }, msUntil9am + 60000); // Add 1 min buffer
-  
-  return;
-}
+    
+    // Calculate time until 9am instead of checking every 5 min
+    const now = new Date();
+    const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const currentMinutes = estTime.getHours() * 60 + estTime.getMinutes();
+    const morningStart = 9 * 60;
+    
+    // Calculate minutes until 9am
+    let minutesUntil9am;
+    if (currentMinutes < morningStart) {
+      minutesUntil9am = morningStart - currentMinutes;
+    } else {
+      minutesUntil9am = (24 * 60) - currentMinutes + morningStart;
+    }
+    
+    const msUntil9am = minutesUntil9am * 60 * 1000;
+    console.log(`[VIDEO] 🔋 Next check in ${Math.round(minutesUntil9am / 60)} hours`);
+    
+    // Only check once when we hit 9am
+    setTimeout(() => {
+      const kioskStartScreen = window.globals?.kioskStartScreen;
+      if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
+        setupVideoLoop(kioskVideo);
+      }
+    }, msUntil9am + 60000); // Add 1 min buffer
+    
+    return;
+  }
   
   console.log('[VIDEO] 🔋 Setting up SMART playback...');
   console.log(`[VIDEO] Schedule: ${schedule}`);
@@ -90,13 +89,23 @@ if (interval === null) {
   videoState.isPlaying = false;
   videoState.currentSchedule = schedule;
   
-  // Play immediately
+  // Play immediately (only if visible)
   setTimeout(() => {
-    playVideoOnce(kioskVideo);
+    if (!document.hidden) {
+      playVideoOnce(kioskVideo);
+    } else {
+      console.log('[VIDEO] Page hidden, skipping initial playback');
+    }
   }, 300);
   
   // Setup interval for periodic playback
   videoPlaybackInterval = setInterval(() => {
+    // BATTERY OPTIMIZATION: Skip if page is hidden
+    if (document.hidden) {
+      console.log('[VIDEO] 🔋 Page hidden, skipping playback (battery saving)');
+      return;
+    }
+    
     const kioskStartScreen = window.globals?.kioskStartScreen;
     
     // Check if schedule has changed
@@ -119,11 +128,12 @@ if (interval === null) {
     }
   }, interval);
   
-  console.log('[VIDEO] ✅ Smart time-based playback active');
+  console.log('[VIDEO] ✅ Smart time-based playback active (visibility-aware)');
 }
 
 /**
  * Pause video and clear interval
+ * BATTERY OPTIMIZATION: Called when page hidden
  */
 export function pauseVideo() {
   const kioskVideo = window.globals?.kioskVideo;
@@ -163,36 +173,6 @@ export function resumeVideo() {
 
 /**
  * Handle app visibility changes
+ * BATTERY OPTIMIZATION: Pause when hidden, resume when visible
  */
 export function handleVideoVisibilityChange(isVisible) {
-  const kioskVideo = window.globals?.kioskVideo;
-  const kioskStartScreen = window.globals?.kioskStartScreen;
-  
-  if (!kioskVideo) return;
-  
-  if (isVisible) {
-    console.log('[VIDEO] 👁️ App visible');
-    if (kioskStartScreen && !kioskStartScreen.classList.contains('hidden')) {
-      console.log('[VIDEO] On start screen, resuming...');
-      resumeVideo();
-    }
-  } else {
-    console.log('[VIDEO] 🙈 App hidden, pausing...');
-    pauseVideo();
-  }
-}
-
-/**
- * Trigger nuclear reload from external module
- */
-
-export async function triggerNuclearReload() {
-  const kioskVideo = window.globals?.kioskVideo;
-  if (kioskVideo) {
-    const { nuclearVideoReload } = await import('./videoPlayer.js');
-    nuclearVideoReload(kioskVideo);
-  } else {
-    console.error('[VIDEO] Cannot nuclear reload - video element not found');
-  }
-}
-

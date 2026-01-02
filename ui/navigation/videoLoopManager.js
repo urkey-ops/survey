@@ -185,7 +185,8 @@ export function handleVideoVisibilityChange(isVisible) {
 /**
  * Trigger nuclear reload from external module
  */
-export function triggerNuclearReload() {
+
+export async function triggerNuclearReload() {
   const kioskVideo = window.globals?.kioskVideo;
   if (kioskVideo) {
     const { nuclearVideoReload } = await import('./videoPlayer.js');
@@ -194,3 +195,4 @@ export function triggerNuclearReload() {
     console.error('[VIDEO] Cannot nuclear reload - video element not found');
   }
 }
+

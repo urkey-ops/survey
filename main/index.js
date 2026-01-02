@@ -9,6 +9,7 @@ import { setupAdminPanel } from './adminPanel.js';
 import { setupNetworkMonitoring } from './networkStatus.js';
 import { setupVisibilityHandler } from './visibilityHandler.js';
 import { setupInactivityVisibilityHandler } from '../timers/inactivityHandler.js'; // NEW
+import { setupTypewriterVisibilityHandler } from '../ui/typewriterEffect.js';
 
 /**
  * Start heartbeat logging - periodic system status
@@ -67,9 +68,13 @@ function initialize() {
     setupInactivityVisibilityHandler();
     console.log('[INIT] ✅ Inactivity visibility handler active');
     
-    // Step 10: Start heartbeat logging
-    startHeartbeat();
-    console.log('[INIT] ✅ Heartbeat started (15 min interval)');
+   // Step 10: Setup typewriter visibility handler (battery optimization)
+setupTypewriterVisibilityHandler();
+console.log('[INIT] ✅ Typewriter visibility handler active');
+
+// Step 11: Start heartbeat logging
+startHeartbeat();
+console.log('[INIT] ✅ Heartbeat started (15 min interval)');
     
     console.log('[INIT] ✅ Initialization complete (battery optimized)');
     console.log('═══════════════════════════════════════════════════════');

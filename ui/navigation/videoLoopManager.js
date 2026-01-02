@@ -192,16 +192,36 @@ export function handleVideoVisibilityChange(isVisible) {
   }
 }
 
-/**
- * Trigger nuclear reload from external module
- */
 
+/**
+
+Trigger nuclear reload from external module
+*/
 export async function triggerNuclearReload() {
-  const kioskVideo = window.globals?.kioskVideo;
-  if (kioskVideo) {
-    const { nuclearVideoReload } = await import('./videoPlayer.js');
-    nuclearVideoReload(kioskVideo);
-  } else {
-    console.error('[VIDEO] Cannot nuclear reload - video element not found');
-  }
+const kioskVideo = window.globals?.kioskVideo;
+if (kioskVideo) {
+const { nuclearVideoReload } = await import('./videoPlayer.js');
+nuclearVideoReload(kioskVideo);
+} else {
+console.error('[VIDEO] Cannot nuclear reload - video element not found');
+}
+}
+
+/**
+
+Cleanup video loop
+Call this when navigating away from start screen
+*/
+export function cleanupVideoLoop() {
+if (videoPlaybackInterval) {
+clearInterval(videoPlaybackInterval);
+videoPlaybackInterval = null;
+console.log('[VIDEO] Loop cleaned up');
+}
+
+const kioskVideo = window.globals?.kioskVideo;
+if (kioskVideo && !kioskVideo.paused) {
+kioskVideo.pause();
+videoState.isPlaying = false;
+}
 }

@@ -1,13 +1,30 @@
 // FILE: main/visibilityHandler.js
 // PURPOSE: Handle visibility change events (tab switching, minimizing, iPad sleep)
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.uiHandlers
-// FIX: Integrated video state management for iPad PWA
+// VERSION: 2.0.0 - Battery optimized (cached imports)
 
 let visibilityTimeout = null;
+let startScreenModule = null; // Cache the imported module
+
+/**
+ * Get startScreen module (cached)
+ * BATTERY OPTIMIZATION: Import once, reuse many times
+ */
+async function getStartScreenModule() {
+  if (!startScreenModule) {
+    try {
+      startScreenModule = await import('../ui/navigation/startScreen.js');
+    } catch (err) {
+      console.warn('[VISIBILITY] Could not import startScreen module:', err);
+      return null;
+    }
+  }
+  return startScreenModule;
+}
 
 /**
  * Handle visibility change events
- * NOW INCLUDES: Video state recovery for iPad PWA
+ * NOW INCLUDES: Video state management for iPad PWA
  */
 function handleVisibilityChange() {
     const CONSTANTS = window.CONSTANTS;
@@ -49,15 +66,11 @@ function handleVisibilityChange() {
  * Handle video when app becomes hidden
  * Called when iPad sleeps, app minimized, or tab switched
  */
-function handleVideoOnHidden() {
-    // Dynamically import to avoid circular dependencies
-    import('../ui/navigation/startScreen.js').then(module => {
-        if (module.handleVideoVisibilityChange) {
-            module.handleVideoVisibilityChange(false);
-        }
-    }).catch(err => {
-        console.warn('[VISIBILITY] Could not handle video on hidden:', err);
-    });
+async function handleVideoOnHidden() {
+    const module = await getStartScreenModule();
+    if (module && module.handleVideoVisibilityChange) {
+        module.handleVideoVisibilityChange(false);
+    }
 }
 
 /**
@@ -65,15 +78,11 @@ function handleVideoOnHidden() {
  * Called when iPad wakes, app restored, or tab focused
  * CRITICAL for fixing video loop issues on iPad
  */
-function handleVideoOnVisible() {
-    // Dynamically import to avoid circular dependencies
-    import('../ui/navigation/startScreen.js').then(module => {
-        if (module.handleVideoVisibilityChange) {
-            module.handleVideoVisibilityChange(true);
-        }
-    }).catch(err => {
-        console.warn('[VISIBILITY] Could not handle video on visible:', err);
-    });
+async function handleVideoOnVisible() {
+    const module = await getStartScreenModule();
+    if (module && module.handleVideoVisibilityChange) {
+        module.handleVideoVisibilityChange(true);
+    }
 }
 
 /**
@@ -110,7 +119,7 @@ function handlePageShow(event) {
  * Check video health after potential battery death
  * iPad battery death causes aggressive cache clearing
  */
-function checkVideoHealthAfterBatteryDeath() {
+async function checkVideoHealthAfterBatteryDeath() {
     const kioskVideo = window.globals?.kioskVideo;
     const kioskStartScreen = window.globals?.kioskStartScreen;
     
@@ -133,11 +142,10 @@ function checkVideoHealthAfterBatteryDeath() {
         console.error('[VISIBILITY] 💥 Video completely corrupted - triggering nuclear reload');
         
         // Import and trigger nuclear reload
-        import('../ui/navigation/startScreen.js').then(module => {
-            if (module.triggerNuclearReload) {
-                module.triggerNuclearReload();
-            }
-        });
+        const module = await getStartScreenModule();
+        if (module && module.triggerNuclearReload) {
+            module.triggerNuclearReload();
+        }
     } else if (!hasValidState) {
         console.warn('[VISIBILITY] ⚠️ Video in invalid state - forcing reload');
         handleVideoOnVisible();
@@ -169,7 +177,7 @@ export function setupVisibilityHandler() {
     window.addEventListener('pageshow', handlePageShow);
     window.addEventListener('focus', handleFocus);
     
-    console.log('[VISIBILITY] ✅ Visibility handlers active (iOS-enhanced)');
+    console.log('[VISIBILITY] ✅ Visibility handlers active (iOS-enhanced, battery optimized)');
 }
 
 /**
@@ -184,6 +192,9 @@ export function cleanupVisibilityHandler() {
         clearTimeout(visibilityTimeout);
         visibilityTimeout = null;
     }
+    
+    // Clear cached module
+    startScreenModule = null;
     
     console.log('[VISIBILITY] Handlers cleaned up');
 }

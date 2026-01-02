@@ -1,12 +1,14 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point - orchestrates initialization
 // DEPENDENCIES: All main sub-modules
+// VERSION: 2.0.0 - Battery optimized
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
 import { setupAdminPanel } from './adminPanel.js';
 import { setupNetworkMonitoring } from './networkStatus.js';
 import { setupVisibilityHandler } from './visibilityHandler.js';
+import { setupInactivityVisibilityHandler } from '../timers/inactivityHandler.js'; // NEW
 
 /**
  * Start heartbeat logging - periodic system status
@@ -57,14 +59,19 @@ function initialize() {
     // Step 7: Setup network monitoring
     setupNetworkMonitoring();
     
-    // Step 8: Setup visibility change handler
+    // Step 8: Setup visibility change handler (main app visibility)
     setupVisibilityHandler();
     
-    // Step 9: Start heartbeat logging
+    // Step 9: Setup inactivity visibility handler (battery optimization)
+    // NEW: Pauses/resumes inactivity listeners when tab hidden/visible
+    setupInactivityVisibilityHandler();
+    console.log('[INIT] ✅ Inactivity visibility handler active');
+    
+    // Step 10: Start heartbeat logging
     startHeartbeat();
     console.log('[INIT] ✅ Heartbeat started (15 min interval)');
     
-    console.log('[INIT] ✅ Initialization complete');
+    console.log('[INIT] ✅ Initialization complete (battery optimized)');
     console.log('═══════════════════════════════════════════════════════');
 }
 

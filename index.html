@@ -34,8 +34,8 @@
     -webkit-text-size-adjust: 100%;
   }
   
-  /* Disable zoom and touch manipulation - BUT NOT ON VIDEO */
-  body, main, header, section, div:not(#kioskStartScreen) {
+  /* Disable zoom and touch manipulation - BUT NOT ON VIDEO OR ADMIN */
+  body, main, section, div:not(#kioskStartScreen):not(#mainTitle) {
     touch-action: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
@@ -44,6 +44,14 @@
   /* CRITICAL: Allow touch on video and start screen for iOS playback */
   #kioskStartScreen, #kioskVideo, video {
     touch-action: auto !important;
+  }
+  
+  /* ADMIN PANEL FIX: Allow normal touch on title for easy clicking */
+  #mainTitle, header {
+    touch-action: manipulation !important;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    cursor: pointer;
   }
   
   input, textarea, button, select {
@@ -68,9 +76,9 @@
   }
 
   .animate-pulse {
-  animation: subtle-pulse 6s infinite ease-in-out !important; /* BATTERY: 6s instead of 3s */
-  will-change: transform; /* BATTERY: Removed filter from will-change */
-}
+    animation: subtle-pulse 6s infinite ease-in-out !important; /* BATTERY: 6s instead of 3s */
+    will-change: transform; /* BATTERY: Removed filter from will-change */
+  }
 
   .active-press {
     transform: scale(0.96) !important;
@@ -84,6 +92,18 @@
     animation: none !important;
     margin: 0 !important;
   }
+  
+  /* ADMIN PANEL: Visual feedback for easier clicking */
+  #mainTitle {
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+    user-select: none;
+  }
+  
+  #mainTitle:active {
+    background-color: rgba(16, 185, 129, 0.1);
+  }
 </style>
 
 </head>
@@ -94,19 +114,18 @@
             <h2 class="text-3xl font-bold text-center animate-pulse">Share Your Visit Experience</h2>
         </div>
 
-
         <video id="kioskVideo"
-       class="max-w-xl max-h-full"
-       autoplay
-       muted
-       playsinline
-       webkit-playsinline
-       preload="auto"
-       disableRemotePlayback
-       x-webkit-airplay="deny">
-  <source src="asset/video/1.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-
+               class="max-w-xl max-h-full"
+               autoplay
+               muted
+               playsinline
+               webkit-playsinline
+               preload="auto"
+               disableRemotePlayback
+               x-webkit-airplay="deny">
+            <source src="asset/video/1.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
 
         <div class="mt-12 content"> 
             <p id="rotatingQuestion" class="tap-prompt text-xl">Tap anywhere to begin</p>
@@ -116,21 +135,21 @@
     <main class="w-full max-w-2xl overflow-hidden min-h-[500px] flex flex-col">
         
         <header class="py-5 px-6 flex justify-between items-center relative">
-            <h1 id="mainTitle" class="cursor-pointer">Share Your Visit Experience</h1>
+            <h1 id="mainTitle" class="cursor-pointer" title="Click 5 times to open admin panel">Share Your Visit Experience</h1>
             
             <div id="adminControls" class="flex flex-col items-end space-y-2">
                 <p class="text-xs font-medium text-emerald-600">Unsynced Records: <span id="unsyncedCountDisplay">0</span></p>
                 
-               <div class="flex items-center space-x-2">
-    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
-    
-    <button id="syncButton">Sync Data</button>
-    <button id="syncAnalyticsButton">Sync Analytics</button>
-    <button id="adminClearButton">Clear Local</button>
-    <button id="checkUpdateButton">Check Update</button>  <!-- NEW -->
-                   <button id="fixVideoButton" style="background: #ef4444;">Fix Video</button>
-    <button id="hideAdminButton">Hide</button>
-</div>
+                <div class="flex items-center space-x-2">
+                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
+                    
+                    <button id="syncButton">Sync Data</button>
+                    <button id="syncAnalyticsButton">Sync Analytics</button>
+                    <button id="adminClearButton">Clear Local</button>
+                    <button id="checkUpdateButton">Check Update</button>
+                    <button id="fixVideoButton" style="background: #ef4444;">Fix Video</button>
+                    <button id="hideAdminButton">Hide</button>
+                </div>
             </div>
             
             <div class="absolute inset-x-0 bottom-0">
@@ -149,6 +168,7 @@
             </div>
         </section>
     </main>
+    
     <script src="pwa-update-manager.js"></script>
     <script src="config.js"></script>
     <script src="appState.js"></script>
@@ -194,9 +214,14 @@
         e.preventDefault();
       });
       
-      // Prevent double-tap zoom
+      // Prevent double-tap zoom (BUT ALLOW ON ADMIN TITLE)
       let lastTouchEnd = 0;
       document.addEventListener('touchend', function(e) {
+        // Allow double-tap on admin title for easier clicking
+        if (e.target && e.target.id === 'mainTitle') {
+          return;
+        }
+        
         const now = Date.now();
         if (now - lastTouchEnd <= 300) {
           e.preventDefault();
@@ -204,8 +229,13 @@
         lastTouchEnd = now;
       }, false);
       
-      // Prevent pinch zoom - catches all multi-touch gestures
+      // Prevent pinch zoom - catches all multi-touch gestures (BUT NOT ON ADMIN)
       document.addEventListener('touchmove', function(e) {
+        // Allow multi-touch on header for admin access
+        if (e.target && (e.target.id === 'mainTitle' || e.target.closest('header'))) {
+          return;
+        }
+        
         if (e.touches && e.touches.length > 1) {
           e.preventDefault();
         }
@@ -223,7 +253,7 @@
                     .catch(error => {
                         console.log('ServiceWorker registration failed:', error);
                     });
-                });
+            });
         }
     </script>
 </body>

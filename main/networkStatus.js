@@ -1,9 +1,11 @@
 // FILE: main/networkStatus.js
 // PURPOSE: Network status monitoring with offline-first approach
 // DEPENDENCIES: window.CONSTANTS, window.dataHandlers, window.globals
+// VERSION: 2.0.0 - Battery optimized (event-based, no polling)
 
 let isCurrentlyOnline = navigator.onLine;
 let syncInProgress = false;
+let networkCheckIntervalId = null; // NEW: Store interval reference
 
 /**
  * Handle online event - connection restored
@@ -152,7 +154,56 @@ function checkInitialStatus() {
 }
 
 /**
+ * BATTERY OPTIMIZATION: Pause network monitoring
+ */
+function pauseNetworkMonitoring() {
+    if (networkCheckIntervalId) {
+        clearInterval(networkCheckIntervalId);
+        networkCheckIntervalId = null;
+        console.log('[NETWORK] 🔋 Monitoring paused (page hidden)');
+    }
+}
+
+/**
+ * BATTERY OPTIMIZATION: Resume network monitoring
+ */
+function resumeNetworkMonitoring() {
+    if (!networkCheckIntervalId) {
+        startPeriodicCheck();
+        console.log('[NETWORK] Monitoring resumed');
+    }
+}
+
+/**
+ * BATTERY OPTIMIZATION: Start periodic check (only when visible)
+ */
+function startPeriodicCheck() {
+    // Clear any existing interval
+    if (networkCheckIntervalId) {
+        clearInterval(networkCheckIntervalId);
+    }
+    
+    // Periodic connection check (every 30 seconds when visible)
+    networkCheckIntervalId = setInterval(() => {
+        // BATTERY OPTIMIZATION: Skip if page is hidden
+        if (document.hidden) {
+            return;
+        }
+        
+        if (navigator.onLine && !isCurrentlyOnline) {
+            console.log('[NETWORK] Connection restored (periodic check)');
+            handleOnline();
+            hideOfflineIndicator();
+        } else if (!navigator.onLine && isCurrentlyOnline) {
+            console.log('[NETWORK] Connection lost (periodic check)');
+            handleOffline();
+        }
+    }, 30000);
+}
+
+/**
  * Setup network status monitoring with offline-first approach
+ * BATTERY OPTIMIZED: Event-based with visibility awareness
  */
 export function setupNetworkMonitoring() {
     console.log('[NETWORK] 🚀 Initializing OFFLINE-FIRST monitoring');
@@ -190,20 +241,17 @@ export function setupNetworkMonitoring() {
                     window.dataHandlers.syncData(false);
                 }, 500);
             }
+            
+            // BATTERY OPTIMIZATION: Resume periodic checks
+            resumeNetworkMonitoring();
+        } else {
+            // BATTERY OPTIMIZATION: Pause periodic checks when hidden
+            pauseNetworkMonitoring();
         }
     });
     
-    // Periodic connection check (every 30 seconds when online)
-    setInterval(() => {
-        if (navigator.onLine && !isCurrentlyOnline) {
-            console.log('[NETWORK] Connection restored (periodic check)');
-            handleOnline();
-            hideOfflineIndicator();
-        } else if (!navigator.onLine && isCurrentlyOnline) {
-            console.log('[NETWORK] Connection lost (periodic check)');
-            handleOffline();
-        }
-    }, 30000);
+    // BATTERY OPTIMIZATION: Start periodic check (visibility-aware)
+    startPeriodicCheck();
     
     // Listen for service worker messages
     if ('serviceWorker' in navigator) {
@@ -217,7 +265,7 @@ export function setupNetworkMonitoring() {
         });
     }
     
-    console.log('[NETWORK] ✅ OFFLINE-FIRST monitoring active');
+    console.log('[NETWORK] ✅ OFFLINE-FIRST monitoring active (battery optimized)');
 }
 
 /**
@@ -269,6 +317,17 @@ export function getNetworkStatus() {
     };
 }
 
+/**
+ * Cleanup network monitoring
+ */
+export function cleanupNetworkMonitoring() {
+    if (networkCheckIntervalId) {
+        clearInterval(networkCheckIntervalId);
+        networkCheckIntervalId = null;
+    }
+    console.log('[NETWORK] Monitoring cleaned up');
+}
+
 export default {
     setupNetworkMonitoring,
     handleOnline,
@@ -276,5 +335,6 @@ export default {
     checkInitialStatus,
     isOnline,
     forceSyncAttempt,
-    getNetworkStatus
+    getNetworkStatus,
+    cleanupNetworkMonitoring
 };

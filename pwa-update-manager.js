@@ -1,18 +1,22 @@
 // FILE: pwa-update-manager.js
 // PURPOSE: Automatic PWA update detection and user prompt
-// PLACE: Create this as a new file in your project root
+// VERSION: 2.0.0 - Battery optimized (visibility-aware, efficient polling)
 
 /**
  * PWA Update Manager
  * Automatically detects service worker updates and prompts user to refresh
+ * BATTERY OPTIMIZED: Pauses checks when page hidden
  */
 
 class PWAUpdateManager {
     constructor() {
         this.registration = null;
-        this.updateCheckInterval = 86400000; // Check every 60 seconds
+        this.updateCheckInterval = 86400000; // Check every 24 hours (86400000ms)
         this.hasUpdate = false;
         this.isUpdating = false;
+        this.updateIntervalId = null; // NEW: Store interval reference
+        this.delayedPromptIntervalId = null; // NEW: Store delayed prompt interval
+        this.isPaused = false; // NEW: Track pause state
         
         this.init();
     }
@@ -34,15 +38,56 @@ class PWAUpdateManager {
             // Listen for updates
             this.setupUpdateListeners();
             
+            // BATTERY OPTIMIZATION: Setup visibility handler
+            this.setupVisibilityHandler();
+            
             // Check for updates periodically
             this.startPeriodicUpdateCheck();
             
-            // Check immediately on page load
-            this.checkForUpdate();
+            // Check immediately on page load (only if visible)
+            if (!document.hidden) {
+                this.checkForUpdate();
+            }
             
         } catch (error) {
             console.error('[PWA UPDATE] Registration failed:', error);
         }
+    }
+    
+    /**
+     * BATTERY OPTIMIZATION: Setup visibility handler
+     */
+    setupVisibilityHandler() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.pause();
+            } else {
+                this.resume();
+            }
+        });
+    }
+    
+    /**
+     * BATTERY OPTIMIZATION: Pause update checking
+     */
+    pause() {
+        if (this.isPaused) return;
+        
+        this.isPaused = true;
+        console.log('[PWA UPDATE] 🔋 Paused (page hidden)');
+        
+        // Note: We don't clear the 24-hour interval as it's infrequent
+        // But we prevent checks from running via isPaused flag
+    }
+    
+    /**
+     * BATTERY OPTIMIZATION: Resume update checking
+     */
+    resume() {
+        if (!this.isPaused) return;
+        
+        this.isPaused = false;
+        console.log('[PWA UPDATE] Resumed (page visible)');
     }
     
     /**
@@ -78,9 +123,16 @@ class PWAUpdateManager {
     
     /**
      * Check for updates manually
+     * BATTERY OPTIMIZED: Skips if page hidden
      */
     async checkForUpdate() {
         if (!this.registration) return;
+        
+        // BATTERY OPTIMIZATION: Skip check if page hidden
+        if (this.isPaused || document.hidden) {
+            console.log('[PWA UPDATE] 🔋 Skipping check (page hidden)');
+            return;
+        }
         
         try {
             console.log('[PWA UPDATE] 🔍 Checking for updates...');
@@ -92,12 +144,16 @@ class PWAUpdateManager {
     
     /**
      * Start periodic update checking
+     * BATTERY OPTIMIZED: Checks visibility before running
      */
     startPeriodicUpdateCheck() {
-        setInterval(() => {
-            if (!this.hasUpdate && !this.isUpdating) {
-                this.checkForUpdate();
+        this.updateIntervalId = setInterval(() => {
+            // BATTERY OPTIMIZATION: Skip if paused or already has update
+            if (this.isPaused || this.hasUpdate || this.isUpdating || document.hidden) {
+                return;
             }
+            
+            this.checkForUpdate();
         }, this.updateCheckInterval);
         
         console.log(`[PWA UPDATE] Periodic checking enabled (every ${this.updateCheckInterval / 1000}s)`);
@@ -107,6 +163,14 @@ class PWAUpdateManager {
      * Show update prompt to user
      */
     showUpdatePrompt() {
+        // BATTERY OPTIMIZATION: Don't show if page hidden
+        if (document.hidden) {
+            console.log('[PWA UPDATE] 🔋 Page hidden, deferring prompt');
+            // Will show when page becomes visible
+            this.scheduleVisibilityPrompt();
+            return;
+        }
+        
         // Check if we're on the start screen (don't interrupt active survey)
         const appState = window.appState;
         if (appState && appState.currentQuestionIndex > 0) {
@@ -117,6 +181,25 @@ class PWAUpdateManager {
         }
         
         this.displayUpdateBanner();
+    }
+    
+    /**
+     * BATTERY OPTIMIZATION: Show prompt when page becomes visible
+     */
+    scheduleVisibilityPrompt() {
+        const handler = () => {
+            if (!document.hidden && this.hasUpdate) {
+                document.removeEventListener('visibilitychange', handler);
+                this.showUpdatePrompt();
+            }
+        };
+        
+        document.addEventListener('visibilitychange', handler);
+        
+        // Cleanup after 1 hour
+        setTimeout(() => {
+            document.removeEventListener('visibilitychange', handler);
+        }, 3600000);
     }
     
     /**
@@ -215,7 +298,7 @@ class PWAUpdateManager {
             banner.remove();
             // Show again in 5 minutes
             setTimeout(() => {
-                if (this.hasUpdate) {
+                if (this.hasUpdate && !document.hidden) {
                     this.showUpdatePrompt();
                 }
             }, 300000);
@@ -226,19 +309,37 @@ class PWAUpdateManager {
     
     /**
      * Schedule delayed prompt (after survey completion)
+     * BATTERY OPTIMIZED: Uses event-based approach instead of polling
      */
     scheduleDelayedPrompt() {
-        // Listen for return to start screen
-        const checkInterval = setInterval(() => {
+        // BETTER APPROACH: Listen for navigation instead of polling
+        const checkOnce = () => {
             const appState = window.appState;
             if (appState && appState.currentQuestionIndex === 0) {
-                clearInterval(checkInterval);
-                this.displayUpdateBanner();
+                // Back on start screen
+                if (!document.hidden && this.hasUpdate) {
+                    this.displayUpdateBanner();
+                }
             }
-        }, 2000);
+        };
         
-        // Timeout after 30 minutes
-        setTimeout(() => clearInterval(checkInterval), 1800000);
+        // Check when visibility changes (user returns to tab)
+        const visibilityHandler = () => {
+            if (!document.hidden) {
+                checkOnce();
+                document.removeEventListener('visibilitychange', visibilityHandler);
+            }
+        };
+        
+        document.addEventListener('visibilitychange', visibilityHandler);
+        
+        // Also set up a single delayed check (as fallback)
+        setTimeout(() => {
+            checkOnce();
+            document.removeEventListener('visibilitychange', visibilityHandler);
+        }, 60000); // Check once after 1 minute
+        
+        console.log('[PWA UPDATE] Scheduled prompt after survey completion');
     }
     
     /**
@@ -338,6 +439,23 @@ class PWAUpdateManager {
             toast.remove();
         }, 3000);
     }
+    
+    /**
+     * Cleanup (if needed)
+     */
+    destroy() {
+        if (this.updateIntervalId) {
+            clearInterval(this.updateIntervalId);
+            this.updateIntervalId = null;
+        }
+        
+        if (this.delayedPromptIntervalId) {
+            clearInterval(this.delayedPromptIntervalId);
+            this.delayedPromptIntervalId = null;
+        }
+        
+        console.log('[PWA UPDATE] Cleaned up');
+    }
 }
 
 // Initialize update manager
@@ -346,4 +464,4 @@ const pwaUpdateManager = new PWAUpdateManager();
 // Expose for admin panel use
 window.pwaUpdateManager = pwaUpdateManager;
 
-console.log('[PWA UPDATE] 📱 Auto-update system loaded');
+console.log('[PWA UPDATE] 📱 Auto-update system loaded (battery optimized)');

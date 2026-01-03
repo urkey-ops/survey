@@ -34,8 +34,8 @@
     -webkit-text-size-adjust: 100%;
   }
   
-  /* Disable zoom and touch manipulation - BUT NOT ON VIDEO */
-  body, main, header, section, div:not(#kioskStartScreen) {
+  /* Disable zoom and touch manipulation - BUT NOT ON VIDEO OR ADMIN */
+  body, main, section, div:not(#kioskStartScreen):not(#mainTitle):not(header) {
     touch-action: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
@@ -44,6 +44,29 @@
   /* CRITICAL: Allow touch on video and start screen for iOS playback */
   #kioskStartScreen, #kioskVideo, video {
     touch-action: auto !important;
+  }
+  
+  /* ADMIN PANEL FIX: Make title easier to tap on iPad PWA */
+  #mainTitle {
+    touch-action: manipulation !important;
+    -webkit-user-select: none !important;
+    -webkit-touch-callout: none !important;
+    cursor: pointer;
+    /* iPad PWA: Larger tap target */
+    padding: 12px 16px !important;
+    margin: -12px -16px !important;
+    min-height: 44px; /* iOS recommended minimum tap target */
+    display: inline-flex;
+    align-items: center;
+    border-radius: 8px;
+    transition: background-color 0.15s ease;
+  }
+  
+
+  
+  /* Ensure header doesn't interfere */
+  header {
+    touch-action: manipulation !important;
   }
   
   input, textarea, button, select {
@@ -68,9 +91,9 @@
   }
 
   .animate-pulse {
-  animation: subtle-pulse 6s infinite ease-in-out !important; /* BATTERY: 6s instead of 3s */
-  will-change: transform; /* BATTERY: Removed filter from will-change */
-}
+    animation: subtle-pulse 6s infinite ease-in-out !important;
+    will-change: transform;
+  }
 
   .active-press {
     transform: scale(0.96) !important;
@@ -94,19 +117,18 @@
             <h2 class="text-3xl font-bold text-center animate-pulse">Share Your Visit Experience</h2>
         </div>
 
-
         <video id="kioskVideo"
-       class="max-w-xl max-h-full"
-       autoplay
-       muted
-       playsinline
-       webkit-playsinline
-       preload="auto"
-       disableRemotePlayback
-       x-webkit-airplay="deny">
-  <source src="asset/video/1.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-
+               class="max-w-xl max-h-full"
+               autoplay
+               muted
+               playsinline
+               webkit-playsinline
+               preload="auto"
+               disableRemotePlayback
+               x-webkit-airplay="deny">
+            <source src="asset/video/1.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
 
         <div class="mt-12 content"> 
             <p id="rotatingQuestion" class="tap-prompt text-xl">Tap anywhere to begin</p>
@@ -121,16 +143,16 @@
             <div id="adminControls" class="flex flex-col items-end space-y-2">
                 <p class="text-xs font-medium text-emerald-600">Unsynced Records: <span id="unsyncedCountDisplay">0</span></p>
                 
-               <div class="flex items-center space-x-2">
-    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
-    
-    <button id="syncButton">Sync Data</button>
-    <button id="syncAnalyticsButton">Sync Analytics</button>
-    <button id="adminClearButton">Clear Local</button>
-    <button id="checkUpdateButton">Check Update</button>  <!-- NEW -->
-                   <button id="fixVideoButton" style="background: #ef4444;">Fix Video</button>
-    <button id="hideAdminButton">Hide</button>
-</div>
+                <div class="flex items-center space-x-2">
+                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
+                    
+                    <button id="syncButton">Sync Data</button>
+                    <button id="syncAnalyticsButton">Sync Analytics</button>
+                    <button id="adminClearButton">Clear Local</button>
+                    <button id="checkUpdateButton">Check Update</button>
+                    <button id="fixVideoButton" style="background: #ef4444;">Fix Video</button>
+                    <button id="hideAdminButton">Hide</button>
+                </div>
             </div>
             
             <div class="absolute inset-x-0 bottom-0">
@@ -149,6 +171,7 @@
             </div>
         </section>
     </main>
+    
     <script src="pwa-update-manager.js"></script>
     <script src="config.js"></script>
     <script src="appState.js"></script>
@@ -181,35 +204,99 @@
         }
       };
       
-      // Prevent zoom on iPad - Additional JavaScript protection
-      document.addEventListener('gesturestart', function(e) {
-        e.preventDefault();
-      });
-      
-      document.addEventListener('gesturechange', function(e) {
-        e.preventDefault();
-      });
-      
-      document.addEventListener('gestureend', function(e) {
-        e.preventDefault();
-      });
-      
-      // Prevent double-tap zoom
-      let lastTouchEnd = 0;
-      document.addEventListener('touchend', function(e) {
-        const now = Date.now();
-        if (now - lastTouchEnd <= 300) {
+      // iPad PWA Kiosk Mode: Enhanced touch handling
+      (function() {
+        // Prevent zoom on iPad
+        document.addEventListener('gesturestart', function(e) {
           e.preventDefault();
-        }
-        lastTouchEnd = now;
-      }, false);
-      
-      // Prevent pinch zoom - catches all multi-touch gestures
-      document.addEventListener('touchmove', function(e) {
-        if (e.touches && e.touches.length > 1) {
+        });
+        
+        document.addEventListener('gesturechange', function(e) {
           e.preventDefault();
+        });
+        
+        document.addEventListener('gestureend', function(e) {
+          e.preventDefault();
+        });
+        
+        // iPad PWA: Allow rapid taps on admin title (disable double-tap prevention)
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function(e) {
+          // CRITICAL: Always allow taps on admin title and header
+          const target = e.target;
+          if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
+            console.log('[ADMIN] Touch allowed on title');
+            return; // Allow all taps through
+          }
+          
+          // Prevent double-tap zoom elsewhere
+          const now = Date.now();
+          if (now - lastTouchEnd <= 300) {
+            e.preventDefault();
+          }
+          lastTouchEnd = now;
+        }, false);
+        
+        // iPad PWA: Don't prevent multi-touch on admin area
+        document.addEventListener('touchmove', function(e) {
+          const target = e.target;
+          
+          // Allow all touch on admin title and header
+          if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
+            return;
+          }
+          
+          // Prevent pinch zoom everywhere else
+          if (e.touches && e.touches.length > 1) {
+            e.preventDefault();
+          }
+        }, { passive: false });
+        
+        // iPad PWA: Enhanced click detection for admin title
+        const mainTitle = document.getElementById('mainTitle');
+        if (mainTitle) {
+          let tapCount = 0;
+          let tapTimer = null;
+          
+          // Use touchstart for better iPad responsiveness
+          mainTitle.addEventListener('touchstart', function(e) {
+            e.stopPropagation(); // Prevent event from bubbling
+            
+            tapCount++;
+            console.log(`[ADMIN] Tap ${tapCount}/5 detected`);
+            
+            // Visual feedback
+            this.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+            
+            // Clear existing timer
+            if (tapTimer) {
+              clearTimeout(tapTimer);
+            }
+            
+            // Reset tap count after 2 seconds of inactivity
+            tapTimer = setTimeout(() => {
+              console.log('[ADMIN] Tap count reset');
+              tapCount = 0;
+            }, 2000);
+            
+          }, { passive: false });
+          
+          mainTitle.addEventListener('touchend', function(e) {
+            e.stopPropagation();
+            
+            // Remove visual feedback
+            setTimeout(() => {
+              this.style.backgroundColor = '';
+            }, 100);
+          }, { passive: false });
+          
+          // Fallback: Also listen to click events
+          mainTitle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            console.log('[ADMIN] Click event detected');
+          }, { passive: false });
         }
-      }, { passive: false });
+      })();
     </script>
     
     <!-- Service Worker Registration -->
@@ -223,7 +310,7 @@
                     .catch(error => {
                         console.log('ServiceWorker registration failed:', error);
                     });
-                });
+            });
         }
     </script>
 </body>

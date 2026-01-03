@@ -138,7 +138,7 @@ window.KIOSK_CONFIG = {
      * Prevents localStorage overflow (typically 5-10MB limit)
      * When limit reached, oldest records are removed
      */
-    MAX_QUEUE_SIZE: 100,
+    MAX_QUEUE_SIZE: 1000,
     
     /**
      * Maximum analytics events to store

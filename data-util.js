@@ -221,7 +221,7 @@ window.dataUtils = (function() {
             }
         });
     }
-}
+},
         'star-rating': {
             render: (q, data) => `
                 <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>

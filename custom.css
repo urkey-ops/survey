@@ -1,35 +1,38 @@
 /* FILE: custom.css */
 /* ===== KIOSK SURVEY STYLES - LOW-BRIGHTNESS iPAD OPTIMIZED ===== */
 
-/* System font stack */
 :root {
     /* Brand oranges: energetic but not neon */
     --sewa-orange: #E86000;
     --sewa-orange-strong: #C85400;
     --sewa-orange-deep: #A04600;
 
-    /* Neutrals: high contrast, low eye strain */
-    --bg-page: #f3f4f6;
+    /* Neutrals: ENHANCED for 50% brightness visibility */
+    --bg-page: #ececec;           /* Was #f3f4f6 - darker for contrast */
     --bg-surface: #ffffff;
-    --bg-subtle: #e5e7eb;
+    --bg-subtle: #d6d8dc;         /* Was #e5e7eb - much darker for visibility */
 
-    --text-primary: #111827;
-    --text-secondary: #374151;
-    --text-muted: #5f6673;
+    /* Text: DARKENED for low-brightness readability */
+    --text-primary: #000000;      /* Was #111827 - pure black for maximum contrast */
+    --text-secondary: #1f2937;    /* Was #374151 - significantly darker */
+    --text-muted: #4b5563;        /* Was #5f6673 - darker but still distinguishable */
     --text-on-accent: #ffffff;
 
-    /* Borders & dividers (strengthened for kiosk visibility) */
-    --border-subtle: #cfd2d8;
-    --border-strong: #8b919c;
+    /* Borders: STRENGTHENED for kiosk visibility at any brightness */
+    --border-subtle: #9ca3af;     /* Was #cfd2d8 - MUCH darker */
+    --border-strong: #4b5563;     /* Was #8b919c - darker for clear definition */
+    --border-input: #6b7280;      /* NEW - dedicated input border color */
 
     /* States & status */
-    --error-red: #b91c1c;
-    --focus-blue: #2563eb;
-    --focus-blue-strong: #1d4ed8;
-    --success-green: #059669;
+    --error-red: #991b1b;         /* Slightly darker for visibility */
+    --focus-blue: #1d4ed8;        /* Darker for better visibility */
+    --focus-blue-strong: #1e40af; /* Even darker */
+    --success-green: #047857;     /* Darker green */
 
-    /* Disabled text */
-    --disabled-text: #8b919c;
+    /* Disabled: SOLID COLORS instead of opacity */
+    --disabled-bg: #d1d5db;       /* Solid light gray */
+    --disabled-text: #6b7280;     /* Darker disabled text */
+    --disabled-border: #9ca3af;   /* Visible border even when disabled */
 }
 
 /* Apply font and smoothing */
@@ -64,14 +67,14 @@ body {
 
 #kioskVideo {
     box-shadow:
-        0 0 0 1px rgba(0,0,0,0.08),
-        0 20px 40px -10px rgba(0,0,0,0.18);
+        0 0 0 1px rgba(0,0,0,0.12),
+        0 20px 40px -10px rgba(0,0,0,0.25);
     border-radius: 0.5rem;
 }
 
 .tap-prompt {
     color: var(--text-primary);
-    font-weight: 400;
+    font-weight: 500;  /* Slightly bolder for visibility */
     letter-spacing: -0.01em;
 }
 
@@ -79,15 +82,15 @@ body {
 main {
     background: var(--bg-surface);
     box-shadow:
-        0 0 0 1px rgba(0,0,0,0.08),
-        0 20px 40px -10px rgba(0,0,0,0.12);
+        0 0 0 1px rgba(0,0,0,0.12),
+        0 20px 40px -10px rgba(0,0,0,0.18);
     border-radius: 0.75rem;
 }
 
 /* ===== HEADER ===== */
 header {
     background: var(--bg-surface);
-    border-bottom: 1.25px solid var(--border-subtle);
+    border-bottom: 2px solid var(--border-subtle);  /* Thicker for visibility */
 }
 
 #mainTitle {
@@ -99,14 +102,16 @@ header {
 
 /* ===== PROGRESS BAR ===== */
 #progressBarContainer {
-    height: 4px;
+    height: 5px;  /* Slightly thicker */
     background: var(--bg-subtle);
+    border-radius: 2.5px;
 }
 
 #progressBar {
     background: var(--sewa-orange);
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.15);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 2.5px;
 }
 
 /* ===== BUTTONS ===== */
@@ -120,13 +125,13 @@ button {
 /* Previous / secondary button */
 #prevBtn {
     background: var(--bg-surface);
-    border: 1.25px solid var(--border-subtle);
+    border: 2px solid var(--border-strong);  /* Thicker, darker border */
     color: var(--text-secondary);
 }
 
 #prevBtn:hover:not(:disabled) {
-    background: #f9fafb;
-    border-color: var(--border-strong);
+    background: var(--bg-subtle);
+    border-color: var(--text-secondary);
 }
 
 /* Next / primary CTA */
@@ -134,20 +139,23 @@ button {
     background: var(--sewa-orange);
     color: var(--text-on-accent);
     border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);  /* Subtle depth */
 }
 
 #nextBtn:hover:not(:disabled) {
     background: var(--sewa-orange-strong);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.15);
 }
 
-/* Disabled buttons */
+/* Disabled buttons - SOLID COLORS, NO OPACITY */
 button:disabled,
 #nextBtn:disabled {
-    background-color: var(--bg-subtle) !important;
+    background-color: var(--disabled-bg) !important;
     color: var(--disabled-text) !important;
     cursor: not-allowed;
-    opacity: 0.65;
-    border-color: transparent !important;
+    border: 2px solid var(--disabled-border) !important;
+    box-shadow: none !important;
+    /* NO opacity - solid colors only */
 }
 
 /* ===== ADMIN CONTROLS ===== */
@@ -156,10 +164,9 @@ button:disabled,
     padding: 0.4rem 0.875rem;
     border-radius: 0.375rem;
     font-weight: 500;
-    border: 1.25px solid;
+    border: 2px solid;  /* Thicker borders */
 }
 
-/* Keep admin accents but not too flashy */
 #syncButton {
     background: var(--bg-surface);
     color: var(--focus-blue);
@@ -167,7 +174,7 @@ button:disabled,
 }
 
 #syncButton:hover {
-    background: #eff6ff;
+    background: #dbeafe;
 }
 
 #syncAnalyticsButton {
@@ -177,7 +184,7 @@ button:disabled,
 }
 
 #syncAnalyticsButton:hover {
-    background: #ecfdf5;
+    background: #d1fae5;
 }
 
 #adminClearButton {
@@ -187,17 +194,17 @@ button:disabled,
 }
 
 #adminClearButton:hover {
-    background: #fef2f2;
+    background: #fee2e2;
 }
 
 #hideAdminButton {
     background: var(--bg-surface);
     color: var(--text-secondary);
-    border-color: var(--border-subtle);
+    border-color: var(--border-strong);
 }
 
 #hideAdminButton:hover {
-    background: #f9fafb;
+    background: var(--bg-subtle);
 }
 
 /* ===== RADIO/CHECKBOX SELECTIONS ===== */
@@ -207,23 +214,18 @@ button:disabled,
 .age-radio-group label {
     transition: all 0.2s ease;
     cursor: pointer;
-    border: 1.25px solid var(--border-subtle);
-    background: #fafafa;
+    border: 2px solid var(--border-strong);  /* Thicker, darker border */
+    background: var(--bg-subtle);  /* More distinct from white */
     color: var(--text-secondary);
 }
-
-/* … everything else remains IDENTICAL … */
-
-/* (The remainder of the file is unchanged except for the same pattern:
-   no deletions, only variable-driven contrast improvements.) */
-
 
 .emoji-radio-group label:hover,
 .number-scale-group label:hover,
 .location-radio-group label:hover,
 .age-radio-group label:hover {
-    border-color: var(--border-strong);
-    background: #f9fafb;
+    border-color: var(--text-secondary);
+    background: #c7cad0;  /* Slightly darker on hover */
+    transform: translateY(-1px);
 }
 
 /* Emoji Radio - Consistent sizing and center alignment */
@@ -238,34 +240,37 @@ button:disabled,
 }
 
 .emoji-radio-group label span:first-of-type {
-    /* Emoji */
     display: block;
     line-height: 1;
 }
 
 .emoji-radio-group label span:last-of-type {
-    /* Text label */
     display: block;
     text-align: center;
     line-height: 1.2;
     word-wrap: break-word;
     max-width: 100%;
+    font-weight: 500;  /* Slightly bolder for readability */
 }
 
-/* Selected emoji / number scale: calm but clear */
+/* Selected emoji / number scale: STRONG contrast */
 .emoji-radio-group input:checked + label,
 .number-scale-group input:checked + label {
     border-color: var(--text-primary);
-    background: #f5f5f5;
+    border-width: 3px;  /* Thicker when selected */
+    background: var(--bg-surface);
     color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 
-/* Selected location/age: stronger accent for clear choice */
+/* Selected location/age: STRONG orange accent */
 .location-radio-group input:checked + label,
 .age-radio-group input:checked + label {
     background: var(--sewa-orange);
     color: var(--text-on-accent);
-    border-color: var(--sewa-orange);
+    border-color: var(--sewa-orange-deep);
+    border-width: 3px;
+    box-shadow: 0 2px 8px rgba(232, 96, 0, 0.3);
 }
 
 /* ===== NUMBER SCALE CENTERING ===== */
@@ -285,9 +290,9 @@ button:disabled,
     justify-content: center;
     border-radius: 50%;
     font-size: 1.125rem;
+    font-weight: 600;  /* Bolder numbers */
 }
 
-/* Responsive adjustments */
 @media (min-width: 640px) {
     .number-scale-group label {
         width: 4rem;
@@ -302,23 +307,25 @@ button:disabled,
 }
 
 .star-rating label.star {
-    color: #e5e5e5;
+    color: #c7c7c7;  /* Darker unselected stars */
     transition: color 0.15s ease;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
 }
 
 .star-rating input:checked ~ label.star,
 .star-rating label.star:hover,
 .star-rating label.star:hover ~ label.star {
-    color: #fbbf24;
+    color: #f59e0b;  /* Slightly darker gold */
 }
 
 /* ===== INPUT FIELDS ===== */
 input,
 textarea {
-    border: 1px solid var(--border-subtle);
-    transition: border-color 0.2s ease;
+    border: 2px solid var(--border-input);  /* Thicker, darker default */
+    transition: all 0.2s ease;
     background: var(--bg-surface);
     color: var(--text-primary);
+    font-size: 16px;  /* Prevents zoom on iOS */
 }
 
 input:hover:not(:focus),
@@ -330,21 +337,28 @@ input:focus,
 textarea:focus {
     outline: none;
     border-color: var(--focus-blue-strong);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25);  /* Stronger focus ring */
+    transition: all 0.2s ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
 }
 
 /* ===== VALIDATION ===== */
 .has-error {
     border-color: var(--error-red) !important;
+    border-width: 2px !important;
 }
 
 .error-message {
     display: block;
     color: var(--error-red);
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     margin-top: 0.5rem;
-    font-weight: 400;
+    font-weight: 500;
 }
 
 /* ===== HIDDEN/VISIBLE FIELDS ===== */
@@ -383,7 +397,7 @@ textarea:focus {
     justify-content: center;
     position: relative;
     animation: scaleIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 10px 40px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 10px 40px rgba(4, 120, 87, 0.4);
 }
 
 .checkmark-circle::before {
@@ -422,7 +436,7 @@ textarea:focus {
     width: 60px;
     height: 60px;
     stroke: #ffffff;
-    stroke-width: 3;
+    stroke-width: 4;  /* Thicker checkmark */
     stroke-linecap: round;
     stroke-linejoin: round;
     fill: none;
@@ -439,10 +453,10 @@ textarea:focus {
 
 .spinner {
     border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    border: 3px solid rgba(255, 255, 255, 0.3);
     border-top-color: #fff;
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     animation: spin 0.6s linear infinite;
 }
 
@@ -534,7 +548,6 @@ textarea:focus {
     }
 }
 
-/* Mobile: Simpler fade-in effect */
 @media (max-width: 768px) {
     .typewriter {
         white-space: normal;
@@ -562,27 +575,26 @@ textarea:focus {
     }
 }
 
-/* ===== CHECKBOX TABS (for "How did you hear about us") ===== */
+/* ===== CHECKBOX TABS ===== */
 .checkbox-group label {
     transition: all 0.2s ease;
     cursor: pointer;
     background: var(--bg-surface);
     border-radius: 0.5rem;
-    border: 1px solid var(--border-subtle);
+    border: 2px solid var(--border-strong);  /* Thicker border */
     color: var(--text-secondary);
 }
 
 .checkbox-group label:hover {
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border-color: var(--border-strong);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    border-color: var(--text-secondary);
 }
 
 .checkbox-indicator {
     transition: all 0.2s ease;
 }
 
-/* Checkbox tab wrapper */
 .checkbox-tab-wrapper {
     position: relative;
 }
@@ -592,36 +604,29 @@ textarea:focus {
     display: flex;
     flex-direction: column;
     flex: 1;
-    overflow-y: auto; /* allows scrolling when keyboard is open */
+    overflow-y: auto;
     max-height: 100vh;
-    padding-bottom: 80px; /* space for fixed buttons */
+    padding-bottom: 80px;
 }
 
 #buttonContainer {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: env(safe-area-inset-bottom, 16px); /* works with iPad home bar */
+    bottom: env(safe-area-inset-bottom, 16px);
     padding: 12px 24px;
     background: var(--bg-surface);
     display: flex;
     justify-content: space-between;
-    box-shadow: 0 -4px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.08);  /* Stronger shadow */
+    border-top: 1px solid var(--border-subtle);
     z-index: 100;
 }
 
-/* Ensure animations can be paused */
 .animate-pulse {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    /* animation-play-state will be controlled by JS */
 }
 
-/* When explicitly paused by JS */
-.animate-pulse[style*="animation-play-state: paused"] {
-    /* Optional visual tweak for paused state */
-}
-
-/* Pulse keyframes (if used anywhere) */
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
@@ -630,5 +635,22 @@ textarea:focus {
     50% {
         opacity: 0.9;
         transform: scale(1.02);
+    }
+}
+
+/* ===== HIGH CONTRAST MODE SUPPORT ===== */
+@media (prefers-contrast: high) {
+    :root {
+        --border-subtle: #6b7280;
+        --border-strong: #374151;
+        --border-input: #4b5563;
+    }
+}
+
+/* ===== PRINT STYLES (if needed) ===== */
+@media print {
+    * {
+        background: white !important;
+        color: black !important;
     }
 }

@@ -1,50 +1,75 @@
 /* FILE: custom.css */
-/* ===== KIOSK SURVEY STYLES - PRODUCTION READY LOW-BRIGHTNESS iPAD ===== */
-/* Optimized for 25-50% brightness, retail environments, all users */
+/* ===== iPAD LANDSCAPE PWA KIOSK SURVEY - OPTIMIZED FOR LOW BRIGHTNESS ===== */
+/* Target Device: iPad (all models) in landscape mode, PWA fullscreen */
+/* Brightness: 25-50% optimized */
+/* Resolution: 1024x768 (iPad Mini) to 2732x2048 (iPad Pro 12.9") */
 
 :root {
-    /* Brand oranges: energetic but not neon */
+    /* Brand oranges */
     --sewa-orange: #E86000;
     --sewa-orange-strong: #C85400;
     --sewa-orange-deep: #A04600;
     --sewa-orange-glow: rgba(232, 96, 0, 0.3);
 
-    /* Neutrals: ENHANCED for 50% brightness visibility */
+    /* Neutrals - optimized for iPad LCD at low brightness */
     --bg-page: #ececec;
-    --bg-surface: #fafafa;        /* Slight off-white for anti-glare */
+    --bg-surface: #fafafa;        /* Anti-glare off-white */
     --bg-surface-pure: #ffffff;
     --bg-subtle: #d6d8dc;
     --bg-hover: #f0f1f3;
 
-    /* Text: DARKENED for low-brightness readability */
+    /* Text - maximum contrast for low brightness */
     --text-primary: #000000;
     --text-secondary: #1f2937;
     --text-muted: #4b5563;
     --text-on-accent: #ffffff;
 
-    /* Borders: STRENGTHENED for kiosk visibility */
+    /* Borders - strong visibility */
     --border-subtle: #9ca3af;
     --border-strong: #4b5563;
     --border-input: #6b7280;
 
-    /* States & status */
+    /* States */
     --error-red: #991b1b;
     --error-bg: rgba(153, 27, 27, 0.05);
     --focus-blue: #1d4ed8;
     --focus-blue-strong: #1e40af;
     --success-green: #047857;
 
-    /* Disabled: SOLID COLORS instead of opacity */
+    /* Disabled - solid colors only */
     --disabled-bg: #d1d5db;
     --disabled-text: #6b7280;
     --disabled-border: #9ca3af;
+    
+    /* iPad-specific spacing */
+    --touch-target-min: 44px;     /* Apple HIG minimum */
+    --spacing-comfortable: 16px;   /* Comfortable tap spacing */
 }
 
-/* ===== FONT & SMOOTHING ===== */
+/* ===== BASE STYLES ===== */
 * {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    box-sizing: border-box;
+}
+
+/* PWA specific - remove all scroll bounce */
+html, body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    background: var(--bg-page);
+    /* Prevent iOS text size adjustment */
+    -webkit-text-size-adjust: 100%;
+    /* Disable pull-to-refresh in PWA */
+    overscroll-behavior-y: contain;
 }
 
 /* ===== REDUCED MOTION SUPPORT ===== */
@@ -55,54 +80,17 @@
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
     }
 }
 
-/* ===== PAGE BACKGROUND ===== */
-body {
-    background: var(--bg-page);
-}
-
-/* ===== SKIP LINK (ACCESSIBILITY) ===== */
-.skip-link {
-    position: absolute;
-    top: -40px;
-    left: 0;
-    background: var(--text-primary);
-    color: var(--text-on-accent);
-    padding: 8px 16px;
-    text-decoration: none;
-    z-index: 10000;
-    font-weight: 500;
-    border-radius: 0 0 4px 0;
-}
-
-.skip-link:focus {
-    top: 0;
-}
-
-/* ===== ORIENTATION REMINDER (iPAD PORTRAIT) ===== */
-@media (orientation: portrait) and (min-width: 768px) {
-    body::before {
-        content: '↻ Please rotate to landscape for the best experience';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        background: var(--sewa-orange);
-        color: var(--text-on-accent);
-        text-align: center;
-        padding: 12px;
-        z-index: 9999;
-        font-size: clamp(12px, 2.5vw, 14px);
-        font-weight: 600;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
-    
-    body {
-        padding-top: 48px;
-    }
+/* ===== PWA VIEWPORT FIX ===== */
+#app,
+.app-container {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 /* ===== KIOSK START SCREEN ===== */
@@ -116,6 +104,10 @@ body {
     cursor: pointer;
     transition: opacity 0.4s ease;
     background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
 #kioskStartScreen.hidden {
@@ -124,16 +116,20 @@ body {
 }
 
 #kioskVideo {
+    max-width: 80vw;
+    max-height: 60vh;
     box-shadow:
         0 0 0 1px rgba(0,0,0,0.12),
         0 20px 40px -10px rgba(0,0,0,0.25);
-    border-radius: 0.5rem;
+    border-radius: 12px;
 }
 
 .tap-prompt {
     color: var(--text-primary);
     font-weight: 600;
+    font-size: 20px;
     letter-spacing: -0.01em;
+    margin-top: 32px;
     animation: gentlePulseText 2s ease-in-out infinite;
 }
 
@@ -142,21 +138,30 @@ body {
     50% { opacity: 0.7; }
 }
 
-/* ===== MAIN CONTAINER ===== */
+/* ===== MAIN CONTAINER - LANDSCAPE OPTIMIZED ===== */
 main {
     background: var(--bg-surface);
     box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-    border-radius: 0.75rem;
+    border-radius: 12px;
+    /* iPad landscape optimized width */
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 /* ===== HEADER ===== */
 header {
     background: var(--bg-surface);
     border-bottom: 2px solid var(--border-subtle);
+    /* Fixed height for consistency */
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
 }
 
 #mainTitle {
-    font-size: clamp(18px, 20pt, 24px);
+    font-size: 22px;
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--text-primary);
@@ -178,19 +183,24 @@ header {
     height: 100%;
 }
 
-/* ===== BUTTONS ===== */
+/* ===== BUTTONS - iPAD TOUCH OPTIMIZED ===== */
 button {
+    /* Apple HIG: minimum 44x44pt touch target */
+    min-height: var(--touch-target-min);
+    min-width: 120px;
+    padding: 12px 32px;
     transition: all 0.2s ease;
     font-weight: 600;
+    font-size: 17px;  /* iOS standard body text size */
     letter-spacing: -0.01em;
-    border-radius: 0.5rem;
+    border-radius: 10px;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
 }
 
-/* Touch feedback for all interactive elements */
-button:active:not(:disabled),
-label:active {
+/* Immediate touch feedback */
+button:active:not(:disabled) {
     transform: scale(0.97);
     transition: transform 0.1s ease;
 }
@@ -202,13 +212,10 @@ label:active {
     color: var(--text-secondary);
 }
 
-#prevBtn:hover:not(:disabled) {
+#prevBtn:hover:not(:disabled),
+#prevBtn:active:not(:disabled) {
     background: var(--bg-hover);
     border-color: var(--text-secondary);
-}
-
-#prevBtn:active:not(:disabled) {
-    background: var(--bg-subtle);
 }
 
 /* Next / primary CTA */
@@ -218,7 +225,6 @@ label:active {
     border: none;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     position: relative;
-    overflow: hidden;
 }
 
 #nextBtn:not(:disabled) {
@@ -235,16 +241,11 @@ label:active {
     }
 }
 
-#nextBtn:hover:not(:disabled) {
-    background: var(--sewa-orange-strong);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-
 #nextBtn:active:not(:disabled) {
-    background: var(--sewa-orange-deep);
+    background: var(--sewa-orange-strong);
 }
 
-/* Loading state for buttons */
+/* Loading state */
 button.button-loading {
     position: relative;
     color: transparent !important;
@@ -265,7 +266,11 @@ button.button-loading::after {
     animation: spin 0.6s linear infinite;
 }
 
-/* Disabled buttons - SOLID COLORS, NO OPACITY */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Disabled buttons */
 button:disabled,
 #nextBtn:disabled {
     background-color: var(--disabled-bg) !important;
@@ -280,12 +285,17 @@ button:disabled,
 /* ===== ADMIN CONTROLS ===== */
 #adminControls {
     border-top: 2px solid var(--border-subtle);
+    padding: 16px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 #adminControls button {
-    font-size: 0.8125rem;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
+    font-size: 15px;
+    padding: 10px 20px;
+    min-width: auto;
+    border-radius: 8px;
     font-weight: 600;
     border: 2px solid;
 }
@@ -296,7 +306,7 @@ button:disabled,
     border-color: var(--focus-blue);
 }
 
-#syncButton:hover {
+#syncButton:active {
     background: #dbeafe;
 }
 
@@ -310,7 +320,7 @@ button:disabled,
     border-color: var(--success-green);
 }
 
-#syncAnalyticsButton:hover {
+#syncAnalyticsButton:active {
     background: #d1fae5;
 }
 
@@ -324,7 +334,7 @@ button:disabled,
     border-color: var(--error-red);
 }
 
-#adminClearButton:hover {
+#adminClearButton:active {
     background: #fee2e2;
 }
 
@@ -334,7 +344,7 @@ button:disabled,
     border-color: var(--border-strong);
 }
 
-#hideAdminButton:hover {
+#hideAdminButton:active {
     background: var(--bg-hover);
 }
 
@@ -345,10 +355,32 @@ label.required::after,
     color: var(--error-red);
     font-weight: 700;
     font-size: 1.2em;
-    line-height: 1;
 }
 
-/* ===== RADIO/CHECKBOX SELECTIONS ===== */
+/* ===== RADIO SELECTIONS - iPAD LANDSCAPE GRID ===== */
+.emoji-radio-group,
+.location-radio-group,
+.age-radio-group {
+    display: grid;
+    gap: var(--spacing-comfortable);
+    justify-content: center;
+}
+
+/* Emoji radio - 4 columns for landscape iPad */
+.emoji-radio-group {
+    grid-template-columns: repeat(4, minmax(160px, 1fr));
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Location/age - 3 columns for better spacing */
+.location-radio-group,
+.age-radio-group {
+    grid-template-columns: repeat(3, minmax(200px, 1fr));
+    max-width: 800px;
+    margin: 0 auto;
+}
+
 .emoji-radio-group label,
 .number-scale-group label,
 .location-radio-group label,
@@ -360,56 +392,58 @@ label.required::after,
     color: var(--text-secondary);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    /* Ensure minimum touch target */
+    min-height: var(--touch-target-min);
 }
 
-.emoji-radio-group label:hover,
-.number-scale-group label:hover,
-.location-radio-group label:hover,
-.age-radio-group label:hover {
-    border-color: var(--text-primary);
-    background: var(--bg-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+.emoji-radio-group label:active,
+.number-scale-group label:active,
+.location-radio-group label:active,
+.age-radio-group label:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease;
 }
 
-/* Emoji Radio - Consistent sizing and center alignment */
-.emoji-radio-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    justify-content: center;
-}
-
+/* Emoji Radio styling */
 .emoji-radio-group label {
-    min-width: 140px;
-    min-height: 140px;
+    min-height: 160px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 1rem;
-    border-radius: 1rem;
+    padding: 20px;
+    border-radius: 12px;
 }
 
 .emoji-radio-group label span:first-of-type {
     display: block;
     line-height: 1;
-    font-size: 3rem;
-    margin-bottom: 0.5rem;
+    font-size: 56px;
+    margin-bottom: 12px;
 }
 
 .emoji-radio-group label span:last-of-type {
     display: block;
     text-align: center;
     line-height: 1.3;
-    word-wrap: break-word;
-    max-width: 100%;
     font-weight: 600;
-    font-size: clamp(13px, 2.5vw, 15px);
+    font-size: 16px;
 }
 
-/* Selected emoji / number scale: STRONG contrast with animation */
+/* Location/Age styling */
+.location-radio-group label,
+.age-radio-group label {
+    padding: 16px 24px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    font-weight: 600;
+}
+
+/* Selected states with animation */
 .emoji-radio-group input:checked + label,
 .number-scale-group input:checked + label {
     border-color: var(--text-primary);
@@ -417,17 +451,15 @@ label.required::after,
     background: var(--bg-surface-pure);
     color: var(--text-primary);
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    transform: translateY(-2px);
     animation: successShake 0.4s ease;
 }
 
 @keyframes successShake {
-    0%, 100% { transform: translateY(-2px) translateX(0); }
-    25% { transform: translateY(-2px) translateX(-3px); }
-    75% { transform: translateY(-2px) translateX(3px); }
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
 }
 
-/* Selected location/age: STRONG orange accent */
 .location-radio-group input:checked + label,
 .age-radio-group input:checked + label {
     background: var(--sewa-orange);
@@ -435,42 +467,34 @@ label.required::after,
     border-color: var(--sewa-orange-deep);
     border-width: 3px;
     box-shadow: 0 4px 12px var(--sewa-orange-glow);
-    transform: translateY(-2px);
     animation: successShake 0.4s ease;
 }
 
-/* ===== NUMBER SCALE ===== */
+/* ===== NUMBER SCALE - HORIZONTAL FOR LANDSCAPE ===== */
 .number-scale-group {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    gap: 12px;
+    max-width: 700px;
+    margin: 0 auto;
 }
 
 .number-scale-group label {
-    width: 3.5rem;
-    height: 3.5rem;
+    width: 56px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    font-size: 1.125rem;
+    font-size: 22px;
     font-weight: 700;
 }
 
-@media (min-width: 640px) {
-    .number-scale-group label {
-        width: 4.25rem;
-        height: 4.25rem;
-        font-size: 1.375rem;
-    }
-}
-
-/* ===== STAR RATING ===== */
+/* ===== STAR RATING - iPAD SIZED ===== */
 .star-rating {
     display: flex;
-    gap: 0.5rem;
+    gap: 16px;
     justify-content: center;
     align-items: center;
 }
@@ -483,45 +507,44 @@ label.required::after,
     color: #c7c7c7;
     transition: all 0.2s ease;
     cursor: pointer;
-    font-size: 3rem;
-    padding: 0.5rem;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+    /* Large touch target for iPad */
+    font-size: 64px;
+    padding: 12px;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.1));
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .star-rating input:checked ~ label.star,
-.star-rating label.star:hover,
-.star-rating label.star:hover ~ label.star {
+.star-rating label.star:active {
     color: #f59e0b;
     transform: scale(1.1);
 }
 
-.star-rating label.star:active {
-    transform: scale(1.05);
-}
-
-/* ===== INPUT FIELDS ===== */
+/* ===== INPUT FIELDS - iPAD OPTIMIZED ===== */
 input,
 textarea {
     border: 2px solid var(--border-input);
     transition: all 0.2s ease;
     background: var(--bg-surface-pure);
     color: var(--text-primary);
-    font-size: 16px;
-    border-radius: 0.5rem;
-    padding: 0.75rem 1rem;
+    /* Prevent iOS zoom on focus */
+    font-size: 17px;
+    border-radius: 10px;
+    padding: 14px 18px;
+    min-height: var(--touch-target-min);
+    width: 100%;
 }
 
 input::placeholder,
 textarea::placeholder {
     color: var(--text-muted);
     opacity: 1;
-}
-
-input:hover:not(:focus),
-textarea:hover:not(:focus) {
-    border-color: var(--border-strong);
 }
 
 input:focus,
@@ -531,7 +554,7 @@ textarea:focus {
     box-shadow: 
         0 0 0 3px rgba(29, 78, 216, 0.25),
         0 4px 12px rgba(0,0,0,0.1);
-    transform: scale(1.01);
+    transform: scale(1.005);
     transition: all 0.2s ease;
 }
 
@@ -545,21 +568,20 @@ textarea:focus {
 .error-message {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     color: var(--error-red);
-    font-size: 0.875rem;
-    margin-top: 0.5rem;
+    font-size: 15px;
+    margin-top: 8px;
     font-weight: 600;
-    padding-left: 12px;
+    padding: 12px 16px;
     border-left: 4px solid var(--error-red);
     background: var(--error-bg);
-    padding: 0.5rem 0.5rem 0.5rem 0.75rem;
-    border-radius: 0.25rem;
+    border-radius: 6px;
 }
 
 .error-message::before {
     content: '⚠️';
-    font-size: 1.1em;
+    font-size: 20px;
     flex-shrink: 0;
 }
 
@@ -574,7 +596,7 @@ textarea:focus {
 
 .visible-fields {
     opacity: 1;
-    max-height: 800px;
+    max-height: 1000px;
     pointer-events: auto;
     transition: all 0.3s ease;
 }
@@ -582,20 +604,20 @@ textarea:focus {
 /* ===== TIMEOUT WARNING ===== */
 .timeout-warning {
     position: fixed;
-    bottom: 100px;
+    bottom: 120px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--error-red);
     color: var(--text-on-accent);
-    padding: 16px 32px;
-    border-radius: 0.75rem;
+    padding: 20px 40px;
+    border-radius: 12px;
     font-weight: 700;
-    font-size: 1.125rem;
+    font-size: 20px;
     animation: slideUp 0.3s ease;
     box-shadow: 0 8px 24px rgba(0,0,0,0.3);
     z-index: 9998;
     text-align: center;
-    max-width: 90%;
+    max-width: 600px;
 }
 
 @keyframes slideUp {
@@ -611,18 +633,18 @@ textarea:focus {
 
 /* ===== COMPLETION SCREEN ===== */
 .checkmark-container {
-    min-height: 400px;
+    min-height: 500px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2rem;
-    padding: 2rem;
+    gap: 32px;
+    padding: 40px;
 }
 
 .checkmark-circle {
-    width: 140px;
-    height: 140px;
+    width: 160px;
+    height: 160px;
     border-radius: 50%;
     background: var(--success-green);
     display: flex;
@@ -666,10 +688,10 @@ textarea:focus {
 }
 
 .checkmark-icon {
-    width: 70px;
-    height: 70px;
+    width: 80px;
+    height: 80px;
     stroke: #ffffff;
-    stroke-width: 4;
+    stroke-width: 5;
     stroke-linecap: round;
     stroke-linejoin: round;
     fill: none;
@@ -693,13 +715,10 @@ textarea:focus {
     animation: spin 0.6s linear infinite;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-/* ===== PAGE TRANSITIONS ===== */
+/* ===== QUESTION CONTAINER ===== */
 #questionContainer {
     animation: fadeIn 0.3s ease;
+    padding: 32px 24px;
 }
 
 @keyframes fadeIn {
@@ -713,55 +732,36 @@ textarea:focus {
     }
 }
 
-/* ===== ACCESSIBILITY ===== */
-.visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-}
-
-/* Focus visible for keyboard navigation */
-*:focus-visible {
-    outline: 3px solid var(--focus-blue);
-    outline-offset: 2px;
-}
-
-/* ===== QUESTION TEXT STYLING ===== */
+/* ===== QUESTION TEXT - iPAD READABLE ===== */
 #questionContainer h2,
 #questionContainer h3,
 #questionContainer label[id$="Label"],
 #rotatingQuestion {
-    font-size: clamp(15px, 16pt, 20px);
+    font-size: 24px;
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.02em;
     line-height: 1.4;
-    margin-bottom: 1.5rem;
+    margin-bottom: 24px;
 }
 
 #questionContainer p {
-    font-size: clamp(14px, 16pt, 18px);
+    font-size: 19px;
     font-weight: 400;
     color: var(--text-secondary);
     line-height: 1.6;
-    margin-bottom: 1rem;
+    margin-bottom: 16px;
 }
 
 /* ===== TYPEWRITER EFFECT ===== */
 .typewriter {
     display: inline-block;
     overflow: hidden;
-    border-right: 2px solid var(--text-primary);
+    border-right: 3px solid var(--text-primary);
     white-space: nowrap;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.08em;
     animation:
-        typing 2s steps(30, end),
+        typing 2s steps(40, end),
         blink-caret 0.75s step-end infinite;
 }
 
@@ -771,14 +771,11 @@ textarea:focus {
     white-space: normal;
 }
 
-/* Fast-tap bypass for typewriter */
-.typewriter:has(~ *:focus),
-.typewriter:has(~ *:active),
+/* Skip typewriter on interaction */
 #questionContainer:active .typewriter {
     animation: none !important;
     border-right: none !important;
     white-space: normal !important;
-    width: auto !important;
 }
 
 @keyframes typing {
@@ -791,52 +788,31 @@ textarea:focus {
     50% { border-color: var(--text-primary); }
 }
 
-/* Mobile: Simpler fade-in effect */
-@media (max-width: 768px) {
-    .typewriter {
-        white-space: normal;
-        border-right: none;
-        letter-spacing: normal;
-        animation: fadeInQuestion 0.6s ease-out;
-    }
-
-    @keyframes fadeInQuestion {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-}
-
 /* ===== CHECKBOX TABS ===== */
 .checkbox-group {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 12px;
+    justify-content: center;
 }
 
 .checkbox-group label {
     transition: all 0.2s ease;
     cursor: pointer;
     background: var(--bg-surface-pure);
-    border-radius: 0.5rem;
+    border-radius: 10px;
     border: 2px solid var(--border-strong);
     color: var(--text-secondary);
-    padding: 0.875rem 1.25rem;
-    font-weight: 500;
+    padding: 14px 24px;
+    font-weight: 600;
+    font-size: 17px;
+    min-height: var(--touch-target-min);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
 }
 
-.checkbox-group label:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    border-color: var(--text-primary);
-    background: var(--bg-hover);
+.checkbox-group label:active {
+    transform: scale(0.97);
 }
 
 .checkbox-group input:checked + label {
@@ -846,39 +822,62 @@ textarea:focus {
     box-shadow: 0 4px 12px var(--sewa-orange-glow);
 }
 
-.checkbox-indicator {
-    transition: all 0.2s ease;
-}
-
-.checkbox-tab-wrapper {
-    position: relative;
-}
-
-/* ===== LANDSCAPE iPAD FIX FOR KEYBOARD ===== */
+/* ===== SCROLLABLE CONTENT AREA ===== */
 #surveyContent {
     display: flex;
     flex-direction: column;
     flex: 1;
     overflow-y: auto;
-    max-height: 100vh;
-    padding-bottom: 100px;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    /* Space for fixed buttons */
+    padding-bottom: 120px;
 }
 
+/* Custom scrollbar for iPad */
+#surveyContent::-webkit-scrollbar {
+    width: 12px;
+}
+
+#surveyContent::-webkit-scrollbar-track {
+    background: var(--bg-subtle);
+    border-radius: 6px;
+}
+
+#surveyContent::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 6px;
+}
+
+#surveyContent::-webkit-scrollbar-thumb:active {
+    background: var(--text-secondary);
+}
+
+/* ===== FIXED BUTTON CONTAINER ===== */
 #buttonContainer {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 20px;
+    /* Match main container width */
+    max-width: 1200px;
+    width: calc(100% - 48px);
     padding: 16px 24px;
-    padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
     background: var(--bg-surface);
     display: flex;
     justify-content: space-between;
-    gap: 1rem;
-    box-shadow: 0 -4px 16px rgba(0,0,0,0.12);
-    border-top: 2px solid var(--border-subtle);
+    gap: 20px;
+    box-shadow: 
+        0 -4px 16px rgba(0,0,0,0.12),
+        0 0 0 1px var(--border-subtle);
+    border-radius: 12px;
     z-index: 100;
+}
+
+/* Ensure buttons fill space nicely */
+#buttonContainer button {
+    flex: 1;
+    max-width: 300px;
 }
 
 /* ===== ANIMATIONS ===== */
@@ -889,15 +888,34 @@ textarea:focus {
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
-        transform: scale(1);
     }
     50% {
         opacity: 0.92;
-        transform: scale(1.02);
     }
 }
 
-/* ===== HIGH CONTRAST MODE SUPPORT ===== */
+/* ===== DEBUG MODE ===== */
+[data-debug="true"] * {
+    outline: 1px solid red !important;
+}
+
+[data-debug="true"] *:active {
+    background: rgba(255,0,0,0.1) !important;
+}
+
+/* ===== iPAD PRO 12.9" OPTIMIZATIONS ===== */
+@media (min-width: 1024px) and (max-width: 1366px) {
+    .emoji-radio-group {
+        grid-template-columns: repeat(5, minmax(150px, 1fr));
+        max-width: 1000px;
+    }
+    
+    .number-scale-group {
+        max-width: 900px;
+    }
+}
+
+/* ===== HIGH CONTRAST MODE ===== */
 @media (prefers-contrast: high) {
     :root {
         --border-subtle: #6b7280;
@@ -909,50 +927,5 @@ textarea:focus {
     button,
     label {
         border-width: 3px !important;
-    }
-}
-
-/* ===== DEBUG MODE ===== */
-[data-debug="true"] * {
-    outline: 1px solid red !important;
-}
-
-[data-debug="true"] *:hover {
-    background: rgba(255,0,0,0.1) !important;
-}
-
-/* ===== RESPONSIVE ADJUSTMENTS ===== */
-@media (max-width: 640px) {
-    #mainTitle {
-        font-size: 1.125rem;
-    }
-    
-    .emoji-radio-group label {
-        min-width: 120px;
-        min-height: 120px;
-    }
-    
-    .emoji-radio-group label span:first-of-type {
-        font-size: 2.5rem;
-    }
-    
-    .star-rating label.star {
-        font-size: 2.5rem;
-        padding: 0.375rem;
-    }
-}
-
-/* ===== PRINT STYLES ===== */
-@media print {
-    * {
-        background: white !important;
-        color: black !important;
-        box-shadow: none !important;
-    }
-    
-    #adminControls,
-    #buttonContainer,
-    .skip-link {
-        display: none !important;
     }
 }

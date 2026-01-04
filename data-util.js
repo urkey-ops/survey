@@ -193,34 +193,35 @@ window.dataUtils = (function() {
             }
         },
 
-        'number-scale': {
-            render: (q, data) => `
-                <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-                <div class="number-scale-group grid grid-cols-5 gap-2" role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">
-                    ${Array.from({ length: q.max }, (_, i) => i + 1).map(num => `
-                        <input type="radio" id="${q.id + num}" name="${q.name}" value="${num}" class="visually-hidden" ${String(data[q.name]) === String(num) ? 'checked' : ''} aria-checked="${String(data[q.name]) === String(num)}">
-                        <label for="${q.id + num}" class="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-white border-2 border-transparent rounded-full font-bold text-gray-700 hover:bg-gray-50" role="radio" aria-label="Rating ${num}"><span>${num}</span></label>
-                    `).join('')}
-                </div>
-                <div class="flex justify-between text-sm mt-2 text-gray-500"><span>${q.labels.min}</span><span>${q.labels.max}</span></div>
-                <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`,
-            setupEvents: (q, { handleNextQuestion, updateData }) => {
-                const container = document.querySelector('.number-scale-group');
-                if (!container) {
-                    console.warn(`[number-scale] Container not found for question '${q.name}'`);
-                    return;
-                }
-                
-                container.addEventListener('change', (e) => {
-                    if (e.target.name === q.name) {
-                        updateData(q.name, e.target.value);
-                        // PRIORITY FIX: Use configurable delay
-                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
-                    }
-                });
+       'number-scale': {
+    render: (q, data) => `
+        <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
+        <div class="number-scale-group" role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">
+            ${Array.from({ length: q.max }, (_, i) => i + 1).map(num => `
+                <input type="radio" id="${q.id + num}" name="${q.name}" value="${num}" class="visually-hidden" ${String(data[q.name]) === String(num) ? 'checked' : ''} aria-checked="${String(data[q.name]) === String(num)}">
+                <label for="${q.id + num}" class="flex items-center justify-center bg-white border-2 border-transparent rounded-full font-bold text-gray-700 hover:bg-gray-50" role="radio" aria-label="Rating ${num}"><span>${num}</span></label>
+            `).join('')}
+        </div>
+        <div class="flex justify-between text-sm mt-2 text-gray-500">
+            <span>${q.labels.min}</span>
+            <span>${q.labels.max}</span>
+        </div>
+        <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`,
+    setupEvents: (q, { handleNextQuestion, updateData }) => {
+        const container = document.querySelector('.number-scale-group');
+        if (!container) {
+            console.warn(`[number-scale] Container not found for question '${q.name}'`);
+            return;
+        }
+        
+        container.addEventListener('change', (e) => {
+            if (e.target.name === q.name) {
+                updateData(q.name, e.target.value);
+                setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
             }
-        },
-
+        });
+    }
+}
         'star-rating': {
             render: (q, data) => `
                 <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>

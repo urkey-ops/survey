@@ -1,13 +1,15 @@
 // FILE: dataSync.js
 // PURPOSE: Main entry point combining all data sync modules
 // DEPENDENCIES: All sync sub-modules
+// VERSION: 2.0.0 - Added storage quota check
 
 import {
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
     showUserError,
-    updateSyncStatus
+    updateSyncStatus,
+    checkStorageQuota
 } from './storageUtils.js';
 
 import {
@@ -184,15 +186,13 @@ export function autoSync() {
     checkAndSyncAnalytics();
 }
 
-// At the bottom of the file, find the export section and add checkStorageQuota:
-
 // Expose functions globally for backward compatibility
 window.dataHandlers = {
     // Storage utilities
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
-    checkStorageQuota,  // SAFETY: Added storage quota check
+    checkStorageQuota,
     
     // Queue management
     getSubmissionQueue,
@@ -218,7 +218,7 @@ export {
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
-    checkStorageQuota,  // SAFETY: Added
+    checkStorageQuota,
     
     // Queue management
     getSubmissionQueue,

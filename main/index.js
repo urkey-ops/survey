@@ -1,14 +1,14 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point - orchestrates initialization
 // DEPENDENCIES: All main sub-modules
-// VERSION: 2.0.0 - Battery optimized
+// VERSION: 3.0.0 - Added safety checks
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
 import { setupAdminPanel } from './adminPanel.js';
 import { setupNetworkMonitoring } from './networkStatus.js';
 import { setupVisibilityHandler } from './visibilityHandler.js';
-import { setupInactivityVisibilityHandler } from '../timers/inactivityHandler.js'; // NEW
+import { setupInactivityVisibilityHandler } from '../timers/inactivityHandler.js';
 import { setupTypewriterVisibilityHandler } from '../ui/typewriterEffect.js';
 
 /**
@@ -29,12 +29,35 @@ function startHeartbeat() {
 
 /**
  * Main initialization function
+ * VERSION: 3.0.0 - Added storage quota check
  */
 function initialize() {
     console.log('[INIT] DOM Content Loaded - Initializing kiosk...');
     
     // Step 1: Initialize DOM element references
     initializeElements();
+    
+    // SAFETY FIX: Check storage quota on startup
+    try {
+        const checkQuota = () => {
+            if (window.dataHandlers && window.dataHandlers.checkStorageQuota) {
+                const quotaStatus = window.dataHandlers.checkStorageQuota();
+                if (quotaStatus.status === 'critical') {
+                    console.error('[INIT] 🚨 Storage critical - sync data immediately!');
+                } else if (quotaStatus.status === 'warning') {
+                    console.warn('[INIT] ⚠️ Storage approaching limit - monitor closely');
+                }
+            }
+        };
+        
+        // Try immediately
+        checkQuota();
+        
+        // Fallback: try again after 1 second if dataHandlers not ready yet
+        setTimeout(checkQuota, 1000);
+    } catch (err) {
+        console.error('[INIT] Storage check failed:', err);
+    }
     
     // Step 2: Validate all critical elements exist
     const validation = validateElements();
@@ -64,19 +87,18 @@ function initialize() {
     setupVisibilityHandler();
     
     // Step 9: Setup inactivity visibility handler (battery optimization)
-    // NEW: Pauses/resumes inactivity listeners when tab hidden/visible
     setupInactivityVisibilityHandler();
     console.log('[INIT] ✅ Inactivity visibility handler active');
     
-   // Step 10: Setup typewriter visibility handler (battery optimization)
-setupTypewriterVisibilityHandler();
-console.log('[INIT] ✅ Typewriter visibility handler active');
-
-// Step 11: Start heartbeat logging
-startHeartbeat();
-console.log('[INIT] ✅ Heartbeat started (15 min interval)');
+    // Step 10: Setup typewriter visibility handler (battery optimization)
+    setupTypewriterVisibilityHandler();
+    console.log('[INIT] ✅ Typewriter visibility handler active');
     
-    console.log('[INIT] ✅ Initialization complete (battery optimized)');
+    // Step 11: Start heartbeat logging
+    startHeartbeat();
+    console.log('[INIT] ✅ Heartbeat started (15 min interval)');
+    
+    console.log('[INIT] ✅ Initialization complete (battery optimized, safety enhanced)');
     console.log('═══════════════════════════════════════════════════════');
 }
 

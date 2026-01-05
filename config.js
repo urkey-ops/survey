@@ -139,7 +139,9 @@ window.KIOSK_CONFIG = {
      * When limit reached, oldest records are removed
      */
     MAX_QUEUE_SIZE: 1000,
-    
+    // Around line 50-60, find the storage limits section and replace with:
+
+QUEUE_WARNING_THRESHOLD: 800,  // SAFETY: Warn at 80% capacity
     /**
      * Maximum analytics events to store
      * Default: 1000 events

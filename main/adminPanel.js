@@ -15,6 +15,7 @@ const COUNTDOWN_UPDATE_INTERVAL = 1000; // 1 second
 let failedAttempts = 0;
 let lockoutUntil = null;
 let autoHideTimer = null;
+let autoHideStartTime = null; // ✅ FIXED: Separate variable for start time
 let countdownInterval = null;
 let adminPanelVisible = false;
 let lastPasswordSuccess = null;
@@ -178,9 +179,9 @@ function trackAdminEvent(eventType, metadata = {}) {
 
 function updateCountdown() {
     const countdownEl = document.getElementById('adminCountdown');
-    if (!countdownEl || !adminPanelVisible) return;
+    if (!countdownEl || !adminPanelVisible || !autoHideStartTime) return;
     
-    const elapsed = Date.now() - (autoHideTimer?._startTime || Date.now());
+    const elapsed = Date.now() - autoHideStartTime; // ✅ FIXED: Use separate variable
     const remaining = Math.max(0, Math.ceil((AUTO_HIDE_DELAY - elapsed) / 1000));
     
     if (remaining > 0) {
@@ -195,10 +196,15 @@ function startAutoHideTimer() {
     // Clear existing timers
     if (autoHideTimer) {
         clearTimeout(autoHideTimer);
+        autoHideTimer = null;
     }
     if (countdownInterval) {
         clearInterval(countdownInterval);
+        countdownInterval = null;
     }
+    
+    // Store start time ✅ FIXED: Separate variable
+    autoHideStartTime = Date.now();
     
     // Set new timer
     autoHideTimer = setTimeout(() => {
@@ -206,8 +212,6 @@ function startAutoHideTimer() {
         hideAdminPanel();
         trackAdminEvent('admin_auto_hide');
     }, AUTO_HIDE_DELAY);
-    
-    autoHideTimer._startTime = Date.now();
     
     // Start countdown display
     countdownInterval = setInterval(updateCountdown, COUNTDOWN_UPDATE_INTERVAL);
@@ -227,7 +231,7 @@ function hideAdminPanel() {
         adminControls.classList.add('hidden');
         adminPanelVisible = false;
         
-        // Clean up timers
+        // Clean up timers ✅ FIXED: Also clear start time
         if (autoHideTimer) {
             clearTimeout(autoHideTimer);
             autoHideTimer = null;
@@ -236,6 +240,8 @@ function hideAdminPanel() {
             clearInterval(countdownInterval);
             countdownInterval = null;
         }
+        
+        autoHideStartTime = null; // ✅ FIXED: Clear start time
         
         // Clear countdown display
         const countdownEl = document.getElementById('adminCountdown');
@@ -510,10 +516,18 @@ export function setupAdminPanel() {
     
     // Hide button
     if (hideAdminButton) {
-        hideAdminButton.addEventListener('click', () => {
+        hideAdminButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[ADMIN] 🔘 Hide button clicked');
             hideAdminPanel();
             trackAdminEvent('admin_manually_hidden');
         });
+        
+        console.log('[ADMIN] ✅ Hide button handler attached');
+    } else {
+        console.warn('[ADMIN] ⚠️ Hide button not found');
     }
     
     // Reset timer on interaction
@@ -521,13 +535,21 @@ export function setupAdminPanel() {
     
     // Clear Local (password protected, WORKS OFFLINE)
     if (adminClearButton) {
-        adminClearButton.addEventListener('click', async () => {
+        adminClearButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[ADMIN] 🔘 Clear Local button clicked');
             resetTimer();
             
-            if (!verifyClearPassword()) return;
+            if (!verifyClearPassword()) {
+                console.log('[ADMIN] Password verification failed');
+                return;
+            }
             
             // Check if sync in progress (prevent data corruption)
             if (syncInProgress || analyticsInProgress) {
+                console.warn('[ADMIN] Clear blocked - sync in progress');
                 alert('⚠️ Cannot clear while sync is in progress.\n\nPlease wait for sync to complete.');
                 return;
             }
@@ -539,6 +561,7 @@ export function setupAdminPanel() {
                 : 'Clear all local data?';
             
             if (confirm(confirmMsg)) {
+                console.log('[ADMIN] ✅ User confirmed clear - proceeding...');
                 try {
                     const CONSTANTS = window.CONSTANTS;
                     
@@ -549,29 +572,43 @@ export function setupAdminPanel() {
                     localStorage.removeItem(CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC);
                     
                     trackAdminEvent('local_storage_cleared', { queueSize });
-                    console.log('[ADMIN] ✅ Storage cleared');
+                    console.log('[ADMIN] ✅ Storage cleared successfully');
                     
                     const syncStatusMessage = window.globals?.syncStatusMessage;
                     if (syncStatusMessage) {
                         syncStatusMessage.textContent = '✅ Storage cleared';
                     }
                     
-                    setTimeout(() => location.reload(), 1500);
+                    setTimeout(() => {
+                        console.log('[ADMIN] Reloading page...');
+                        location.reload();
+                    }, 1500);
                     
                 } catch (error) {
-                    console.error('[ADMIN] Error:', error);
-                    alert('❌ Error clearing storage');
+                    console.error('[ADMIN] ❌ Error clearing storage:', error);
+                    alert('❌ Error clearing storage. Check console for details.');
                 }
+            } else {
+                console.log('[ADMIN] User cancelled clear operation');
             }
         });
+        
+        console.log('[ADMIN] ✅ Clear Local button handler attached');
+    } else {
+        console.warn('[ADMIN] ⚠️ Clear Local button not found');
     }
     
     // Sync Data (REQUIRES ONLINE)
     if (syncButton) {
-        syncButton.addEventListener('click', async () => {
+        syncButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[ADMIN] 🔘 Sync Data button clicked');
             resetTimer();
             
             if (!navigator.onLine) {
+                console.warn('[ADMIN] Sync blocked - offline');
                 alert('📡 Cannot sync - device is offline.\n\nData will sync automatically when connection is restored.');
                 trackAdminEvent('sync_blocked_offline');
                 return;
@@ -582,6 +619,7 @@ export function setupAdminPanel() {
                 return;
             }
             
+            console.log('[ADMIN] ✅ Starting manual sync...');
             syncInProgress = true;
             updateSyncButtonState(true);
             trackAdminEvent('manual_sync_triggered');
@@ -589,22 +627,36 @@ export function setupAdminPanel() {
             try {
                 if (window.dataHandlers?.syncData) {
                     await window.dataHandlers.syncData(true);
+                    console.log('[ADMIN] ✅ Sync completed');
+                } else {
+                    console.error('[ADMIN] ❌ syncData function not found');
+                    alert('❌ Sync function not available');
                 }
             } catch (error) {
-                console.error('[ADMIN] Sync failed:', error);
+                console.error('[ADMIN] ❌ Sync failed:', error);
+                alert('❌ Sync failed. Check console for details.');
             } finally {
                 syncInProgress = false;
                 updateSyncButtonState(navigator.onLine);
             }
         });
+        
+        console.log('[ADMIN] ✅ Sync Data button handler attached');
+    } else {
+        console.warn('[ADMIN] ⚠️ Sync Data button not found');
     }
     
     // Sync Analytics (REQUIRES ONLINE)
     if (syncAnalyticsButton) {
-        syncAnalyticsButton.addEventListener('click', async () => {
+        syncAnalyticsButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[ADMIN] 🔘 Sync Analytics button clicked');
             resetTimer();
             
             if (!navigator.onLine) {
+                console.warn('[ADMIN] Analytics sync blocked - offline');
                 alert('📡 Cannot sync analytics - device is offline.\n\nAnalytics will sync automatically when connection is restored.');
                 trackAdminEvent('analytics_sync_blocked_offline');
                 return;
@@ -615,6 +667,7 @@ export function setupAdminPanel() {
                 return;
             }
             
+            console.log('[ADMIN] ✅ Starting analytics sync...');
             analyticsInProgress = true;
             updateAnalyticsButtonState(true);
             trackAdminEvent('manual_analytics_sync_triggered');
@@ -622,27 +675,42 @@ export function setupAdminPanel() {
             try {
                 if (window.dataHandlers?.syncAnalytics) {
                     await window.dataHandlers.syncAnalytics(true);
+                    console.log('[ADMIN] ✅ Analytics sync completed');
+                } else {
+                    console.error('[ADMIN] ❌ syncAnalytics function not found');
+                    alert('❌ Analytics sync function not available');
                 }
             } catch (error) {
-                console.error('[ADMIN] Analytics sync failed:', error);
+                console.error('[ADMIN] ❌ Analytics sync failed:', error);
+                alert('❌ Analytics sync failed. Check console for details.');
             } finally {
                 analyticsInProgress = false;
                 updateAnalyticsButtonState(navigator.onLine);
             }
         });
+        
+        console.log('[ADMIN] ✅ Sync Analytics button handler attached');
+    } else {
+        console.warn('[ADMIN] ⚠️ Sync Analytics button not found');
     }
     
     // Check Update (REQUIRES ONLINE)
     if (checkUpdateButton) {
-        checkUpdateButton.addEventListener('click', async () => {
+        checkUpdateButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[ADMIN] 🔘 Check Update button clicked');
             resetTimer();
             
             if (!navigator.onLine) {
+                console.warn('[ADMIN] Update check blocked - offline');
                 alert('📡 Cannot check for updates - device is offline.\n\nPlease connect to WiFi to check for updates.');
                 trackAdminEvent('update_check_blocked_offline');
                 return;
             }
             
+            console.log('[ADMIN] ✅ Starting update check...');
             trackAdminEvent('update_check_triggered');
             
             const syncStatusMessage = window.globals?.syncStatusMessage;
@@ -653,13 +721,18 @@ export function setupAdminPanel() {
             try {
                 if (window.pwaUpdateManager) {
                     await window.pwaUpdateManager.forceUpdate();
+                    console.log('[ADMIN] ✅ Update check completed');
+                    if (syncStatusMessage) {
+                        syncStatusMessage.textContent = '✅ Update check complete';
+                    }
                 } else {
+                    console.error('[ADMIN] ❌ PWA Update Manager not found');
                     if (syncStatusMessage) {
                         syncStatusMessage.textContent = '❌ Update manager not available';
                     }
                 }
             } catch (error) {
-                console.error('[ADMIN] Update check failed:', error);
+                console.error('[ADMIN] ❌ Update check failed:', error);
                 if (syncStatusMessage) {
                     syncStatusMessage.textContent = '❌ Update check failed';
                 }
@@ -669,16 +742,25 @@ export function setupAdminPanel() {
                 if (syncStatusMessage) syncStatusMessage.textContent = '';
             }, 4000);
         });
+        
+        console.log('[ADMIN] ✅ Check Update button handler attached');
+    } else {
+        console.warn('[ADMIN] ⚠️ Check Update button not found');
     }
     
     // Fix Video (WORKS OFFLINE - local asset)
     if (fixVideoButton) {
-        fixVideoButton.addEventListener('click', () => {
+        fixVideoButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[ADMIN] 🔘 Fix Video button clicked');
             resetTimer();
             trackAdminEvent('video_fix_triggered');
             
             const kioskVideo = window.globals?.kioskVideo;
             if (kioskVideo) {
+                console.log('[ADMIN] ✅ Reloading video...');
                 const currentSrc = kioskVideo.src || kioskVideo.querySelector('source')?.src;
                 if (currentSrc) {
                     kioskVideo.src = '';
@@ -686,7 +768,7 @@ export function setupAdminPanel() {
                     setTimeout(() => {
                         kioskVideo.src = currentSrc;
                         kioskVideo.load();
-                        console.log('[ADMIN] ✅ Video reloaded');
+                        console.log('[ADMIN] ✅ Video reloaded successfully');
                         
                         const syncStatusMessage = window.globals?.syncStatusMessage;
                         if (syncStatusMessage) {
@@ -696,9 +778,19 @@ export function setupAdminPanel() {
                             }, 3000);
                         }
                     }, 500);
+                } else {
+                    console.error('[ADMIN] ❌ Video source not found');
+                    alert('❌ Video source not found');
                 }
+            } else {
+                console.error('[ADMIN] ❌ Video element not found');
+                alert('❌ Video element not found');
             }
         });
+        
+        console.log('[ADMIN] ✅ Fix Video button handler attached');
+    } else {
+        console.warn('[ADMIN] ⚠️ Fix Video button not found');
     }
     
     // Network event listeners (only update if panel visible)
@@ -748,6 +840,7 @@ export function cleanupAdminPanel() {
     if (offlineHandler) window.removeEventListener('offline', offlineHandler);
     
     autoHideTimer = null;
+    autoHideStartTime = null; // ✅ FIXED: Clear start time
     countdownInterval = null;
     onlineHandler = null;
     offlineHandler = null;

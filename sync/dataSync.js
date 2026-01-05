@@ -184,12 +184,15 @@ export function autoSync() {
     checkAndSyncAnalytics();
 }
 
+// At the bottom of the file, find the export section and add checkStorageQuota:
+
 // Expose functions globally for backward compatibility
 window.dataHandlers = {
     // Storage utilities
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
+    checkStorageQuota,  // SAFETY: Added storage quota check
     
     // Queue management
     getSubmissionQueue,
@@ -209,12 +212,13 @@ window.dataHandlers = {
     autoSync
 };
 
-// Export for ES6 modules (removed autoSync to avoid duplicate)
+// Export for ES6 modules
 export {
     // Storage utilities
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
+    checkStorageQuota,  // SAFETY: Added
     
     // Queue management
     getSubmissionQueue,

@@ -1,6 +1,7 @@
-// FILE: networkHandler.js
+// FILE: sync/networkHandler.js
 // PURPOSE: Network requests with retry logic and exponential backoff
 // DEPENDENCIES: window.CONSTANTS
+// VERSION: 2.0.0 - Added request timeout
 
 /**
  * Calculate exponential backoff delay
@@ -14,6 +15,7 @@ function getExponentialBackoffDelay(attempt) {
 
 /**
  * Send HTTP request with retry logic
+ * SAFETY FIX: Added 30-second timeout
  * @param {string} endpoint - API endpoint URL
  * @param {Object} payload - Request payload
  * @param {number} maxRetries - Maximum retry attempts (default from CONSTANTS)
@@ -21,14 +23,22 @@ function getExponentialBackoffDelay(attempt) {
  */
 export async function sendRequest(endpoint, payload, maxRetries = null) {
     const MAX_RETRIES = maxRetries || window.CONSTANTS?.MAX_RETRIES || 3;
+    const REQUEST_TIMEOUT = 30000; // SAFETY: 30-second timeout
     
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
+            // SAFETY FIX: Create abort controller for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+            
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
             
             if (!response.ok) {
                 throw new Error(`Server returned status: ${response.status}`);
@@ -38,9 +48,16 @@ export async function sendRequest(endpoint, payload, maxRetries = null) {
             return result;
             
         } catch (error) {
+            // Check if timeout
+            if (error.name === 'AbortError') {
+                console.error(`[NETWORK] Request timeout after ${REQUEST_TIMEOUT}ms (attempt ${attempt}/${MAX_RETRIES})`);
+            } else {
+                console.error(`[NETWORK] Request failed (attempt ${attempt}/${MAX_RETRIES}):`, error.message);
+            }
+            
             if (attempt < MAX_RETRIES) {
                 const delay = getExponentialBackoffDelay(attempt);
-                console.warn(`[NETWORK] Attempt ${attempt}/${MAX_RETRIES} failed. Retrying in ${delay}ms...`);
+                console.warn(`[NETWORK] Retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             } else {
                 // Last attempt failed, throw error
@@ -92,10 +109,16 @@ export function waitForOnline(timeout = 30000) {
  */
 export async function testConnection(endpoint) {
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         const response = await fetch(endpoint, {
             method: 'HEAD',
-            cache: 'no-cache'
+            cache: 'no-cache',
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         return response.ok;
     } catch (error) {
         console.warn('[NETWORK] Connection test failed:', error.message);

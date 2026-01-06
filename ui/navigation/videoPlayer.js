@@ -1,7 +1,7 @@
 // FILE: ui/navigation/videoPlayer.js
 // PURPOSE: iOS-safe video playback with retry logic
 // DEPENDENCIES: None
-// VERSION: 3.0.0 - Battery optimized (event-based, no polling)
+// VERSION: 3.1.0 - Battery optimized, bounded retry logic
 
 const VIDEO_CONFIG = {
   VIDEO_DURATION: 5000,
@@ -10,13 +10,21 @@ const VIDEO_CONFIG = {
   READY_TIMEOUT: 5000
 };
 
+// Error retry configuration for auto-reload
+const ERROR_RETRY_CONFIG = {
+  MAX_ERROR_RETRIES: 3,        // Max auto reloads per window
+  ERROR_RETRY_WINDOW: 30000    // 30s window for counting errors
+};
+
 // Video state
 export const videoState = {
   isPlaying: false,
   playAttempts: 0,
   lastPlayTime: 0,
   hasLoaded: false,
-  currentSchedule: null
+  currentSchedule: null,
+  errorCount: 0,
+  lastErrorTime: 0
 };
 
 /**
@@ -57,6 +65,9 @@ function waitForVideoReady(video, timeout = VIDEO_CONFIG.READY_TIMEOUT) {
       if (isVideoReady(video)) {
         cleanup();
         console.log('[VIDEO] Ready event fired');
+        // Reset error counter on successful readiness
+        videoState.errorCount = 0;
+        videoState.lastErrorTime = 0;
         resolve(true);
       }
     };
@@ -181,6 +192,27 @@ export function setupVideoEventListeners(video) {
     console.error('[VIDEO] ❌ Error:', e);
     videoState.isPlaying = false;
     videoState.hasLoaded = false;
+
+    const now = Date.now();
+    const { MAX_ERROR_RETRIES, ERROR_RETRY_WINDOW } = ERROR_RETRY_CONFIG;
+
+    // Reset window if last error was long ago
+    if (now - videoState.lastErrorTime > ERROR_RETRY_WINDOW) {
+      videoState.errorCount = 0;
+    }
+
+    videoState.lastErrorTime = now;
+    videoState.errorCount++;
+
+    if (video.error) {
+      console.log('[VIDEO] Error code:', video.error.code);
+    }
+
+    if (videoState.errorCount > MAX_ERROR_RETRIES) {
+      console.warn('[VIDEO] 🚫 Max error retries reached, stopping auto reload');
+      return;
+    }
+
     setTimeout(() => reloadVideoSource(video), 1000);
   };
   video.addEventListener('error', errorHandler);
@@ -189,6 +221,9 @@ export function setupVideoEventListeners(video) {
   const canPlayHandler = () => {
     console.log('[VIDEO] ✅ Can play through');
     videoState.hasLoaded = true;
+    // Reset error tracking on successful readiness
+    videoState.errorCount = 0;
+    videoState.lastErrorTime = 0;
   };
   video.addEventListener('canplaythrough', canPlayHandler);
   video._canplaythroughHandler = canPlayHandler;

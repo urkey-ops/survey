@@ -808,21 +808,161 @@ export function setupAdminPanel() {
                 return;
             }
             
-            console.log('[ADMIN] ✅ Reloading video from:', currentSrc);
+              console.log('[ADMIN] ✅ Reloading video from:', currentSrc);
             
             try {
-                // Clear current source
                 kioskVideo.pause();
                 kioskVideo.src = '';
                 kioskVideo.load();
-                
-                console.log('[ADMIN] Video cleared, reloading in 500ms...');
                 
                 setTimeout(() => {
                     kioskVideo.src = currentSrc;
                     kioskVideo.load();
                     
-                    // Try to play if autoplay was set
                     if (kioskVideo.hasAttribute('autoplay')) {
                         kioskVideo.play().catch(err => {
-                            console.warn('[ADMIN] Auto-play failed (
+                            console.warn('[ADMIN] Auto-play failed:', err.message);
+                        });
+                    }
+                    
+                    console.log('[ADMIN] ✅ Video reloaded');
+                    
+                    const syncStatusMessage = window.globals?.syncStatusMessage;
+                    if (syncStatusMessage) {
+                        syncStatusMessage.textContent = '✅ Video reloaded';
+                        setTimeout(() => {
+                            syncStatusMessage.textContent = '';
+                        }, 3000);
+                    }
+                }, 500);
+                
+            } catch (error) {
+                console.error('[ADMIN] ❌ Video reload failed:', error);
+                alert(`❌ Video reload failed:\n\n${error.message}`);
+            }
+        });
+        
+        console.log('[ADMIN] ✅ Fix Video button handler attached');
+    } else {
+        console.warn('[ADMIN] ⚠️ Fix Video button not found');
+    }
+    
+    onlineHandler = () => {
+        console.log('[ADMIN] 🌐 Connection restored');
+        if (adminPanelVisible) {
+            updateAllButtonStates();
+        }
+        trackAdminEvent('connection_restored');
+    };
+    
+    offlineHandler = () => {
+        console.log('[ADMIN] 📡 Connection lost - offline mode');
+        if (adminPanelVisible) {
+            updateAllButtonStates();
+        }
+        trackAdminEvent('connection_lost');
+    };
+    
+    window.addEventListener('online', onlineHandler);
+    window.addEventListener('offline', offlineHandler);
+
+console.log('═══════════════════════════════════════════════════════');
+    console.log('🎛️  ADMIN PANEL CONFIGURED');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log(`   Mode: Offline-First iPad Kiosk PWA`);
+    console.log(`   Auto-hide: ${AUTO_HIDE_DELAY/1000}s`);
+    console.log(`   Password timeout: 5 minutes`);
+    console.log(`   Haptic feedback: ${navigator.vibrate ? '✅ Enabled' : '❌ Not supported'}`);
+    console.log(`   Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
+    console.log('');
+    console.log('📋 Button States:');
+    console.log(`   • Sync Data: ${navigator.onLine ? '✅ Enabled' : '🔒 Disabled (offline)'}`);
+    console.log(`   • Sync Analytics: ${navigator.onLine ? '✅ Enabled' : '🔒 Disabled (offline)'}`);
+    console.log(`   • Check Update: ${navigator.onLine ? '✅ Enabled' : '🔒 Disabled (offline)'}`);
+    console.log(`   • Fix Video: ✅ Always enabled (offline-safe)`);
+    console.log(`   • Clear Local: ${isClearLocalLocked() ? '🔒 Locked' : '✅ Enabled (offline-safe)'}`);
+    console.log('═══════════════════════════════════════════════════════');
+}
+
+// ===== CLEANUP =====
+
+export function cleanupAdminPanel() {
+    if (autoHideTimer) clearTimeout(autoHideTimer);
+    if (countdownInterval) clearInterval(countdownInterval);
+    if (onlineHandler) window.removeEventListener('online', onlineHandler);
+    if (offlineHandler) window.removeEventListener('offline', offlineHandler);
+    
+    autoHideTimer = null;
+    autoHideStartTime = null; // ✅ FIXED: Clear start time
+    countdownInterval = null;
+    onlineHandler = null;
+    offlineHandler = null;
+    
+    console.log('[ADMIN] 🧹 Cleaned up all resources');
+}
+
+// ===== DEBUG COMMANDS =====
+
+window.inspectQueue = function() {
+    const CONSTANTS = window.CONSTANTS;
+    const queue = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_QUEUE) || '[]');
+    
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('📋 QUEUE INSPECTION');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log(`Total: ${queue.length}`);
+    console.log(`Status: ${navigator.onLine ? 'Online' : 'Offline'}`);
+    console.log('');
+    
+    if (queue.length === 0) {
+        console.log('✅ Queue is empty');
+    } else {
+        queue.forEach((sub, idx) => {
+            console.log(`${idx+1}. ID: ${sub.id}`);
+            console.log(`   Time: ${new Date(sub.timestamp).toLocaleString()}`);
+            console.log(`   Status: ${sub.sync_status || 'unsynced'}`);
+            console.log('');
+        });
+    }
+    
+    console.log('═══════════════════════════════════════════════════════');
+    return queue;
+};
+
+window.systemStatus = function() {
+    const CONSTANTS = window.CONSTANTS;
+    const queue = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_QUEUE) || '[]');
+    const analytics = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_ANALYTICS) || '[]');
+    const lastSync = localStorage.getItem(CONSTANTS.STORAGE_KEY_LAST_SYNC);
+    const lastAnalyticsSync = localStorage.getItem(CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC);
+    
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('🖥️  SYSTEM STATUS - OFFLINE-FIRST KIOSK');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log(`Network: ${navigator.onLine ? '🌐 Online' : '📡 Offline Mode'}`);
+    console.log(`Queue: ${queue.length}/${CONSTANTS.MAX_QUEUE_SIZE} surveys`);
+    console.log(`Analytics: ${analytics.length}/${CONSTANTS.MAX_ANALYTICS_SIZE} events`);
+    console.log(`Admin Panel: ${adminPanelVisible ? 'Visible' : 'Hidden'}`);
+    console.log(`Sync Status: ${syncInProgress ? '⏳ In Progress' : '✅ Idle'}`);
+    console.log(`Password: ${isPasswordSessionExpired() ? 'Expired' : 'Valid'}`);
+    console.log(`Last Sync: ${lastSync ? new Date(parseInt(lastSync)).toLocaleString() : 'Never'}`);
+    console.log(`Last Analytics: ${lastAnalyticsSync ? new Date(parseInt(lastAnalyticsSync)).toLocaleString() : 'Never'}`);
+    
+    if (isClearLocalLocked()) {
+        console.log(`🔒 Clear Local: LOCKED (${getRemainingLockoutTime()} min remaining)`);
+    }
+    
+    console.log('═══════════════════════════════════════════════════════');
+};
+
+console.log('═══════════════════════════════════════════════════════');
+console.log('🛠️  DEBUG COMMANDS');
+console.log('═══════════════════════════════════════════════════════');
+console.log('📋 window.inspectQueue()  - View queued surveys');
+console.log('🖥️  window.systemStatus()  - View system status');
+console.log('═══════════════════════════════════════════════════════');
+
+export default {
+    setupAdminPanel,
+    cleanupAdminPanel
+};

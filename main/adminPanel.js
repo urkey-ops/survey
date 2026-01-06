@@ -701,6 +701,7 @@ export function setupAdminPanel() {
             e.stopPropagation();
             
             console.log('[ADMIN] 🔘 Check Update button clicked');
+            console.log('[ADMIN] PWA Update Manager exists?', !!window.pwaUpdateManager);
             resetTimer();
             
             if (!navigator.onLine) {
@@ -710,32 +711,42 @@ export function setupAdminPanel() {
                 return;
             }
             
+            const syncStatusMessage = window.globals?.syncStatusMessage;
+            
+            if (!window.pwaUpdateManager) {
+                console.error('[ADMIN] ❌ PWA Update Manager not found on window object');
+                console.log('[ADMIN] Available window properties:', Object.keys(window).filter(k => k.includes('pwa') || k.includes('update')));
+                
+                if (syncStatusMessage) {
+                    syncStatusMessage.textContent = '❌ Update manager not available';
+                    setTimeout(() => {
+                        syncStatusMessage.textContent = '';
+                    }, 4000);
+                }
+                
+                alert('❌ PWA Update Manager not loaded.\n\nThe update system may not be initialized yet.\n\nTry refreshing the page.');
+                return;
+            }
+            
             console.log('[ADMIN] ✅ Starting update check...');
             trackAdminEvent('update_check_triggered');
             
-            const syncStatusMessage = window.globals?.syncStatusMessage;
             if (syncStatusMessage) {
                 syncStatusMessage.textContent = '🔍 Checking for updates...';
             }
             
             try {
-                if (window.pwaUpdateManager) {
-                    await window.pwaUpdateManager.forceUpdate();
-                    console.log('[ADMIN] ✅ Update check completed');
-                    if (syncStatusMessage) {
-                        syncStatusMessage.textContent = '✅ Update check complete';
-                    }
-                } else {
-                    console.error('[ADMIN] ❌ PWA Update Manager not found');
-                    if (syncStatusMessage) {
-                        syncStatusMessage.textContent = '❌ Update manager not available';
-                    }
+                await window.pwaUpdateManager.forceUpdate();
+                console.log('[ADMIN] ✅ Update check completed');
+                if (syncStatusMessage) {
+                    syncStatusMessage.textContent = '✅ Update check complete';
                 }
             } catch (error) {
                 console.error('[ADMIN] ❌ Update check failed:', error);
                 if (syncStatusMessage) {
-                    syncStatusMessage.textContent = '❌ Update check failed';
+                    syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
                 }
+                alert(`❌ Update check failed:\n\n${error.message}`);
             }
             
             setTimeout(() => {
@@ -745,7 +756,7 @@ export function setupAdminPanel() {
         
         console.log('[ADMIN] ✅ Check Update button handler attached');
     } else {
-        console.warn('[ADMIN] ⚠️ Check Update button not found');
+        console.warn('[ADMIN] ⚠️ Check Update button not found in DOM');
     }
     
     // Fix Video (WORKS OFFLINE - local asset)
@@ -755,42 +766,87 @@ export function setupAdminPanel() {
             e.stopPropagation();
             
             console.log('[ADMIN] 🔘 Fix Video button clicked');
+            console.log('[ADMIN] Checking for video element...');
+            console.log('[ADMIN] window.globals exists?', !!window.globals);
+            console.log('[ADMIN] window.globals.kioskVideo exists?', !!window.globals?.kioskVideo);
+            
             resetTimer();
             trackAdminEvent('video_fix_triggered');
             
-            const kioskVideo = window.globals?.kioskVideo;
-            if (kioskVideo) {
-                console.log('[ADMIN] ✅ Reloading video...');
-                const currentSrc = kioskVideo.src || kioskVideo.querySelector('source')?.src;
-                if (currentSrc) {
-                    kioskVideo.src = '';
+            // Try multiple ways to find the video element
+            let kioskVideo = window.globals?.kioskVideo;
+            
+            if (!kioskVideo) {
+                console.warn('[ADMIN] Video not in globals, trying document.getElementById...');
+                kioskVideo = document.getElementById('kioskVideo');
+            }
+            
+            if (!kioskVideo) {
+                console.warn('[ADMIN] Trying querySelector video...');
+                kioskVideo = document.querySelector('video');
+            }
+            
+            if (!kioskVideo) {
+                console.error('[ADMIN] ❌ Video element not found anywhere in DOM');
+                console.log('[ADMIN] Available video elements:', document.querySelectorAll('video').length);
+                alert('❌ Video element not found.\n\nThe video may not be loaded yet, or the element ID has changed.');
+                return;
+            }
+            
+            console.log('[ADMIN] ✅ Video element found:', kioskVideo);
+            console.log('[ADMIN] Video src:', kioskVideo.src);
+            console.log('[ADMIN] Video source tags:', kioskVideo.querySelectorAll('source').length);
+            
+            const currentSrc = kioskVideo.src || kioskVideo.querySelector('source')?.src;
+            
+            if (!currentSrc) {
+                console.error('[ADMIN] ❌ Video source not found');
+                console.log('[ADMIN] Video innerHTML:', kioskVideo.innerHTML);
+                alert('❌ Video source not found.\n\nThe video may not have a valid source URL.');
+                return;
+            }
+            
+            console.log('[ADMIN] ✅ Reloading video from:', currentSrc);
+            
+            try {
+                // Clear current source
+                kioskVideo.pause();
+                kioskVideo.src = '';
+                kioskVideo.load();
+                
+                console.log('[ADMIN] Video cleared, reloading in 500ms...');
+                
+                setTimeout(() => {
+                    kioskVideo.src = currentSrc;
                     kioskVideo.load();
-                    setTimeout(() => {
-                        kioskVideo.src = currentSrc;
-                        kioskVideo.load();
-                        console.log('[ADMIN] ✅ Video reloaded successfully');
-                        
-                        const syncStatusMessage = window.globals?.syncStatusMessage;
-                        if (syncStatusMessage) {
-                            syncStatusMessage.textContent = '✅ Video reloaded';
-                            setTimeout(() => {
-                                syncStatusMessage.textContent = '';
-                            }, 3000);
-                        }
-                    }, 500);
-                } else {
-                    console.error('[ADMIN] ❌ Video source not found');
-                    alert('❌ Video source not found');
-                }
-            } else {
-                console.error('[ADMIN] ❌ Video element not found');
-                alert('❌ Video element not found');
+                    
+                    // Try to play if autoplay was set
+                    if (kioskVideo.hasAttribute('autoplay')) {
+                        kioskVideo.play().catch(err => {
+                            console.warn('[ADMIN] Auto-play failed (may require user interaction):', err.message);
+                        });
+                    }
+                    
+                    console.log('[ADMIN] ✅ Video reloaded successfully');
+                    
+                    const syncStatusMessage = window.globals?.syncStatusMessage;
+                    if (syncStatusMessage) {
+                        syncStatusMessage.textContent = '✅ Video reloaded';
+                        setTimeout(() => {
+                            syncStatusMessage.textContent = '';
+                        }, 3000);
+                    }
+                }, 500);
+                
+            } catch (error) {
+                console.error('[ADMIN] ❌ Error during video reload:', error);
+                alert(`❌ Video reload failed:\n\n${error.message}`);
             }
         });
         
         console.log('[ADMIN] ✅ Fix Video button handler attached');
     } else {
-        console.warn('[ADMIN] ⚠️ Fix Video button not found');
+        console.warn('[ADMIN] ⚠️ Fix Video button not found in DOM');
     }
     
     // Network event listeners (only update if panel visible)

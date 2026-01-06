@@ -238,6 +238,9 @@ try {
 // Expose configuration globally
 window.CONSTANTS = CONFIG;
 
+// ✅ Initialize globals object early
+window.globals = window.globals || {};
+
 // Expose helper functions
 window.KIOSK_CONFIG = {
     ...CONFIG,

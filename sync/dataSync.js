@@ -1,13 +1,15 @@
 // FILE: dataSync.js
 // PURPOSE: Main entry point combining all data sync modules
 // DEPENDENCIES: All sync sub-modules
+// VERSION: 2.0.0 - Added storage quota check
 
 import {
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
     showUserError,
-    updateSyncStatus
+    updateSyncStatus,
+    checkStorageQuota
 } from './storageUtils.js';
 
 import {
@@ -190,6 +192,7 @@ window.dataHandlers = {
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
+    checkStorageQuota,
     
     // Queue management
     getSubmissionQueue,
@@ -209,12 +212,13 @@ window.dataHandlers = {
     autoSync
 };
 
-// Export for ES6 modules (removed autoSync to avoid duplicate)
+// Export for ES6 modules
 export {
     // Storage utilities
     generateUUID,
     safeSetLocalStorage,
     safeGetLocalStorage,
+    checkStorageQuota,
     
     // Queue management
     getSubmissionQueue,

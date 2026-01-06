@@ -1,7 +1,7 @@
 // FILE: ui/navigation/startScreen.js
 // PURPOSE: Start screen orchestration (refactored into modules)
 // DEPENDENCIES: core.js, videoLoopManager.js
-// VERSION: 3.0.0 - Battery optimized (visibility-aware animations)
+// VERSION: 4.0.0 - Added video fallback
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 import { 
@@ -17,7 +17,7 @@ export { pauseVideo, resumeVideo };
 export const handleVideoVisibilityChange = videoVisibilityHandler;
 export const triggerNuclearReload = videoNuclearReload;
 
-// BATTERY OPTIMIZATION: Cache video scheduler module
+// Cache video scheduler module
 let videoSchedulerModule = null;
 async function getVideoSchedulerModule() {
   if (!videoSchedulerModule) {
@@ -26,30 +26,71 @@ async function getVideoSchedulerModule() {
   return videoSchedulerModule;
 }
 
-// BATTERY OPTIMIZATION: Track attract mode state
+// Track attract mode state
 let attractModeActive = false;
 let attractTargets = [];
 
 /**
+ * SAFETY FIX: Show text-only mode if video fails completely
+ */
+function showVideoFallback() {
+    const kioskStartScreen = window.globals?.kioskStartScreen;
+    if (!kioskStartScreen) return;
+    
+    console.log('[VIDEO FALLBACK] Showing text-only mode');
+    
+    const video = document.getElementById('kioskVideo');
+    if (video) {
+        video.style.display = 'none';
+    }
+    
+    const fallbackMsg = document.createElement('div');
+    fallbackMsg.id = 'video-fallback';
+    fallbackMsg.className = 'text-center p-8 bg-emerald-50 rounded-lg max-w-xl mx-auto';
+    
+    const icon = document.createElement('p');
+    icon.className = 'text-4xl mb-4';
+    icon.textContent = '📋';
+    
+    const title = document.createElement('p');
+    title.className = 'text-2xl text-emerald-800 mb-2 font-bold';
+    title.textContent = 'Welcome!';
+    
+    const subtitle = document.createElement('p');
+    subtitle.className = 'text-lg text-emerald-700';
+    subtitle.textContent = 'Ready to share your experience?';
+    
+    fallbackMsg.appendChild(icon);
+    fallbackMsg.appendChild(title);
+    fallbackMsg.appendChild(subtitle);
+    
+    if (!document.getElementById('video-fallback')) {
+        const contentDiv = kioskStartScreen.querySelector('.mb-8.content');
+        if (contentDiv && contentDiv.nextSibling) {
+            kioskStartScreen.insertBefore(fallbackMsg, contentDiv.nextSibling);
+        } else {
+            kioskStartScreen.appendChild(fallbackMsg);
+        }
+    }
+}
+
+/**
  * Start attract mode animation
- * BATTERY OPTIMIZED: Checks sleep mode and visibility before starting
  */
 async function startAttractMode() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
   if (!kioskStartScreen) return;
 
-  // BATTERY OPTIMIZATION: Don't start if page is hidden
   if (document.hidden) {
-    console.log('[ATTRACT] 🔋 Page hidden, deferring animation start');
+    console.log('[ATTRACT] Page hidden, deferring animation start');
     return;
   }
 
-  // Import sleep mode check (cached)
   const { isInSleepMode } = await getVideoSchedulerModule();
   
   if (isInSleepMode()) {
     console.log('[ATTRACT] Skipping animation - sleep mode');
-    return; // Don't start pulse animation
+    return;
   }
 
   attractTargets = [
@@ -68,12 +109,11 @@ async function startAttractMode() {
 
 /**
  * Stop attract mode animation
- * BATTERY OPTIMIZATION: Explicitly stop animations
  */
 function stopAttractMode() {
   if (!attractModeActive) return;
   
-  console.log('[ATTRACT] 🔋 Stopping pulse animation');
+  console.log('[ATTRACT] Stopping pulse animation');
   
   attractTargets.forEach(target => {
     if (target) {
@@ -87,16 +127,14 @@ function stopAttractMode() {
 
 /**
  * Pause attract mode (when page hidden)
- * BATTERY OPTIMIZATION: Pause CSS animations
  */
 function pauseAttractMode() {
   if (!attractModeActive) return;
   
-  console.log('[ATTRACT] 🔋 Pausing animations (page hidden)');
+  console.log('[ATTRACT] Pausing animations (page hidden)');
   
   attractTargets.forEach(target => {
     if (target) {
-      // Pause CSS animation by setting animation-play-state
       target.style.animationPlayState = 'paused';
     }
   });
@@ -104,7 +142,6 @@ function pauseAttractMode() {
 
 /**
  * Resume attract mode (when page visible)
- * BATTERY OPTIMIZATION: Resume CSS animations
  */
 function resumeAttractMode() {
   if (!attractModeActive) return;
@@ -113,7 +150,6 @@ function resumeAttractMode() {
   
   attractTargets.forEach(target => {
     if (target) {
-      // Resume CSS animation
       target.style.animationPlayState = 'running';
     }
   });
@@ -121,7 +157,6 @@ function resumeAttractMode() {
 
 /**
  * Handle visibility changes for attract mode
- * BATTERY OPTIMIZATION: Pause/resume animations
  */
 function handleAttractVisibility() {
   if (document.hidden) {
@@ -133,7 +168,6 @@ function handleAttractVisibility() {
 
 /**
  * Setup attract mode visibility handler
- * BATTERY OPTIMIZATION: Auto-pause animations when hidden
  */
 function setupAttractVisibilityHandler() {
   document.addEventListener('visibilitychange', handleAttractVisibility);
@@ -158,7 +192,6 @@ function triggerTouchFeedback(element) {
 
 /**
  * Clean up start screen event listeners
- * BATTERY OPTIMIZATION: Stop all animations
  */
 export function cleanupStartScreenListeners() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
@@ -169,11 +202,8 @@ export function cleanupStartScreenListeners() {
     window.boundStartSurvey = null;
   }
   
-  // BATTERY OPTIMIZATION: Stop attract mode animations
   stopAttractMode();
   cleanupAttractVisibilityHandler();
-  
-  // Video cleanup is handled by videoLoopManager
   pauseVideo();
   
   console.log('[START SCREEN] Cleanup complete (animations stopped)');
@@ -233,7 +263,6 @@ function startSurvey(e) {
 
 /**
  * Show the start screen
- * BATTERY OPTIMIZED: Starts animations with visibility awareness
  */
 export function showStartScreen() {
   const { globals } = getDependencies();
@@ -264,7 +293,6 @@ export function showStartScreen() {
     kioskStartScreen.classList.remove('hidden');
 
     if (kioskVideo) {
-      // BATTERY OPTIMIZATION: Cache video player module
       const touchFallback = async () => {
         if (kioskVideo.paused) {
           console.log('[VIDEO] Touch fallback triggered');
@@ -275,13 +303,16 @@ export function showStartScreen() {
         }
       };
       
-      // Note: 'once: true' ensures automatic cleanup
       kioskStartScreen.addEventListener('touchstart', touchFallback, { once: true, passive: true });
+      
+      kioskVideo.addEventListener('error', () => {
+        console.error('[VIDEO] Failed to load - showing fallback');
+        showVideoFallback();
+      }, { once: true });
       
       setupVideoLoop(kioskVideo);
     }
 
-    // BATTERY OPTIMIZATION: Start attract mode with visibility handling
     startAttractMode();
     setupAttractVisibilityHandler();
 
@@ -300,7 +331,6 @@ export function showStartScreen() {
   }
 }
 
-// Export attract mode controls for external use
 export {
   startAttractMode,
   stopAttractMode,

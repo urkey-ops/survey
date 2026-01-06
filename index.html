@@ -52,19 +52,20 @@
     -webkit-user-select: none !important;
     -webkit-touch-callout: none !important;
     cursor: pointer;
-    /* iPad PWA: Larger tap target */
     padding: 12px 16px !important;
     margin: -12px -16px !important;
-    min-height: 44px; /* iOS recommended minimum tap target */
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
     border-radius: 8px;
     transition: background-color 0.15s ease;
   }
   
-
+  #mainTitle:active {
+    background-color: rgba(16, 185, 129, 0.15);
+    transform: scale(0.98);
+  }
   
-  /* Ensure header doesn't interfere */
   header {
     touch-action: manipulation !important;
   }
@@ -72,7 +73,7 @@
   input, textarea, button, select {
     touch-action: manipulation;
     -webkit-user-select: text;
-    font-size: 16px !important; /* Prevent iOS zoom on focus */
+    font-size: 16px !important;
   }
 
   @keyframes subtle-pulse {
@@ -172,6 +173,71 @@
         </section>
     </main>
     
+    <!-- SAFETY FIX: Global Error Boundary -->
+    <script>
+      // Catch all uncaught errors
+      window.addEventListener('error', function(e) {
+        console.error('🚨 [GLOBAL ERROR]', e.message, e.filename, e.lineno);
+        // Log but don't break the app
+        try {
+          if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
+            window.dataHandlers.recordAnalytics('app_error', {
+              message: e.message,
+              file: e.filename,
+              line: e.lineno
+            });
+          }
+        } catch (err) {
+          console.error('Failed to log error:', err);
+        }
+        // Don't propagate - prevent crash
+        e.preventDefault();
+        return true;
+      });
+      
+      // Catch unhandled promise rejections
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('🚨 [UNHANDLED PROMISE]', e.reason);
+        try {
+          if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
+            window.dataHandlers.recordAnalytics('promise_error', {
+              reason: String(e.reason)
+            });
+          }
+        } catch (err) {
+          console.error('Failed to log promise error:', err);
+        }
+        e.preventDefault();
+      });
+      
+      // SAFETY FIX: Cleanup on page unload (iPad restart/close)
+      window.addEventListener('beforeunload', function() {
+        console.log('[CLEANUP] Page unloading - cleaning up...');
+        
+        try {
+          // Clear all timers
+          if (window.uiHandlers && window.uiHandlers.clearAllTimers) {
+            window.uiHandlers.clearAllTimers();
+          }
+          
+          // Clear video interval
+          if (window.videoPlaybackInterval) {
+            clearInterval(window.videoPlaybackInterval);
+          }
+          
+          // Pause video
+          const video = document.getElementById('kioskVideo');
+          if (video) {
+            video.pause();
+          }
+          
+          console.log('[CLEANUP] ✅ Cleanup complete');
+        } catch (err) {
+          console.error('[CLEANUP] Error during cleanup:', err);
+        }
+      });
+    </script>
+    
     <script src="pwa-update-manager.js"></script>
     <script src="config.js"></script>
     <script src="appState.js"></script>
@@ -180,123 +246,130 @@
     <script type="module" src="uiHandlers.js"></script>
     <script type="module" src="main/index.js"></script>
     
-    <!-- Production-safe checkmark display function -->
+    <!-- SAFETY FIX: Sanitized checkmark display function -->
     <script>
       window.showCheckmark = function() {
         const container = document.getElementById('questionContainer');
         if (container) {
-          container.innerHTML = `
-            <div class='checkmark-container'>
-              <div class='checkmark-circle'>
-                <svg class='checkmark-icon' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'>
-                  <path d='M15 30 L25 40 L45 20' fill='none'/>
-                </svg>
-              </div>
-              <div class='text-center'>
-                <h2 class='text-2xl font-bold text-gray-800 mb-2'>Thank you for your feedback!</h2>
-                <p id='resetCountdown' class='text-gray-500 text-lg font-medium'>Kiosk resetting in 5 seconds...</p>
-              </div>
-            </div>
-          `;
+          // SAFETY: Create elements safely instead of innerHTML
+          const checkmarkDiv = document.createElement('div');
+          checkmarkDiv.className = 'checkmark-container';
+          
+          const circleDiv = document.createElement('div');
+          circleDiv.className = 'checkmark-circle';
+          
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('class', 'checkmark-icon');
+          svg.setAttribute('viewBox', '0 0 60 60');
+          
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', 'M15 30 L25 40 L45 20');
+          path.setAttribute('fill', 'none');
+          
+          svg.appendChild(path);
+          circleDiv.appendChild(svg);
+          
+          const textDiv = document.createElement('div');
+          textDiv.className = 'text-center';
+          
+          const heading = document.createElement('h2');
+          heading.className = 'text-2xl font-bold text-gray-800 mb-2';
+          heading.textContent = 'Thank you for your feedback!';
+          
+          const countdown = document.createElement('p');
+          countdown.id = 'resetCountdown';
+          countdown.className = 'text-gray-500 text-lg font-medium';
+          countdown.textContent = 'Kiosk resetting in 5 seconds...';
+          
+          textDiv.appendChild(heading);
+          textDiv.appendChild(countdown);
+          
+          checkmarkDiv.appendChild(circleDiv);
+          checkmarkDiv.appendChild(textDiv);
+          
+          container.innerHTML = '';
+          container.appendChild(checkmarkDiv);
+          
           console.log('[CHECKMARK] Display function executed successfully');
         } else {
           console.error('[CHECKMARK] questionContainer not found');
         }
       };
       
-      // iPad PWA Kiosk Mode: Enhanced touch handling
-      (function() {
-        // Prevent zoom on iPad
-        document.addEventListener('gesturestart', function(e) {
-          e.preventDefault();
-        });
+      // Prevent zoom on iPad
+      document.addEventListener('gesturestart', function(e) {
+        e.preventDefault();
+      });
+      
+      document.addEventListener('gesturechange', function(e) {
+        e.preventDefault();
+      });
+      
+      document.addEventListener('gestureend', function(e) {
+        e.preventDefault();
+      });
+      
+      // iPad PWA: Allow rapid taps on admin title
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', function(e) {
+        const target = e.target;
+        if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
+          return;
+        }
         
-        document.addEventListener('gesturechange', function(e) {
+        const now = Date.now();
+        if (now - lastTouchEnd <= 300) {
           e.preventDefault();
-        });
+        }
+        lastTouchEnd = now;
+      }, false);
+      
+      document.addEventListener('touchmove', function(e) {
+        const target = e.target;
+        if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
+          return;
+        }
         
-        document.addEventListener('gestureend', function(e) {
+        if (e.touches && e.touches.length > 1) {
           e.preventDefault();
-        });
+        }
+      }, { passive: false });
+      
+      // Enhanced click detection for admin title
+      const mainTitle = document.getElementById('mainTitle');
+      if (mainTitle) {
+        let tapCount = 0;
+        let tapTimer = null;
         
-        // iPad PWA: Allow rapid taps on admin title (disable double-tap prevention)
-        let lastTouchEnd = 0;
-        document.addEventListener('touchend', function(e) {
-          // CRITICAL: Always allow taps on admin title and header
-          const target = e.target;
-          if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
-            console.log('[ADMIN] Touch allowed on title');
-            return; // Allow all taps through
+        mainTitle.addEventListener('touchstart', function(e) {
+          e.stopPropagation();
+          tapCount++;
+          console.log(`[ADMIN] Tap ${tapCount}/5 detected`);
+          this.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+          
+          if (tapTimer) {
+            clearTimeout(tapTimer);
           }
           
-          // Prevent double-tap zoom elsewhere
-          const now = Date.now();
-          if (now - lastTouchEnd <= 300) {
-            e.preventDefault();
-          }
-          lastTouchEnd = now;
-        }, false);
-        
-        // iPad PWA: Don't prevent multi-touch on admin area
-        document.addEventListener('touchmove', function(e) {
-          const target = e.target;
+          tapTimer = setTimeout(() => {
+            console.log('[ADMIN] Tap count reset');
+            tapCount = 0;
+          }, 2000);
           
-          // Allow all touch on admin title and header
-          if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
-            return;
-          }
-          
-          // Prevent pinch zoom everywhere else
-          if (e.touches && e.touches.length > 1) {
-            e.preventDefault();
-          }
         }, { passive: false });
         
-        // iPad PWA: Enhanced click detection for admin title
-        const mainTitle = document.getElementById('mainTitle');
-        if (mainTitle) {
-          let tapCount = 0;
-          let tapTimer = null;
-          
-          // Use touchstart for better iPad responsiveness
-          mainTitle.addEventListener('touchstart', function(e) {
-            e.stopPropagation(); // Prevent event from bubbling
-            
-            tapCount++;
-            console.log(`[ADMIN] Tap ${tapCount}/5 detected`);
-            
-            // Visual feedback
-            this.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
-            
-            // Clear existing timer
-            if (tapTimer) {
-              clearTimeout(tapTimer);
-            }
-            
-            // Reset tap count after 2 seconds of inactivity
-            tapTimer = setTimeout(() => {
-              console.log('[ADMIN] Tap count reset');
-              tapCount = 0;
-            }, 2000);
-            
-          }, { passive: false });
-          
-          mainTitle.addEventListener('touchend', function(e) {
-            e.stopPropagation();
-            
-            // Remove visual feedback
-            setTimeout(() => {
-              this.style.backgroundColor = '';
-            }, 100);
-          }, { passive: false });
-          
-          // Fallback: Also listen to click events
-          mainTitle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            console.log('[ADMIN] Click event detected');
-          }, { passive: false });
-        }
-      })();
+        mainTitle.addEventListener('touchend', function(e) {
+          e.stopPropagation();
+          setTimeout(() => {
+            this.style.backgroundColor = '';
+          }, 100);
+        }, { passive: false });
+        
+        mainTitle.addEventListener('click', function(e) {
+          e.stopPropagation();
+          console.log('[ADMIN] Click event detected');
+        }, { passive: false });
+      }
     </script>
     
     <!-- Service Worker Registration -->

@@ -761,92 +761,149 @@ export function setupAdminPanel() {
         console.warn('[ADMIN] ⚠️ Check Update button not found in DOM');
     }
     
-    // Fix Video (WORKS OFFLINE - local asset)
-    if (fixVideoButton) {
-        fixVideoButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log('[ADMIN] 🔘 Fix Video button clicked');
-            console.log('[ADMIN] Checking for video element...');
-            console.log('[ADMIN] window.globals exists?', !!window.globals);
-            console.log('[ADMIN] window.globals.kioskVideo exists?', !!window.globals?.kioskVideo);
-            
-            resetTimer();
-            trackAdminEvent('video_fix_triggered');
-            
-            // Try multiple ways to find the video element
-            let kioskVideo = window.globals?.kioskVideo;
-            
-            if (!kioskVideo) {
-                console.warn('[ADMIN] Video not in globals, trying document.getElementById...');
-                kioskVideo = document.getElementById('kioskVideo');
+   // Fix Video (WORKS OFFLINE - local asset)
+if (fixVideoButton) {
+    fixVideoButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        console.log('[ADMIN] 🔘 Fix Video button clicked');
+        console.log('[ADMIN] Checking for video element...');
+        console.log('[ADMIN] window.globals exists?', !!window.globals);
+        console.log('[ADMIN] window.globals.kioskVideo exists?', !!window.globals?.kioskVideo);
+
+        resetTimer();
+        trackAdminEvent('video_fix_triggered');
+
+        // Try to locate the video element
+        let kioskVideo = window.globals?.kioskVideo;
+
+        if (!kioskVideo) {
+            console.warn('[ADMIN] Video not in globals, trying document.getElementById...');
+            kioskVideo = document.getElementById('kioskVideo');
+        }
+
+        if (!kioskVideo) {
+            console.warn('[ADMIN] Trying querySelector video...');
+            kioskVideo = document.querySelector('video');
+        }
+
+        if (!kioskVideo) {
+            console.error('[ADMIN] ❌ Video element not found anywhere in DOM');
+            console.log('[ADMIN] Available video elements:', document.querySelectorAll('video').length);
+            alert('❌ Video element not found.\n\nThe video may not be loaded yet, or the element ID has changed.');
+            return;
+        }
+
+        console.log('[ADMIN] ✅ Video element found for nuclear reload:', kioskVideo);
+
+        // Disable button during fix
+        fixVideoButton.disabled = true;
+        const originalText = fixVideoButton.textContent;
+        fixVideoButton.textContent = 'Fixing...';
+
+        try {
+            // Temporarily disable any start-screen fallback handler, if present
+            if (kioskVideo._fallbackHandler) {
+                console.log('[ADMIN] Temporarily removing start-screen fallback handler for manual repair');
+                kioskVideo.removeEventListener('error', kioskVideo._fallbackHandler);
+                kioskVideo._fallbackHandler = null;
             }
-            
-            if (!kioskVideo) {
-                console.warn('[ADMIN] Trying querySelector video...');
-                kioskVideo = document.querySelector('video');
-            }
-            
-            if (!kioskVideo) {
-                console.error('[ADMIN] ❌ Video element not found anywhere in DOM');
-                console.log('[ADMIN] Available video elements:', document.querySelectorAll('video').length);
-                alert('❌ Video element not found.\n\nThe video may not be loaded yet, or the element ID has changed.');
+
+            // Dynamically import the videoPlayer helpers
+            const videoPlayerModule = await import('../ui/navigation/videoPlayer.js');
+            const { nuclearVideoReload, setupVideoEventListeners } = videoPlayerModule;
+
+            // Run nuclear reload (full element rebuild + wiring)
+            nuclearVideoReload(kioskVideo);
+
+            // After nuclear reload, window.globals.kioskVideo should now point to the new element
+            const repairedVideo = window.globals?.kioskVideo || document.getElementById('kioskVideo');
+
+            if (!repairedVideo) {
+                console.error('[ADMIN] ❌ Repaired video element not found after nuclear reload');
+                alert('❌ Video reload failed.\n\nThe kiosk may need a full restart.');
                 return;
             }
-            
-            console.log('[ADMIN] ✅ Video element found:', kioskVideo);
-            console.log('[ADMIN] Video src:', kioskVideo.src);
-            console.log('[ADMIN] Video source tags:', kioskVideo.querySelectorAll('source').length);
-            
-            const currentSrc = kioskVideo.src || kioskVideo.querySelector('source')?.src;
-            
-            if (!currentSrc) {
-                console.error('[ADMIN] ❌ Video source not found');
-                console.log('[ADMIN] Video innerHTML:', kioskVideo.innerHTML);
-                alert('❌ Video source not found.\n\nThe video may not have a valid source URL.');
-                return;
-            }
-            
-              console.log('[ADMIN] ✅ Reloading video from:', currentSrc);
-            
+
+            // Ensure event listeners are attached (nuclearVideoReload already does this, but this is safe)
+            setupVideoEventListeners(repairedVideo);
+
+            // Wait for readiness and try a short play to verify
+            console.log('[ADMIN] Waiting for repaired video to become ready...');
+
+            const waitForReady = () => new Promise((resolve, reject) => {
+                // If already ready, resolve immediately
+                if (repairedVideo.readyState >= 3) {
+                    resolve(true);
+                    return;
+                }
+
+                let timeoutId;
+                const onReady = () => {
+                    clearTimeout(timeoutId);
+                    repairedVideo.removeEventListener('canplaythrough', onReady);
+                    repairedVideo.removeEventListener('loadeddata', onReady);
+                    console.log('[ADMIN] ✅ Repaired video reached ready state');
+                    resolve(true);
+                };
+
+                timeoutId = setTimeout(() => {
+                    repairedVideo.removeEventListener('canplaythrough', onReady);
+                    repairedVideo.removeEventListener('loadeddata', onReady);
+                    reject(new Error('Ready timeout'));
+                }, 5000);
+
+                repairedVideo.addEventListener('canplaythrough', onReady, { once: true });
+                repairedVideo.addEventListener('loadeddata', onReady, { once: true });
+            });
+
             try {
-                kioskVideo.pause();
-                kioskVideo.src = '';
-                kioskVideo.load();
-                
-                setTimeout(() => {
-                    kioskVideo.src = currentSrc;
-                    kioskVideo.load();
-                    
-                    if (kioskVideo.hasAttribute('autoplay')) {
-                        kioskVideo.play().catch(err => {
-                            console.warn('[ADMIN] Auto-play failed:', err.message);
-                        });
-                    }
-                    
-                    console.log('[ADMIN] ✅ Video reloaded');
-                    
-                    const syncStatusMessage = window.globals?.syncStatusMessage;
-                    if (syncStatusMessage) {
-                        syncStatusMessage.textContent = '✅ Video reloaded';
-                        setTimeout(() => {
-                            syncStatusMessage.textContent = '';
-                        }, 3000);
-                    }
-                }, 500);
-                
-            } catch (error) {
-                console.error('[ADMIN] ❌ Video reload failed:', error);
-                alert(`❌ Video reload failed:\n\n${error.message}`);
+                await waitForReady();
+            } catch (err) {
+                console.warn('[ADMIN] Repaired video did not signal ready in time:', err.message);
+                // Still attempt a play; this is a best-effort repair
             }
-        });
-        
-        console.log('[ADMIN] ✅ Fix Video button handler attached');
-    } else {
-        console.warn('[ADMIN] ⚠️ Fix Video button not found');
-    }
-    
+
+            try {
+                const playPromise = repairedVideo.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    await playPromise;
+                }
+                console.log('[ADMIN] ▶️ Repaired video started playing (verification clip)');
+            } catch (playErr) {
+                console.warn('[ADMIN] Repaired video could not auto-play:', playErr.message);
+            }
+
+            console.log('[ADMIN] ✅ Video nuclear reload completed');
+
+            const syncStatusMessage = window.globals?.syncStatusMessage;
+            if (syncStatusMessage) {
+                syncStatusMessage.textContent = '✅ Video reset attempted';
+                setTimeout(() => {
+                    syncStatusMessage.textContent = '';
+                }, 3000);
+            }
+
+            alert('✅ Video reset has been attempted.\n\nIf you now see video playing on the home screen, the fix worked.\nIf not, the kiosk may need a full restart.');
+
+        } catch (error) {
+            console.error('[ADMIN] ❌ Video nuclear reload failed:', error);
+            alert(`❌ Video reload failed:\n\n${error.message}`);
+        } finally {
+            // Re-enable button after short delay
+            setTimeout(() => {
+                fixVideoButton.disabled = false;
+                fixVideoButton.textContent = originalText;
+            }, 2000);
+        }
+    });
+
+    console.log('[ADMIN] ✅ Fix Video button handler attached (nuclear-ready)');
+} else {
+    console.warn('[ADMIN] ⚠️ Fix Video button not found');
+}
+
     onlineHandler = () => {
         console.log('[ADMIN] 🌐 Connection restored');
         if (adminPanelVisible) {

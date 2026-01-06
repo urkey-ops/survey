@@ -22,6 +22,8 @@ export function initializeElements() {
     window.globals.unsyncedCountDisplay = document.getElementById('unsyncedCountDisplay');
     window.globals.syncStatusMessage = document.getElementById('syncStatusMessage');
     window.globals.syncAnalyticsButton = document.getElementById('syncAnalyticsButton');
+    window.globals.checkUpdateButton = document.getElementById('checkUpdateButton');
+    window.globals.fixVideoButton = document.getElementById('fixVideoButton');
 }
 
 /**

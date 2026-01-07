@@ -224,10 +224,10 @@ export function showQuestion(index) {
     // Setup input focus scrolling
     setupInputFocusScroll();
 
-} catch (error) {
+  } catch (error) {
     console.error("[ERROR] Fatal error during showQuestion render:", error);
     
-    // ✅ NEW: Log error for weekly review
+    // Log error for later review
     try {
         const errorLog = JSON.parse(localStorage.getItem('errorLog') || '[]');
         errorLog.push({
@@ -237,20 +237,19 @@ export function showQuestion(index) {
             questionIndex: index,
             questionId: dataUtils.surveyQuestions[index]?.id
         });
-        // Keep only last 20 errors
         localStorage.setItem('errorLog', JSON.stringify(errorLog.slice(-20)));
     } catch (e) {
         console.error('Could not log error:', e);
     }
     
-    // ✅ NEW: Disable navigation
+    // Disable navigation
     if (nextBtn) nextBtn.disabled = true;
     if (prevBtn) prevBtn.disabled = true;
     
     // Cleanup
     cleanupIntervals();
     
-    // ✅ NEW: Recovery UI
+    // Show recovery UI
     questionContainer.innerHTML = `
         <div class="text-center p-8">
             <h2 class="text-xl font-bold text-red-600 mb-4">
@@ -270,7 +269,7 @@ export function showQuestion(index) {
         </div>
     `;
     
-    // ✅ NEW: Add restart handler
+    // Add restart handler
     document.getElementById('errorRestart')?.addEventListener('click', () => {
         console.log('[ERROR RECOVERY] User initiated restart');
         
@@ -280,6 +279,7 @@ export function showQuestion(index) {
             location.reload();
         }
     });
+  }
 }
 
 /**

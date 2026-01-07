@@ -224,21 +224,62 @@ export function showQuestion(index) {
     // Setup input focus scrolling
     setupInputFocusScroll();
 
-  } catch (error) {
+} catch (error) {
     console.error("[ERROR] Fatal error during showQuestion render:", error);
-    cleanupIntervals();
-
-    questionContainer.innerHTML = `
-      <h2 class="text-xl font-bold text-red-600">
-        A critical error occurred. Please refresh or contact support.
-      </h2>
-    `;
-
-    // Log error to server if available
-    if (window.logErrorToServer) {
-      window.logErrorToServer(error, 'showQuestion');
+    
+    // ✅ NEW: Log error for weekly review
+    try {
+        const errorLog = JSON.parse(localStorage.getItem('errorLog') || '[]');
+        errorLog.push({
+            timestamp: new Date().toISOString(),
+            error: error.message,
+            stack: error.stack,
+            questionIndex: index,
+            questionId: dataUtils.surveyQuestions[index]?.id
+        });
+        // Keep only last 20 errors
+        localStorage.setItem('errorLog', JSON.stringify(errorLog.slice(-20)));
+    } catch (e) {
+        console.error('Could not log error:', e);
     }
-  }
+    
+    // ✅ NEW: Disable navigation
+    if (nextBtn) nextBtn.disabled = true;
+    if (prevBtn) prevBtn.disabled = true;
+    
+    // Cleanup
+    cleanupIntervals();
+    
+    // ✅ NEW: Recovery UI
+    questionContainer.innerHTML = `
+        <div class="text-center p-8">
+            <h2 class="text-xl font-bold text-red-600 mb-4">
+                ⚠️ Technical Issue
+            </h2>
+            <p class="text-gray-600 mb-6">
+                We're having trouble loading this question.
+            </p>
+            <div class="space-y-4">
+                <button id="errorRestart" class="w-full px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-lg font-semibold">
+                    Restart Survey
+                </button>
+                <p class="text-sm text-gray-500">
+                    Your previous answers have been saved if you were on Question 2 or later.
+                </p>
+            </div>
+        </div>
+    `;
+    
+    // ✅ NEW: Add restart handler
+    document.getElementById('errorRestart')?.addEventListener('click', () => {
+        console.log('[ERROR RECOVERY] User initiated restart');
+        
+        if (window.uiHandlers?.performKioskReset) {
+            window.uiHandlers.performKioskReset();
+        } else {
+            location.reload();
+        }
+    });
 }
 
 /**

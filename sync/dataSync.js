@@ -1,7 +1,7 @@
-// FILE: dataSync.js
+// FILE: sync/dataSync.js
 // PURPOSE: Main entry point combining all data sync modules
 // DEPENDENCIES: All sync sub-modules
-// VERSION: 2.0.0 - Added storage quota check
+// VERSION: 2.1.0 - Added race condition protection + connectivity validation
 
 import {
     generateUUID,
@@ -35,42 +35,57 @@ import {
 } from './networkHandler.js';
 
 // ---------------------------------------------------------------------
+// --- SHARED STATE ---
+// ---------------------------------------------------------------------
+let syncInProgress = false; // NEW: Global race condition guard
+let syncQueue = Promise.resolve();
+
+// ---------------------------------------------------------------------
 // --- SURVEY DATA SYNC ---
 // ---------------------------------------------------------------------
 
-let syncQueue = Promise.resolve();
-
 /**
- * Sync survey data to server with queue management
+ * Sync survey data to server with queue management + race protection
  * @param {boolean} isManual - Whether this is a manual sync
  * @returns {Promise<boolean>} Success status
  */
 export function syncData(isManual = false) {
-    // Better sync queue management
+    // CRITICAL FIX #1: Race condition guard
+    if (syncInProgress) {
+        console.log('[DATA SYNC] Skipped - already in progress');
+        return Promise.resolve(false);
+    }
+    
+    // Better sync queue management  
     syncQueue = syncQueue.then(() => doSyncData(isManual)).catch(err => {
         console.error('[SYNC QUEUE] Unhandled error:', err);
+        syncInProgress = false;
     });
     return syncQueue;
 }
 
 /**
- * Internal sync function with retry logic
+ * Internal sync function with retry logic + connectivity validation
  * @param {boolean} isManual - Whether this is a manual sync
  * @returns {Promise<boolean>} Success status
  */
 async function doSyncData(isManual = false) {
-    const SYNC_ENDPOINT = window.CONSTANTS?.SYNC_ENDPOINT || '/api/submit-survey';
-    const STORAGE_KEY_LAST_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_SYNC || 'lastSync';
-    
+    // CRITICAL FIX #2: Explicit connectivity check (navigator.onLine unreliable)
     if (!isOnline()) {
-        console.warn('[DATA SYNC] Offline. Skipping sync.');
+        console.warn('[DATA SYNC] Offline (real connectivity check). Skipping sync.');
         if (isManual) {
             updateSyncStatus('Offline. Sync skipped.');
             showUserError('No internet connection. Sync failed.');
         }
         updateAdminCount();
+        syncInProgress = false;
         return false;
     }
+
+    const SYNC_ENDPOINT = window.CONSTANTS?.SYNC_ENDPOINT || '/api/submit-survey';
+    const STORAGE_KEY_LAST_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_SYNC || 'lastSync';
+    
+    syncInProgress = true;
 
     const submissionQueue = getSubmissionQueue();
     
@@ -81,6 +96,7 @@ async function doSyncData(isManual = false) {
             setTimeout(() => updateSyncStatus(''), 3000);
         }
         updateAdminCount();
+        syncInProgress = false;
         return true;
     }
 
@@ -102,6 +118,7 @@ async function doSyncData(isManual = false) {
                 updateSyncStatus('⚠️ All records invalid (missing IDs)');
                 showUserError('Data validation failed. Please clear queue and restart.');
             }
+            syncInProgress = false;
             return false;
         }
 
@@ -133,6 +150,7 @@ async function doSyncData(isManual = false) {
                 updateSyncStatus('⚠️ Sync completed but no records confirmed. Check server logs.');
                 showUserError('Sync uncertain - records kept in queue for safety.');
             }
+            syncInProgress = false;
             return false;
         }
         
@@ -154,6 +172,7 @@ async function doSyncData(isManual = false) {
             setTimeout(() => updateSyncStatus(''), 4000);
         }
         
+        syncInProgress = false;
         return true;
 
     } catch (error) {
@@ -162,8 +181,8 @@ async function doSyncData(isManual = false) {
             updateSyncStatus('❌ Sync Failed - Check Console');
             showUserError(`Sync failed: ${error.message}. Data saved locally.`);
         }
+        syncInProgress = false;
         return false;
-        
     } finally {
         const syncButton = window.globals?.syncButton;
         if (isManual && syncButton) {

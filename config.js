@@ -32,8 +32,8 @@ const CONFIG = {
     // ═══════════════════════════════════════════════════════════
     // QUEUE AND STORAGE LIMITS
     // ═══════════════════════════════════════════════════════════
-    MAX_QUEUE_SIZE: 1000,                // UPDATED: Increased from 100 to 1000
-    QUEUE_WARNING_THRESHOLD: 800,        // ADDED: Warn at 80% capacity
+    MAX_QUEUE_SIZE: 250,                // UPDATED: Increased from 100 to 1000
+    QUEUE_WARNING_THRESHOLD: 200,        // ADDED: Warn at 80% capacity
     MAX_ANALYTICS_SIZE: 1000,
     
     // ═══════════════════════════════════════════════════════════

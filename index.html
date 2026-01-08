@@ -108,6 +108,34 @@
     animation: none !important;
     margin: 0 !important;
   }
+
+  /* ============================================ */
+  /* ADMIN MODE: Hide title, maximize button space */
+  /* ============================================ */
+  .admin-active #mainTitle {
+    display: none !important;
+  }
+
+  .admin-active #adminControls {
+    width: 100% !important;
+    justify-content: center !important;
+    gap: 10px !important;
+  }
+
+  .admin-active header {
+    padding: 16px 24px !important;
+    justify-content: center !important;
+  }
+
+  .admin-active #adminControls .flex {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+  }
+
+  .admin-active #adminControls button {
+    min-width: 110px !important;
+    padding: 10px 16px !important;
+  }
 </style>
 
 </head>

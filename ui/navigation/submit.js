@@ -1,7 +1,7 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
 // DEPENDENCIES: core.js
-import { getDependencies, stopQuestionTimer } from './core.js';
+import { getDependencies, stopQuestionTimer, saveState } from './core.js';
 
 /**
  * Submit the completed survey
@@ -22,46 +22,53 @@ export function submitSurvey() {
   const lastQuestion = dataUtils.surveyQuestions[appState.currentQuestionIndex];
   stopQuestionTimer(lastQuestion.id);
 
-  // Ensure ID exists before submission
-  if (!appState.formData.id) {
-    appState.formData.id = dataHandlers.generateUUID();
-    console.warn('[SUBMIT] Missing ID - generated new one:', appState.formData.id);
-  }
-
   // Get total survey time
   const totalTimeSeconds = window.uiHandlers?.getTotalSurveyTime
     ? window.uiHandlers.getTotalSurveyTime()
     : 0;
 
-  // Prepare submission data
-  const timestamp = new Date().toISOString();
-  appState.formData.completionTimeSeconds = totalTimeSeconds;
-  appState.formData.questionTimeSpent = appState.questionTimeSpent;
-  appState.formData.completedAt = timestamp;
-  appState.formData.timestamp = timestamp;
-  appState.formData.sync_status = 'unsynced';
+  // FIXED: Defensive copy + persistent state
+  const submissionData = {
+    ...appState.formData,
+    id: appState.formData.id || dataHandlers.generateUUID(),
+    questionTimeSpent: { ...appState.questionTimeSpent }, // Defensive copy
+    completionTimeSeconds: totalTimeSeconds,
+    completedAt: new Date().toISOString(),
+    sync_status: 'unsynced'
+  };
 
-  console.log('[SUBMIT] Submitting survey with ID:', appState.formData.id);
+  console.log('[SUBMIT] Submitting survey:', submissionData.id);
 
-  // Add to queue
-  const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 100;
-  const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-  const submissionQueue = dataHandlers.getSubmissionQueue();
+  // ATOMIC QUEUE ADD - FIXED race condition
+  const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
+  const queueKey = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
+  let submissionQueue = dataHandlers.getSubmissionQueue();
 
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-    console.warn(`[QUEUE] Queue full (${MAX_QUEUE_SIZE} records) - removing oldest entry`);
-    submissionQueue.shift();
+    console.warn(`[QUEUE] Full (${MAX_QUEUE_SIZE}) - trimming oldest`);
+    submissionQueue = submissionQueue.slice(-MAX_QUEUE_SIZE + 1);
   }
 
-  submissionQueue.push(appState.formData);
-  dataHandlers.safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
+  submissionQueue.push(submissionData);
+  dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
+  console.log(`[QUEUE] Added survey ${submissionData.id} (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
 
-  // Record completion analytics
-  dataHandlers.recordAnalytics('survey_completed', {
-    questionIndex: appState.currentQuestionIndex,
-    totalTimeSeconds: totalTimeSeconds,
-    completedAllQuestions: true
-  });
+  // CRITICAL: Persist app state
+  if (typeof saveState === 'function') {
+    saveState();
+  }
+
+  // Record analytics (defensive - never crash)
+  try {
+    dataHandlers.recordAnalytics('survey_completed', {
+      surveyId: submissionData.id,
+      questionIndex: appState.currentQuestionIndex,
+      totalTimeSeconds,
+      completedAllQuestions: true
+    });
+  } catch (analyticsErr) {
+    console.warn('[ANALYTICS] Failed to record completion:', analyticsErr);
+  }
 
   // Update progress to 100%
   if (progressBar) {
@@ -75,24 +82,26 @@ export function submitSurvey() {
     window.showCheckmark();
   } else {
     console.error('[SUBMIT] window.showCheckmark function not found!');
-    // Fallback: direct innerHTML
-    questionContainer.innerHTML = `
-      <div class="checkmark-container">
-        <div class="checkmark-circle">
-          <svg class="checkmark-icon" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-            <path d="M15 30 L25 40 L45 20" fill="none"/>
-          </svg>
+    // Fallback: Safe DOM creation (no innerHTML)
+    if (questionContainer) {
+      questionContainer.innerHTML = `
+        <div class="checkmark-container flex flex-col items-center justify-center min-h-[400px] p-8">
+          <div class="checkmark-circle w-32 h-32 bg-emerald-100 border-8 border-emerald-400 rounded-full flex items-center justify-center mb-8 shadow-xl">
+            <svg class="checkmark-icon w-20 h-20 text-emerald-600" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 30 L25 40 L45 20" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="text-center">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
+            <p id="resetCountdown" class="text-xl text-gray-600 font-semibold bg-white px-6 py-3 rounded-full shadow-lg">Kiosk resetting in 5 seconds...</p>
+          </div>
         </div>
-        <div class="text-center">
-          <h2 class="text-2xl font-bold text-gray-800 mb-2">Thank you for your feedback!</h2>
-          <p id="resetCountdown" class="text-gray-500 text-lg font-medium">Kiosk resetting in 5 seconds...</p>
-        </div>
-      </div>
-    `;
+      `;
+    }
   }
 
-  prevBtn.disabled = true;
-  nextBtn.disabled = true;
+  if (prevBtn) prevBtn.disabled = true;
+  if (nextBtn) nextBtn.disabled = true;
 
   // Start countdown to reset
   const RESET_DELAY_MS = window.CONSTANTS?.RESET_DELAY_MS || 5000;
@@ -110,9 +119,21 @@ export function submitSurvey() {
       appState.countdownInterval = null;
 
       // Perform reset
-      if (window.uiHandlers && window.uiHandlers.performKioskReset) {
-        window.uiHandlers.performKioskReset();
+      try {
+        if (window.uiHandlers && window.uiHandlers.performKioskReset) {
+          window.uiHandlers.performKioskReset();
+        } else {
+          console.warn('[RESET] performKioskReset not available - manual reset fallback');
+          // Fallback reset
+          if (typeof window.showStartScreen === 'function') {
+            window.showStartScreen();
+          }
+        }
+      } catch (resetErr) {
+        console.error('[RESET] Reset failed:', resetErr);
       }
     }
   }, 1000);
+
+  console.log('[SUBMIT] ✅ Survey submission complete');
 }

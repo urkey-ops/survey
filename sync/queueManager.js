@@ -9,8 +9,8 @@ import { safeGetLocalStorage, safeSetLocalStorage } from './storageUtils.js';
  * SAFETY FIX: Check queue health and warn if approaching limit
  */
 function checkQueueHealth(queueSize) {
-    const MAX = window.CONSTANTS?.MAX_QUEUE_SIZE || 1000;
-    const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 800;
+    const MAX = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
+    const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 200;
     
     if (queueSize >= WARNING) {
         console.warn(`⚠️ [QUEUE WARNING] Queue at ${queueSize}/${MAX} records (${Math.round(queueSize/MAX*100)}% full)`);
@@ -59,7 +59,7 @@ export function updateAdminCount() {
  */
 export function addToQueue(submission) {
     const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-    const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 1000;
+    const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
     
     const submissionQueue = getSubmissionQueue();
     

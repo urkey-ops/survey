@@ -2,7 +2,7 @@
 // EXTRACTED FROM: kioskUI.js (Lines 415-580)
 // PURPOSE: Handle user inactivity detection and auto-reset functionality
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 2.0.0 - Battery optimized with throttling
+// VERSION: 2.1.0 - Battery optimized + atomic queue fix
 
 /**
  * Inactivity Handler
@@ -67,10 +67,7 @@ export function startPeriodicSync() {
 export function resetInactivityTimer() {
     const {
         INACTIVITY_TIMEOUT_MS,
-        STORAGE_KEY_QUEUE,
-        MAX_QUEUE_SIZE,
         appState,
-        dataHandlers,
         dataUtils,
         timerManager
     } = getDependencies();
@@ -109,52 +106,68 @@ export function resetInactivityTimer() {
             console.log('[INACTIVITY] Q1 abandonment - recording analytics before reset');
             
             // Record that user engaged with first question
-            dataHandlers.recordAnalytics('survey_abandoned', {
-                questionId: currentQuestion.id,
-                questionIndex: idx,
-                totalTimeSeconds: getTotalSurveyTime(),
-                reason: 'inactivity_q1',
-                partialData: {
-                    satisfaction: appState.formData.satisfaction || null
-                }
-            });
+            try {
+                getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
+                    questionId: currentQuestion.id,
+                    questionIndex: idx,
+                    totalTimeSeconds: getTotalSurveyTime(),
+                    reason: 'inactivity_q1',
+                    partialData: {
+                        satisfaction: appState.formData.satisfaction || null
+                    }
+                });
+            } catch (analyticsErr) {
+                console.warn('[ANALYTICS] Q1 abandonment log failed:', analyticsErr);
+            }
             
             performKioskReset();
             return;
         }
 
-        // Q2–end inactivity → SAVE + RESET
+        // Q2–end inactivity → SAVE PARTIAL + RESET
         console.log('[INACTIVITY] Mid-survey abandonment - saving partial data');
 
         stopQuestionTimer(currentQuestion.id);
         const totalTimeSeconds = getTotalSurveyTime();
 
-        // Prepare partial submission
-        const timestamp = new Date().toISOString();
-        appState.formData.completionTimeSeconds = totalTimeSeconds;
-        appState.formData.questionTimeSpent = appState.questionTimeSpent;
-        appState.formData.abandonedAt = timestamp;
-        appState.formData.abandonedAtQuestion = currentQuestion.id;
-        appState.formData.abandonedAtQuestionIndex = idx;
-        appState.formData.timestamp = timestamp;
-        appState.formData.sync_status = 'unsynced (inactivity)';
+        // FIXED: Atomic queue add (production safe)
+        const queueKey = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
+        const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
+        let submissionQueue = getDependencies().dataHandlers.getSubmissionQueue();
 
-        // Check queue size before adding
-        const submissionQueue = dataHandlers.getSubmissionQueue();
         if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-            console.warn(`[QUEUE] Queue full (${MAX_QUEUE_SIZE} records) - removing oldest entry`);
-            submissionQueue.shift();
+            console.warn(`[QUEUE] Full (${MAX_QUEUE_SIZE}) - trimming oldest`);
+            submissionQueue = submissionQueue.slice(-MAX_QUEUE_SIZE + 1);
         }
 
-        submissionQueue.push(appState.formData);
-        dataHandlers.safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
+        // Prepare partial submission
+        const timestamp = new Date().toISOString();
+        const partialData = {
+            ...appState.formData,
+            completionTimeSeconds: totalTimeSeconds,
+            questionTimeSpent: { ...appState.questionTimeSpent }, // Defensive copy
+            abandonedAt: timestamp,
+            abandonedAtQuestion: currentQuestion.id,
+            abandonedAtQuestionIndex: idx,
+            sync_status: 'unsynced (inactivity)'
+        };
 
-        dataHandlers.recordAnalytics('survey_abandoned', {
-            questionId: currentQuestion.id,
-            questionIndex: idx,
-            totalTimeSeconds,
-            reason: 'inactivity'
-        });
+        submissionQueue.push(partialData);
+        getDependencies().dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
+
+        console.log(`[QUEUE] Saved partial abandonment (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
+
+        // Record analytics (defensive)
+        try {
+            getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
+                questionId: currentQuestion.id,
+                questionIndex: idx,
+                totalTimeSeconds,
+                reason: 'inactivity'
+            });
+        } catch (analyticsErr) {
+            console.warn('[ANALYTICS] Abandonment log failed:', analyticsErr);
+        }
 
         performKioskReset();
     };

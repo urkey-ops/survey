@@ -251,6 +251,7 @@ function hideAdminPanel() {
         
         console.log('[ADMIN] 🔋 Panel hidden - battery saving');
     }
+    document.body.classList.remove('admin-active'); // NEW: Restore title
 }
 
 function showAdminPanel() {

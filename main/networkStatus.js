@@ -1,11 +1,11 @@
 // FILE: main/networkStatus.js
 // PURPOSE: Network status monitoring with offline-first approach
 // DEPENDENCIES: window.CONSTANTS, window.dataHandlers, window.globals
-// VERSION: 2.0.0 - Battery optimized (event-based, no polling)
+// VERSION: 2.1.0 - Battery optimized (event-based, no polling) + analytics sync
 
 let isCurrentlyOnline = navigator.onLine;
 let syncInProgress = false;
-let networkCheckIntervalId = null; // NEW: Store interval reference
+let networkCheckIntervalId = null; // Store interval reference
 
 /**
  * Handle online event - connection restored
@@ -29,10 +29,18 @@ function handleOnline() {
         syncInProgress = true;
         setTimeout(async () => {
             try {
-                await dataHandlers.syncData(false);
+                // 1) Data sync first
+                if (dataHandlers?.syncData) {
+                    await dataHandlers.syncData(false);
+                }
+
+                // 2) Then analytics sync
+                if (dataHandlers?.syncAnalytics) {
+                    await dataHandlers.syncAnalytics(false); // ADD THIS
+                }
                 
                 if (syncStatusMessage) {
-                    syncStatusMessage.textContent = '✅ All data synced';
+                    syncStatusMessage.textContent = '✅ All data & analytics synced';
                     setTimeout(() => {
                         syncStatusMessage.textContent = '';
                     }, CONSTANTS.STATUS_MESSAGE_AUTO_CLEAR_MS || 3000);
@@ -142,7 +150,18 @@ function checkInitialStatus() {
                     if (queue.length > 0) {
                         console.log(`[NETWORK] Found ${queue.length} queued surveys - will sync`);
                         if (window.dataHandlers?.syncData) {
-                            window.dataHandlers.syncData(false);
+                            (async () => {
+                                try {
+                                    // Data first
+                                    await window.dataHandlers.syncData(false);
+                                    // Analytics after data
+                                    if (window.dataHandlers?.syncAnalytics) {
+                                        await window.dataHandlers.syncAnalytics(false);
+                                    }
+                                } catch (e) {
+                                    console.error('[NETWORK] Initial sync failed:', e);
+                                }
+                            })();
                         }
                     }
                 } catch (e) {
@@ -237,8 +256,20 @@ export function setupNetworkMonitoring() {
             
             // Auto-sync if online and not already syncing
             if (isCurrentlyOnline && !syncInProgress && window.dataHandlers?.syncData) {
-                setTimeout(() => {
-                    window.dataHandlers.syncData(false);
+                setTimeout(async () => {
+                    try {
+                        syncInProgress = true;
+                        // Data first
+                        await window.dataHandlers.syncData(false);
+                        // Analytics after data
+                        if (window.dataHandlers?.syncAnalytics) {
+                            await window.dataHandlers.syncAnalytics(false);
+                        }
+                    } catch (e) {
+                        console.error('[NETWORK] Visibility auto-sync failed:', e);
+                    } finally {
+                        syncInProgress = false;
+                    }
                 }, 500);
             }
             
@@ -259,7 +290,21 @@ export function setupNetworkMonitoring() {
             if (event.data.type === 'BACKGROUND_SYNC') {
                 console.log('[NETWORK] Background sync triggered by SW');
                 if (window.dataHandlers?.syncData) {
-                    window.dataHandlers.syncData(false);
+                    (async () => {
+                        try {
+                            syncInProgress = true;
+                            // Data first
+                            await window.dataHandlers.syncData(false);
+                            // Analytics after data
+                            if (window.dataHandlers?.syncAnalytics) {
+                                await window.dataHandlers.syncAnalytics(false);
+                            }
+                        } catch (e) {
+                            console.error('[NETWORK] Background sync failed:', e);
+                        } finally {
+                            syncInProgress = false;
+                        }
+                    })();
                 }
             }
         });
@@ -292,7 +337,14 @@ export async function forceSyncAttempt() {
     
     try {
         syncInProgress = true;
-        await window.dataHandlers.syncData(false);
+        if (window.dataHandlers?.syncData) {
+            // Data first
+            await window.dataHandlers.syncData(false);
+        }
+        if (window.dataHandlers?.syncAnalytics) {
+            // Analytics after data
+            await window.dataHandlers.syncAnalytics(false);
+        }
         return true;
     } catch (error) {
         console.error('[NETWORK] Force sync failed:', error);

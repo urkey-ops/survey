@@ -23,7 +23,7 @@ function getDependencies() {
         INACTIVITY_TIMEOUT_MS: window.CONSTANTS?.INACTIVITY_TIMEOUT_MS || 30000,
         SYNC_INTERVAL_MS: window.CONSTANTS?.SYNC_INTERVAL_MS || 900000,
         STORAGE_KEY_QUEUE: window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue',
-        MAX_QUEUE_SIZE: window.CONSTANTS?.MAX_QUEUE_SIZE || 100,
+        MAX_QUEUE_SIZE: window.CONSTANTS?.MAX_QUEUE_SIZE || 250,
         appState: window.appState,
         dataHandlers: window.dataHandlers,
         dataUtils: window.dataUtils,

@@ -29,7 +29,7 @@
     const RETRY_DELAY_MS = CONFIG.RETRY_DELAY_MS || 2000;
     
     // PRIORITY FIX #3: Queue size limits
-    const MAX_QUEUE_SIZE = CONFIG.MAX_QUEUE_SIZE || 100;
+    const MAX_QUEUE_SIZE = CONFIG.MAX_QUEUE_SIZE || 250;
     const MAX_ANALYTICS_SIZE = CONFIG.MAX_ANALYTICS_SIZE || 1000;
 
     // Local Storage Keys

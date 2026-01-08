@@ -44,17 +44,17 @@ export function submitSurvey() {
   console.log('[SUBMIT] Submitting survey with ID:', appState.formData.id);
 
   // Add to queue
-  const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 100;
-  const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-  const submissionQueue = dataHandlers.getSubmissionQueue();
+const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
+const queueKey = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
+let submissionQueue = dataHandlers.getSubmissionQueue();
 
-  if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-    console.warn(`[QUEUE] Queue full (${MAX_QUEUE_SIZE} records) - removing oldest entry`);
-    submissionQueue.shift();
-  }
+if (submissionQueue.length >= MAX_QUEUE_SIZE) {
+    console.warn(`[QUEUE] Full (${MAX_QUEUE_SIZE}) - trimming oldest`);
+    submissionQueue = submissionQueue.slice(-MAX_QUEUE_SIZE + 1);
+}
 
-  submissionQueue.push(appState.formData);
-  dataHandlers.safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
+submissionQueue.push(appState.formData);
+dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
 
   // Record completion analytics
   dataHandlers.recordAnalytics('survey_completed', {

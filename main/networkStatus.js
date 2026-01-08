@@ -1,11 +1,52 @@
 // FILE: main/networkStatus.js
 // PURPOSE: Network status monitoring with offline-first approach
 // DEPENDENCIES: window.CONSTANTS, window.dataHandlers, window.globals
-// VERSION: 2.1.0 - Battery optimized (event-based, no polling) + analytics sync
+// VERSION: 2.2.0 - Battery optimized + analytics sync + retry/backoff + race condition fix
 
 let isCurrentlyOnline = navigator.onLine;
 let syncInProgress = false;
-let networkCheckIntervalId = null; // Store interval reference
+let networkCheckIntervalId = null;
+let retryAttempts = {}; // NEW: Per-sync-type retry tracking
+
+// NEW: Retry backoff configuration
+const RETRY_CONFIG = {
+    maxAttempts: 5,
+    baseDelayMs: 2000,
+    maxDelayMs: 60000 // 1 minute
+};
+
+/**
+ * Get retry delay with exponential backoff
+ */
+function getRetryDelay(type, attempt) {
+    const delay = Math.min(
+        RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt - 1),
+        RETRY_CONFIG.maxDelayMs
+    );
+    return delay + Math.random() * 1000; // jitter
+}
+
+/**
+ * Reset retry count for a sync type
+ */
+function resetRetryCount(type) {
+    retryAttempts[type] = 0;
+}
+
+/**
+ * Should retry this sync type?
+ */
+function shouldRetry(type) {
+    const attempts = retryAttempts[type] || 0;
+    return attempts < RETRY_CONFIG.maxAttempts;
+}
+
+/**
+ * Record retry attempt
+ */
+function recordRetry(type) {
+    retryAttempts[type] = (retryAttempts[type] || 0) + 1;
+}
 
 /**
  * Handle online event - connection restored
@@ -18,13 +59,11 @@ function handleOnline() {
     isCurrentlyOnline = true;
     console.log('[NETWORK] ✅ Connection restored');
     
-    // User-facing feedback
     if (syncStatusMessage) {
         syncStatusMessage.textContent = '✅ Back online. Syncing queued data...';
-        syncStatusMessage.style.color = '#16a34a'; // green-600
+        syncStatusMessage.style.color = '#16a34a';
     }
     
-    // Trigger sync after short delay (avoid immediate rush)
     if (!syncInProgress) {
         syncInProgress = true;
         setTimeout(async () => {
@@ -32,11 +71,13 @@ function handleOnline() {
                 // 1) Data sync first
                 if (dataHandlers?.syncData) {
                     await dataHandlers.syncData(false);
+                    resetRetryCount('data');
                 }
 
                 // 2) Then analytics sync
                 if (dataHandlers?.syncAnalytics) {
-                    await dataHandlers.syncAnalytics(false); // ADD THIS
+                    await dataHandlers.syncAnalytics(false);
+                    resetRetryCount('analytics');
                 }
                 
                 if (syncStatusMessage) {
@@ -66,49 +107,18 @@ function handleOffline() {
     isCurrentlyOnline = false;
     console.log('[NETWORK] ❌ Connection lost - Operating in OFFLINE mode');
     
-    // User-facing feedback
     if (syncStatusMessage) {
         syncStatusMessage.textContent = '📱 Offline mode - All data saved locally';
-        syncStatusMessage.style.color = '#ea580c'; // orange-600
+        syncStatusMessage.style.color = '#ea580c';
     }
-    
-    // DISABLED: Visual offline indicator removed
-    // showOfflineIndicator();
 }
 
 /**
  * Show persistent offline indicator - DISABLED
  */
 function showOfflineIndicator() {
-    // DISABLED: No visual indicator will be shown
     console.log('[NETWORK] Offline indicator disabled - running silently');
     return;
-    
-    /* ORIGINAL CODE KEPT FOR REFERENCE - COMMENTED OUT
-    // Check if indicator already exists
-    let indicator = document.getElementById('offline-indicator');
-    
-    if (!indicator && !isCurrentlyOnline) {
-        indicator = document.createElement('div');
-        indicator.id = 'offline-indicator';
-        indicator.style.cssText = `
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: #ea580c;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            z-index: 9999;
-            animation: fadeIn 0.3s ease-in;
-        `;
-        indicator.textContent = '📱 Offline Mode';
-        document.body.appendChild(indicator);
-    }
-    */
 }
 
 /**
@@ -123,6 +133,72 @@ function hideOfflineIndicator() {
 }
 
 /**
+ * CRITICAL FIX: Sequential sync with race condition protection
+ * @param {boolean} isManual 
+ * @param {string} syncType - 'data' or 'analytics'
+ */
+async function safeSync(syncType, isManual = false) {
+    // FIXED: Race condition guard
+    if (syncInProgress) {
+        console.log(`[NETWORK] ${syncType} sync skipped - already in progress`);
+        return false;
+    }
+
+    const dataHandlers = window.dataHandlers;
+    const hasDataSync = syncType === 'data' && dataHandlers?.syncData;
+    const hasAnalyticsSync = syncType === 'analytics' && dataHandlers?.syncAnalytics;
+    
+    if (!hasDataSync && !hasAnalyticsSync) {
+        console.warn(`[NETWORK] No ${syncType} handler available`);
+        return false;
+    }
+
+    try {
+        syncInProgress = true;
+        
+        if (syncType === 'data' && hasDataSync) {
+            const attempts = retryAttempts.data || 0;
+            console.log(`[DATA SYNC] Attempt ${attempts + 1}/${RETRY_CONFIG.maxAttempts}`);
+            const success = await dataHandlers.syncData(isManual);
+            
+            if (success) {
+                resetRetryCount('data');
+            } else if (shouldRetry('data')) {
+                recordRetry('data');
+                const delay = getRetryDelay('data', retryAttempts.data);
+                console.log(`[DATA SYNC] Retrying in ${Math.round(delay/1000)}s...`);
+                setTimeout(() => safeSync('data', isManual), delay);
+            }
+            return success;
+        }
+        
+        if (syncType === 'analytics' && hasAnalyticsSync) {
+            const attempts = retryAttempts.analytics || 0;
+            console.log(`[ANALYTICS SYNC] Attempt ${attempts + 1}/${RETRY_CONFIG.maxAttempts}`);
+            const success = await dataHandlers.syncAnalytics(isManual);
+            
+            if (success) {
+                resetRetryCount('analytics');
+            } else if (shouldRetry('analytics')) {
+                recordRetry('analytics');
+                const delay = getRetryDelay('analytics', retryAttempts.analytics);
+                console.log(`[ANALYTICS SYNC] Retrying in ${Math.round(delay/1000)}s...`);
+                setTimeout(() => safeSync('analytics', isManual), delay);
+            }
+            return success;
+        }
+        
+    } catch (error) {
+        console.error(`[${syncType.toUpperCase()} SYNC] Error:`, error);
+        recordRetry(syncType);
+    } finally {
+        syncInProgress = false;
+    }
+    
+    return false;
+}
+
+/**
  * Check initial network status and update UI
  */
 function checkInitialStatus() {
@@ -134,39 +210,16 @@ function checkInitialStatus() {
             syncStatusMessage.textContent = '📱 Starting in offline mode';
             syncStatusMessage.style.color = '#ea580c';
         }
-        // DISABLED: No visual indicator
-        // showOfflineIndicator();
         console.log('[NETWORK] ⚠️ Starting in OFFLINE mode');
     } else {
         isCurrentlyOnline = true;
         console.log('[NETWORK] ✅ Starting in ONLINE mode');
         
-        // Check if there's queued data to sync
-        setTimeout(() => {
-            const queueLength = window.localStorage.getItem('surveyQueue');
-            if (queueLength) {
-                try {
-                    const queue = JSON.parse(queueLength);
-                    if (queue.length > 0) {
-                        console.log(`[NETWORK] Found ${queue.length} queued surveys - will sync`);
-                        if (window.dataHandlers?.syncData) {
-                            (async () => {
-                                try {
-                                    // Data first
-                                    await window.dataHandlers.syncData(false);
-                                    // Analytics after data
-                                    if (window.dataHandlers?.syncAnalytics) {
-                                        await window.dataHandlers.syncAnalytics(false);
-                                    }
-                                } catch (e) {
-                                    console.error('[NETWORK] Initial sync failed:', e);
-                                }
-                            })();
-                        }
-                    }
-                } catch (e) {
-                    console.error('[NETWORK] Error checking queue:', e);
-                }
+        setTimeout(async () => {
+            // FIXED: Race condition protection
+            if (!syncInProgress) {
+                await safeSync('data', false);
+                await safeSync('analytics', false);
             }
         }, 2000);
     }
@@ -197,14 +250,11 @@ function resumeNetworkMonitoring() {
  * BATTERY OPTIMIZATION: Start periodic check (only when visible)
  */
 function startPeriodicCheck() {
-    // Clear any existing interval
     if (networkCheckIntervalId) {
         clearInterval(networkCheckIntervalId);
     }
     
-    // Periodic connection check (every 30 seconds when visible)
     networkCheckIntervalId = setInterval(() => {
-        // BATTERY OPTIMIZATION: Skip if page is hidden
         if (document.hidden) {
             return;
         }
@@ -222,15 +272,12 @@ function startPeriodicCheck() {
 
 /**
  * Setup network status monitoring with offline-first approach
- * BATTERY OPTIMIZED: Event-based with visibility awareness
  */
 export function setupNetworkMonitoring() {
-    console.log('[NETWORK] 🚀 Initializing OFFLINE-FIRST monitoring');
+    console.log('[NETWORK] 🚀 Initializing OFFLINE-FIRST monitoring v2.2.0');
     
-    // Check initial status
     checkInitialStatus();
     
-    // Listen for online/offline events
     window.addEventListener('online', () => {
         handleOnline();
         hideOfflineIndicator();
@@ -238,12 +285,10 @@ export function setupNetworkMonitoring() {
     
     window.addEventListener('offline', handleOffline);
     
-    // Monitor visibility changes (app coming to foreground)
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             console.log('[NETWORK] App visible - checking connection');
             
-            // Recheck online status
             const wasOnline = isCurrentlyOnline;
             isCurrentlyOnline = navigator.onLine;
             
@@ -254,68 +299,39 @@ export function setupNetworkMonitoring() {
                 handleOffline();
             }
             
-            // Auto-sync if online and not already syncing
-            if (isCurrentlyOnline && !syncInProgress && window.dataHandlers?.syncData) {
+            // FIXED: Race condition protection + retry awareness
+            if (isCurrentlyOnline && !syncInProgress) {
                 setTimeout(async () => {
-                    try {
-                        syncInProgress = true;
-                        // Data first
-                        await window.dataHandlers.syncData(false);
-                        // Analytics after data
-                        if (window.dataHandlers?.syncAnalytics) {
-                            await window.dataHandlers.syncAnalytics(false);
-                        }
-                    } catch (e) {
-                        console.error('[NETWORK] Visibility auto-sync failed:', e);
-                    } finally {
-                        syncInProgress = false;
-                    }
+                    await safeSync('data', false);
+                    await safeSync('analytics', false);
                 }, 500);
             }
             
-            // BATTERY OPTIMIZATION: Resume periodic checks
             resumeNetworkMonitoring();
         } else {
-            // BATTERY OPTIMIZATION: Pause periodic checks when hidden
             pauseNetworkMonitoring();
         }
     });
     
-    // BATTERY OPTIMIZATION: Start periodic check (visibility-aware)
     startPeriodicCheck();
     
-    // Listen for service worker messages
+    // FIXED: Service worker race condition protection
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data.type === 'BACKGROUND_SYNC') {
                 console.log('[NETWORK] Background sync triggered by SW');
-                if (window.dataHandlers?.syncData) {
-                    (async () => {
-                        try {
-                            syncInProgress = true;
-                            // Data first
-                            await window.dataHandlers.syncData(false);
-                            // Analytics after data
-                            if (window.dataHandlers?.syncAnalytics) {
-                                await window.dataHandlers.syncAnalytics(false);
-                            }
-                        } catch (e) {
-                            console.error('[NETWORK] Background sync failed:', e);
-                        } finally {
-                            syncInProgress = false;
-                        }
-                    })();
+                if (!syncInProgress) {
+                    safeSync('data', false).then(() => safeSync('analytics', false));
                 }
             }
         });
     }
     
-    console.log('[NETWORK] ✅ OFFLINE-FIRST monitoring active (battery optimized)');
+    console.log('[NETWORK] ✅ OFFLINE-FIRST v2.2.0 active (retry + race-proof)');
 }
 
 /**
  * Get current network status
- * @returns {boolean} True if online
  */
 export function isOnline() {
     return isCurrentlyOnline;
@@ -336,21 +352,12 @@ export async function forceSyncAttempt() {
     }
     
     try {
-        syncInProgress = true;
-        if (window.dataHandlers?.syncData) {
-            // Data first
-            await window.dataHandlers.syncData(false);
-        }
-        if (window.dataHandlers?.syncAnalytics) {
-            // Analytics after data
-            await window.dataHandlers.syncAnalytics(false);
-        }
-        return true;
+        const dataSuccess = await safeSync('data', true);
+        const analyticsSuccess = await safeSync('analytics', true);
+        return dataSuccess && analyticsSuccess;
     } catch (error) {
         console.error('[NETWORK] Force sync failed:', error);
         return false;
-    } finally {
-        syncInProgress = false;
     }
 }
 
@@ -365,7 +372,8 @@ export function getNetworkStatus() {
         effectiveType: connection?.effectiveType || 'unknown',
         downlink: connection?.downlink || null,
         rtt: connection?.rtt || null,
-        saveData: connection?.saveData || false
+        saveData: connection?.saveData || false,
+        retryStatus: retryAttempts
     };
 }
 

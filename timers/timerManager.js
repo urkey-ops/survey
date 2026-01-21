@@ -142,6 +142,7 @@ export const timerManager = {
     clearIntervals() {
         this.clearRotation();
         this.clearShake(); // NEW
+        this.clearTypewriter(); // ← ADD THIS LINE
         
         // Clear typewriter rotation timer specifically
         if (window.typewriterManager) {

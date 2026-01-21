@@ -8,7 +8,18 @@ window.dataUtils = (function() {
     
     // PRIORITY FIX #3: Get auto-advance delay from constants (fallback to 50ms)
     const AUTO_ADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
-    
+    // Auto-advance timer tracking (prevents race condition)
+let autoAdvanceTimer = null;
+
+function scheduleAutoAdvance(callback, delay) {
+    if (autoAdvanceTimer) {
+        clearTimeout(autoAdvanceTimer);
+    }
+    autoAdvanceTimer = setTimeout(() => {
+        autoAdvanceTimer = null;
+        callback();
+    }, delay);
+}
     const surveyQuestions = [
         
         {
@@ -187,7 +198,8 @@ window.dataUtils = (function() {
                     if (e.target.name === q.name) {
                         updateData(q.name, e.target.value);
                         // PRIORITY FIX: Use configurable delay
-                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                       // setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                        scheduleAutoAdvance(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                     }
                 });
             }
@@ -217,7 +229,8 @@ window.dataUtils = (function() {
         container.addEventListener('change', (e) => {
             if (e.target.name === q.name) {
                 updateData(q.name, e.target.value);
-                setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                //setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                scheduleAutoAdvance(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
             }
         });
     }
@@ -243,7 +256,8 @@ window.dataUtils = (function() {
                     if (e.target.name === q.name) {
                         updateData(q.name, e.target.value);
                         // PRIORITY FIX: Use configurable delay
-                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                       // setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                        scheduleAutoAdvance(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                     }
                 });
             }
@@ -285,7 +299,8 @@ window.dataUtils = (function() {
                             otherContainer.classList.add('hidden');
                             updateData('other_location', '');
                             // PRIORITY FIX: Use configurable delay
-                            setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                           // setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                            scheduleAutoAdvance(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                         }
                     }
                 });
@@ -325,7 +340,8 @@ window.dataUtils = (function() {
                     if (e.target.name === q.name) {
                         updateData(q.name, e.target.value);
                         // PRIORITY FIX: Use configurable delay
-                        setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                       // setTimeout(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
+                        scheduleAutoAdvance(() => handleNextQuestion(), AUTO_ADVANCE_DELAY);
                     }
                 });
             }

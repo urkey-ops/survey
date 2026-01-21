@@ -859,7 +859,8 @@ export function setupAdminPanel() {
                     repairedVideo.addEventListener('canplaythrough', onReady, { once: true });
                     repairedVideo.addEventListener('loadeddata', onReady, { once: true });
                 });
-
+// Expose cleanup globally
+window.cleanupAdminPanel = cleanupAdminPanel;
                 try {
                     await waitForReady();
                 } catch (err) {

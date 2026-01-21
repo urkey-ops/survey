@@ -171,6 +171,10 @@ export function resetInactivityTimer() {
 
         performKioskReset();
     };
+    // CRITICAL: Clean up admin panel timers
+    if (typeof window.cleanupAdminPanel === 'function') {
+        window.cleanupAdminPanel();
+    }
 
     // Set the inactivity timer
     if (timerManager && timerManager.setInactivity) {

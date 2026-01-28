@@ -3,8 +3,8 @@
 // VERSION: 9.1.0 - FIXED: Added missing video modules to critical cache
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v16'; // BUMPED from v15 to v16
-const RUNTIME_CACHE = 'kiosk-runtime-v16'; // BUMPED from v15 to v16
+const CACHE_NAME = 'kiosk-survey-v17'; // BUMPED from v15 to v16
+const RUNTIME_CACHE = 'kiosk-runtime-v17'; // BUMPED from v15 to v16
 const MEDIA_CACHE = 'kiosk-media-v1'; // NEW: Separate cache for video
 
 // Critical files that MUST be cached for offline operation

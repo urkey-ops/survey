@@ -1,10 +1,10 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS 26 KIOSK SAFE)
-// UPDATED: Battery optimized with throttled background updates
-// VERSION: 9.0.0
+// UPDATED: Battery optimized with throttled background updates + complete module list
+// VERSION: 9.1.0 - FIXED: Added missing video modules to critical cache
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v15'; // BUMPED from v3 to v4
-const RUNTIME_CACHE = 'kiosk-runtime-v15'; // BUMPED from v3 to v4
+const CACHE_NAME = 'kiosk-survey-v16'; // BUMPED from v15 to v16
+const RUNTIME_CACHE = 'kiosk-runtime-v16'; // BUMPED from v15 to v16
 const MEDIA_CACHE = 'kiosk-media-v1'; // NEW: Separate cache for video
 
 // Critical files that MUST be cached for offline operation
@@ -43,11 +43,16 @@ const CRITICAL_CACHE = [
   '/timers/inactivityHandler.js',
   '/timers/timerManager.js',
 
-  // UI modules
+  // UI modules - Navigation
   '/ui/navigation/core.js',
   '/ui/navigation/index.js',
   '/ui/navigation/startScreen.js',
   '/ui/navigation/submit.js',
+  '/ui/navigation/videoLoopManager.js',   // ADDED: Missing video module
+  '/ui/navigation/videoPlayer.js',        // ADDED: Missing video module
+  '/ui/navigation/videoScheduler.js',     // ADDED: Missing video module
+  
+  // UI modules - Other
   '/ui/typewriterEffect.js',
   '/ui/validation.js',
 
@@ -79,7 +84,7 @@ const CLEANUP_AGE = 3600000; // 1 hour
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v9 with video caching...');
+  console.log('[SW] Installing v9.1 with complete module cache...');
 
   event.waitUntil(
     (async () => {
@@ -94,6 +99,14 @@ self.addEventListener('install', event => {
       const criticalFailed = criticalResults.filter(r => r.status === 'rejected');
       if (criticalFailed.length > 0) {
         console.warn('[SW] Some critical files failed to cache:', criticalFailed.length);
+        // Log which files failed for debugging
+        criticalResults.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error('[SW] Failed to cache:', CRITICAL_CACHE[index], result.reason);
+          }
+        });
+      } else {
+        console.log('[SW] ✅ All critical files cached successfully');
       }
       
       // Step 2: Cache media files separately (can fail without breaking install)
@@ -127,7 +140,7 @@ self.addEventListener('install', event => {
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v9');
+      console.log('[SW] ✅ Installed v9.1 (complete module cache)');
     })()
   );
 });
@@ -136,7 +149,7 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v9...');
+  console.log('[SW] Activating v9.1...');
 
   event.waitUntil(
     (async () => {
@@ -157,7 +170,7 @@ self.addEventListener('activate', event => {
       // Start periodic cleanup of recentlyUpdated Map
       startPeriodicCleanup();
       
-      console.log('[SW] ✅ Activated v9 (battery optimized)');
+      console.log('[SW] ✅ Activated v9.1 (battery optimized, complete cache)');
     })()
   );
 });

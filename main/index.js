@@ -1,7 +1,7 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point - orchestrates initialization
 // DEPENDENCIES: All main sub-modules
-// VERSION: 4.0.0 - PRIORITY FIX #2: Auto-cleanup on critical storage
+// VERSION: 4.1.0 - CORRECTED: Removed aggressive proactive sync, true offline-first
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -29,7 +29,7 @@ function startHeartbeat() {
 
 /**
  * Main initialization function
- * VERSION: 4.0.0 - PRIORITY FIX #2: Auto-cleanup on critical storage
+ * VERSION: 4.1.0 - CORRECTED: True offline-first, only auto-sync on critical
  */
 function initialize() {
     console.log('[INIT] DOM Content Loaded - Initializing kiosk...');
@@ -38,15 +38,16 @@ function initialize() {
     initializeElements();
     
     // PRIORITY FIX #2: Enhanced storage quota check with AUTO-CLEANUP
+    // CORRECTED: Only auto-sync on CRITICAL (80%+), not on warning (60%)
     try {
         const checkQuota = () => {
             if (window.dataHandlers && window.dataHandlers.checkStorageQuota) {
                 const quotaStatus = window.dataHandlers.checkStorageQuota();
                 
                 if (quotaStatus.status === 'critical') {
-                    console.error('[INIT] 🚨 Storage critical - auto-sync triggered!');
+                    console.error('[INIT] 🚨 Storage critical (80%+) - auto-sync triggered!');
                     
-                    // PRIORITY FIX #2: AUTO-FIX - Force sync if online
+                    // AUTO-FIX: Force sync if online
                     if (navigator.onLine && window.dataHandlers.syncData) {
                         console.log('[INIT] 🔄 Auto-syncing to free storage...');
                         
@@ -83,6 +84,7 @@ function initialize() {
                         }).catch(err => {
                             console.error('[INIT] Emergency sync error:', err);
                         });
+                        
                     } else if (!navigator.onLine) {
                         console.error('[INIT] 🚨 Storage critical but OFFLINE - data loss risk!');
                         
@@ -93,7 +95,7 @@ function initialize() {
                             window.globals.syncStatusMessage.style.fontWeight = 'bold';
                         }
                         
-                        // Try to sync as soon as we come online
+                        // OFFLINE-FIRST: Wait for connection, then auto-sync
                         const onlineHandler = () => {
                             console.log('[INIT] Device online - attempting emergency sync');
                             if (window.dataHandlers.syncData) {
@@ -102,20 +104,16 @@ function initialize() {
                             window.removeEventListener('online', onlineHandler);
                         };
                         window.addEventListener('online', onlineHandler);
+                        
                     } else {
                         console.error('[INIT] 🚨 Storage critical but syncData not available!');
                     }
                     
                 } else if (quotaStatus.status === 'warning') {
-                    console.warn('[INIT] ⚠️ Storage at 60% - monitoring closely');
+                    // CORRECTED: Log warning but DON'T auto-sync
+                    // Let the 24-hour interval handle normal syncing
+                    console.warn('[INIT] ⚠️ Storage at 60% - monitoring (normal sync will handle)');
                     
-                    // Proactive sync if online (non-blocking)
-                    if (navigator.onLine && window.dataHandlers.syncData) {
-                        console.log('[INIT] Proactive sync triggered at 60% storage');
-                        window.dataHandlers.syncData(false).catch(err => {
-                            console.warn('[INIT] Proactive sync failed (non-critical):', err);
-                        });
-                    }
                 } else {
                     console.log(`[INIT] ✅ Storage healthy: ${quotaStatus.percentUsed}% used`);
                 }
@@ -137,11 +135,25 @@ function initialize() {
         }, 1000);
         
         // Set up periodic storage checks (every 30 minutes)
+        // This only MONITORS, it doesn't auto-sync unless critical
         setInterval(() => {
             if (window.dataHandlers && window.dataHandlers.checkStorageQuota) {
                 const quotaStatus = window.dataHandlers.checkStorageQuota();
-                if (quotaStatus.status !== 'healthy') {
-                    console.log(`[STORAGE CHECK] ${quotaStatus.status.toUpperCase()}: ${quotaStatus.percentUsed}% used`);
+                
+                if (quotaStatus.status === 'critical') {
+                    console.error(`[STORAGE CHECK] 🚨 CRITICAL: ${quotaStatus.percentUsed}% used - triggering emergency sync`);
+                    
+                    // Trigger emergency sync if critical detected during periodic check
+                    if (navigator.onLine && window.dataHandlers.syncData) {
+                        window.dataHandlers.syncData(true);
+                    }
+                    
+                } else if (quotaStatus.status === 'warning') {
+                    console.warn(`[STORAGE CHECK] ⚠️ WARNING: ${quotaStatus.percentUsed}% used - monitor closely`);
+                    
+                } else if (quotaStatus.status === 'healthy') {
+                    // Only log if we want verbose monitoring
+                    // console.log(`[STORAGE CHECK] ✅ Healthy: ${quotaStatus.percentUsed}% used`);
                 }
             }
         }, 30 * 60 * 1000); // Every 30 minutes
@@ -189,7 +201,7 @@ function initialize() {
     startHeartbeat();
     console.log('[INIT] ✅ Heartbeat started (15 min interval)');
     
-    console.log('[INIT] ✅ Initialization complete (battery optimized, safety enhanced, auto-cleanup enabled)');
+    console.log('[INIT] ✅ Initialization complete (battery optimized, safety enhanced, TRUE offline-first)');
     console.log('═══════════════════════════════════════════════════════════');
 }
 

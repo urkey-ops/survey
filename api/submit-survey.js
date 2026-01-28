@@ -1,23 +1,23 @@
 // FILE: api/submit-survey.js
-// UPDATED: Synchronized with client-side V11 data structure, removing contact fields and adding tracking fields.
-// FIXED: Data validation and hear_about processing to resolve Google Sheets API "Invalid values[14][12]" errors
+// UPDATED: Added server-side deduplication (Priority Fix #1)
+// VERSION: 2.0.0 - Race condition protection + duplicate prevention
 
 import { google } from 'googleapis';
+import { isDuplicate, markAsProcessed, getCacheStats } from './deduplication-check.js';
 
 // --- Define Column Order (Must match your Google Sheet headers) ---
 const COLUMN_ORDER = [
-
-    'satisfaction',    
-    'cleanliness',
-    'staff_friendliness',
-    'location',
-    'age',
+    'satisfaction',  
+    'cleanliness',
+    'staff_friendliness',
+    'location',
+    'age',
     'hear_about',
-    'gift_shop_visit', // ADD THIS LINE
-    'sync_status', // Use sync_status to capture 'unsynced', 'unsynced (inactivity)'
+    'gift_shop_visit',
+    'sync_status',
     'comments',
     'timestamp',
-    'id',    
+    'id',    
 ];
 
 /**
@@ -37,7 +37,7 @@ function processSingleSubmission(submission) {
     
     const processedData = {
         // Core tracking fields
-        id: source.id || crypto.randomUUID(), // Use the existing submission ID or generate one
+        id: source.id || crypto.randomUUID(),
         timestamp: source.timestamp || new Date().toISOString(),
         sync_status: source.sync_status || 'unsynced', 
         
@@ -48,7 +48,7 @@ function processSingleSubmission(submission) {
         completedAt: source.completedAt || '',
         abandonedAt: source.abandonedAt || '',
         completionTimeSeconds: source.completionTimeSeconds || '',
-        questionTimeSpent: questionTimeSpentString, // NEW: JSON string
+        questionTimeSpent: questionTimeSpentString,
 
         // Survey fields
         satisfaction: source.satisfaction || '',
@@ -60,28 +60,24 @@ function processSingleSubmission(submission) {
         // Handle Location (radio-with-other) logic
         location: (source.location && source.location.main === 'Other' && source.location.other)
             ? source.location.other.trim()
-            // UPDATED: Access location value via .main or the direct string
             : (source.location && source.location.main) ? source.location.main : (source.location || ''), 
             
         age: source.age || '',
         
-        // FIXED: Robust hear_about processing to prevent Google Sheets API validation errors
+        // FIXED: Robust hear_about processing
         hear_about: (() => {
             const hear = source.hear_about;
             try {
                 if (Array.isArray(hear)) {
-                    // Simple array of strings - join them safely
                     return hear.filter(item => item && typeof item === 'string').join(', ');
                 }
                 if (hear && typeof hear === 'object' && hear.selected && Array.isArray(hear.selected)) {
-                    // Complex object with selected array (checkbox-with-other)
                     const selected = hear.selected.filter(item => item && typeof item === 'string');
                     if (hear.other && selected.includes('Other')) {
                         return [...selected.filter(v => v !== 'Other'), `Other: ${String(hear.other).trim()}`].join(', ');
                     }
                     return selected.join(', ');
                 }
-                // Fallback: convert anything else to string
                 return String(hear || '');
             } catch (e) {
                 console.error('hear_about processing error:', e, hear);
@@ -92,13 +88,6 @@ function processSingleSubmission(submission) {
     
     // Map the processed data object to an array based on the defined column order
     const row = COLUMN_ORDER.map(key => String(processedData[key] || ''));
-    
-    // DEBUG: Log first row for verification (remove after fix confirmed)
-    if (processedData.hear_about.includes('Instagram')) {
-        console.log('DEBUG - hear_about processed:', processedData.hear_about);
-        console.log('DEBUG - Row 13 (hear_about) value:', row[12]);
-        console.log('DEBUG - Full row length:', row.length);
-    }
     
     return row;
 }
@@ -118,7 +107,11 @@ export default async function handler(request, response) {
 
     if (!SPREADSHEET_ID || !GOOGLE_SERVICE_ACCOUNT_EMAIL || !GOOGLE_PRIVATE_KEY) {
         console.error('API Error: Missing one or more required environment variables.');
-        return response.status(500).json({ message: 'Server configuration error.' });
+        return response.status(500).json({ 
+            success: false,
+            message: 'Server configuration error.',
+            successfulIds: [] // CRITICAL: Always return array
+        });
     }
 
     // --- Google Sheets Authentication ---
@@ -144,15 +137,55 @@ export default async function handler(request, response) {
             });
         }
         
-        // --- NEW: Input Validation ---
-        console.log(`Processing ${submissions.length} submissions.`);
-        console.log('Sample hear_about structure:', submissions[0]?.hear_about);
+        console.log(`[SUBMIT] Processing ${submissions.length} submissions...`);
         
-        // Validate submissions don't contain unprocessable data
-        const invalidCount = submissions.filter((sub, index) => {
+        // --- 2. PRIORITY FIX #1: DEDUPLICATION CHECK ---
+        const uniqueSubmissions = [];
+        const duplicateIds = [];
+        const skippedIds = [];
+        
+        for (const submission of submissions) {
+            if (!submission.id) {
+                console.warn('[SUBMIT] ⚠️ Submission missing ID - generating new one');
+                submission.id = crypto.randomUUID();
+                uniqueSubmissions.push(submission);
+                continue;
+            }
+            
+            if (isDuplicate(submission.id)) {
+                console.warn(`[SUBMIT] 🚫 Skipping duplicate: ${submission.id}`);
+                duplicateIds.push(submission.id);
+                // IMPORTANT: Still return as "successful" to client so they remove from queue
+                continue;
+            }
+            
+            uniqueSubmissions.push(submission);
+        }
+        
+        // Log deduplication stats
+        if (duplicateIds.length > 0) {
+            console.log(`[SUBMIT] Filtered out ${duplicateIds.length} duplicates`);
+            console.log('[DEDUP] Cache stats:', getCacheStats());
+        }
+        
+        // If all were duplicates, return success with their IDs
+        if (uniqueSubmissions.length === 0) {
+            console.log('[SUBMIT] All submissions were duplicates - returning success');
+            return response.status(200).json({
+                success: true,
+                message: `${duplicateIds.length} duplicate submissions skipped.`,
+                successfulIds: duplicateIds, // Return duplicate IDs so client removes them
+                duplicates: duplicateIds.length
+            });
+        }
+        
+        console.log(`[SUBMIT] Processing ${uniqueSubmissions.length} unique submissions (${duplicateIds.length} duplicates filtered)`);
+        
+        // --- 3. VALIDATE SUBMISSIONS ---
+        const invalidCount = uniqueSubmissions.filter((sub, index) => {
             if (sub.hear_about) {
                 if (typeof sub.hear_about === 'object' && !Array.isArray(sub.hear_about) && sub.hear_about.values) {
-                    console.warn(`Submission ${index} has proto list_value structure:`, sub.hear_about);
+                    console.warn(`[SUBMIT] Submission ${index} has invalid hear_about format:`, sub.hear_about);
                     return true;
                 }
             }
@@ -160,23 +193,23 @@ export default async function handler(request, response) {
         }).length;
         
         if (invalidCount > 0) {
-            console.error(`${invalidCount}/${submissions.length} submissions have invalid hear_about format.`);
+            console.error(`[SUBMIT] ${invalidCount}/${uniqueSubmissions.length} submissions have invalid format.`);
         }
         
-        // --- 2. PREPARE DATA FOR BATCH APPEND ---
-        const rowsToAppend = submissions.map((submission, index) => {
+        // --- 4. PREPARE DATA FOR BATCH APPEND ---
+        const rowsToAppend = uniqueSubmissions.map((submission, index) => {
             try {
                 return processSingleSubmission(submission);
             } catch (e) {
-                console.error(`Error processing submission ${index}:`, e);
+                console.error(`[SUBMIT] Error processing submission ${index}:`, e);
                 return COLUMN_ORDER.map(() => 'PROCESSING_ERROR');
             }
         });
         
-        console.log('Prepared rows sample:', rowsToAppend[0]?.slice(0, 5), '...');
+        console.log('[SUBMIT] Sample row:', rowsToAppend[0]?.slice(0, 5), '...');
         
-        // --- Append Data to Google Sheets ---
-        await sheets.spreadsheets.values.append({
+        // --- 5. APPEND DATA TO GOOGLE SHEETS ---
+        const appendResult = await sheets.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_ID,
             range: `${SHEET_NAME}!A1`, 
             valueInputOption: 'USER_ENTERED',
@@ -185,36 +218,50 @@ export default async function handler(request, response) {
             },
         });
         
-       // In api/submit-survey.js, after processing:
+        console.log(`[SUBMIT] ✅ Google Sheets append successful:`, appendResult.data);
+        
+        // --- 6. MARK AS PROCESSED IN DEDUP CACHE ---
+        uniqueSubmissions.forEach(sub => {
+            if (sub.id) {
+                markAsProcessed(sub.id);
+            }
+        });
+        
+        // --- 7. PREPARE SUCCESS RESPONSE ---
+        const successfulIds = [
+            ...uniqueSubmissions.map(sub => sub.id).filter(Boolean),
+            ...duplicateIds // Include duplicates so client removes them
+        ];
+        
+        console.log(`[SUBMIT] ✅ Successfully processed ${uniqueSubmissions.length} new + ${duplicateIds.length} duplicates = ${successfulIds.length} total IDs`);
+        console.log('[SUBMIT] Returning IDs:', successfulIds);
 
-// --- SUCCESS RESPONSE ---
-const successfulIds = submissions.map(sub => sub.id).filter(Boolean);
+        // CRITICAL FIX: Always return successfulIds array, never empty on success
+        if (successfulIds.length !== submissions.length) {
+            console.warn(`[SUBMIT] ⚠️ ID mismatch: Received ${submissions.length} submissions but only ${successfulIds.length} have IDs`);
+        }
 
-// DEBUG: Log what we're returning
-console.log(`✅ Successfully processed ${successfulIds.length} submissions`);
-console.log('Returning IDs:', successfulIds);
-
-if (successfulIds.length !== submissions.length) {
-    console.warn(`⚠️ ID mismatch: Received ${submissions.length} submissions but only ${successfulIds.length} have IDs`);
-}
-
-return response.status(200).json({ 
-    success: true,
-    message: `${successfulIds.length} submissions processed.`,
-    successfulIds: successfulIds
-});
+        return response.status(200).json({ 
+            success: true,
+            message: `${uniqueSubmissions.length} new submissions processed, ${duplicateIds.length} duplicates skipped.`,
+            successfulIds: successfulIds,
+            newSubmissions: uniqueSubmissions.length,
+            duplicates: duplicateIds.length
+        });
 
     } catch (error) {
-        console.error('API Error:', error.message);
+        console.error('[SUBMIT] API Error:', error.message);
         if (error.response) {
-            console.error('Google Sheets API Response:', error.response.data);
+            console.error('[SUBMIT] Google Sheets API Response:', error.response.data);
         }
         
-        // On ANY failure, return empty successfulIds array so client retains data
+        // CRITICAL FIX: On ANY failure, return empty successfulIds array
+        // This ensures client retains data in queue for retry
         return response.status(500).json({ 
             success: false,
             message: 'Internal Server Error during sheet append. Data retained locally.',
-            successfulIds: []
+            successfulIds: [], // NEVER return undefined
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Server error'
         });
     }
 }

@@ -2,6 +2,7 @@
 // EXTRACTED FROM: kioskUI.js (Lines 45-135)
 // PURPOSE: Centralized timer management for all application timers
 // DEPENDENCIES: window.appState, typewriterEffect.js, startScreen.js
+// VERSION: 2.0.0 - PRIORITY FIX #2: Added shake timer cleanup to emergency stop
 
 /**
  * Timer Manager
@@ -34,10 +35,10 @@ export const timerManager = {
         // Clear countdown interval
         this.clearCountdown();
 
-        // Clear rotation interval (for rotating questions)
+        // Clear rotation interval
         this.clearRotation();
 
-        // Clear INFINITE SHAKE interval (NEW)
+        // Clear INFINITE SHAKE interval
         this.clearShake();
 
         // Clear typewriter timers (if module is loaded)
@@ -97,7 +98,7 @@ export const timerManager = {
     },
 
     /**
-     * Clear INFINITE SHAKE interval (NEW - startScreen.js)
+     * Clear INFINITE SHAKE interval
      * Stops the continuous attention-grabbing shake animation
      */
     clearShake() {
@@ -141,8 +142,8 @@ export const timerManager = {
      */
     clearIntervals() {
         this.clearRotation();
-        this.clearShake(); // NEW
-        this.clearTypewriter(); // ← ADD THIS LINE
+        this.clearShake();
+        this.clearTypewriter();
         
         // Clear typewriter rotation timer specifically
         if (window.typewriterManager) {
@@ -231,7 +232,7 @@ export const timerManager = {
             sync: appState.syncTimer !== null,
             countdown: appState.countdownInterval !== null,
             rotation: appState.rotationInterval !== null,
-            shake: window.shakeInterval !== null || window.isShaking === true, // NEW
+            shake: window.shakeInterval !== null || window.isShaking === true,
             typewriter: window.typewriterTimer !== null || 
                        (window.typewriterManager && 
                         (window.typewriterManager.timers.initial !== null ||
@@ -251,6 +252,7 @@ export const timerManager = {
     /**
      * Emergency stop - clear all timers immediately
      * Use this in error handlers or emergency situations
+     * PRIORITY FIX #2: Added shake timer cleanup
      */
     emergencyStop() {
         console.warn('[TIMER MANAGER] Emergency stop - clearing all timers');
@@ -258,19 +260,58 @@ export const timerManager = {
         const appState = this.getAppState();
         
         // Clear all known timers aggressively
-        if (appState.inactivityTimer) clearTimeout(appState.inactivityTimer);
-        if (appState.syncTimer) clearInterval(appState.syncTimer);
-        if (appState.countdownInterval) clearInterval(appState.countdownInterval);
-        if (appState.rotationInterval) clearInterval(appState.rotationInterval);
-        if (window.typewriterTimer) clearTimeout(window.typewriterTimer);
-        if (window.shakeInterval) clearInterval(window.shakeInterval); // NEW
+        if (appState.inactivityTimer) {
+            clearTimeout(appState.inactivityTimer);
+            appState.inactivityTimer = null;
+        }
+        
+        if (appState.syncTimer) {
+            clearInterval(appState.syncTimer);
+            appState.syncTimer = null;
+        }
+        
+        if (appState.countdownInterval) {
+            clearInterval(appState.countdownInterval);
+            appState.countdownInterval = null;
+        }
+        
+        if (appState.rotationInterval) {
+            clearInterval(appState.rotationInterval);
+            appState.rotationInterval = null;
+        }
+        
+        if (window.typewriterTimer) {
+            clearTimeout(window.typewriterTimer);
+            window.typewriterTimer = null;
+        }
+        
+        // PRIORITY FIX #2: Add shake timer cleanup to emergency stop
+        if (window.shakeInterval) {
+            clearInterval(window.shakeInterval);
+            window.shakeInterval = null;
+            window.isShaking = false;
+            console.log('[TIMER MANAGER] Emergency: Shake timer cleared');
+        }
+        
+        // Also call stopShake if available
+        if (window.stopShake) {
+            try {
+                window.stopShake();
+            } catch (e) {
+                console.warn('[TIMER MANAGER] stopShake failed:', e.message);
+            }
+        }
         
         // Clear typewriter manager timers
         if (window.typewriterManager) {
-            window.typewriterManager.clearTimers();
+            try {
+                window.typewriterManager.clearTimers();
+            } catch (e) {
+                console.warn('[TIMER MANAGER] typewriterManager cleanup failed:', e.message);
+            }
         }
         
-        // Reset all references
+        // Reset all references to null
         appState.inactivityTimer = null;
         appState.syncTimer = null;
         appState.countdownInterval = null;
@@ -279,7 +320,7 @@ export const timerManager = {
         window.shakeInterval = null;
         window.isShaking = false;
         
-        console.log('[TIMER MANAGER] Emergency stop complete');
+        console.log('[TIMER MANAGER] ✅ Emergency stop complete - all timers cleared');
     }
 };
 
@@ -289,7 +330,7 @@ export const clearInactivityTimer = () => timerManager.clearInactivity();
 export const clearSyncTimer = () => timerManager.clearSync();
 export const clearCountdownTimer = () => timerManager.clearCountdown();
 export const clearRotationTimer = () => timerManager.clearRotation();
-export const clearShakeTimer = () => timerManager.clearShake(); // NEW
+export const clearShakeTimer = () => timerManager.clearShake();
 export const clearTypewriterTimers = () => timerManager.clearTypewriter();
 export const clearIntervals = () => timerManager.clearIntervals();
 

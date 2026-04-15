@@ -99,13 +99,14 @@ async function doSyncData(isManual = false) {
   const STORAGE_KEY_LAST_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_SYNC || 'lastSync';
 
   // ── Determine active survey type and its dedicated queue key ──
-  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
-                     window.CONSTANTS?.ACTIVE_SURVEY_TYPE ||
-                     'type1';
-  const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
-  const queueKey = surveyConfig?.storageKey ||
-                   window.CONSTANTS?.STORAGE_KEY_QUEUE ||
-                   'submissionQueue';
+ const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
+const queueKey = surveyConfig?.storageKey ||
+                 (surveyType === 'type2'
+                   ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
+                   : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
+                 'submissionQueue';
+
 
   console.log(`[DATA SYNC] Type: ${surveyType} | Queue: "${queueKey}"`);
 

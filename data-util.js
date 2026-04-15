@@ -588,8 +588,7 @@ window.dataUtils = (function () {
     // ── CHECKBOX WITH OTHER ──────────────────────────────────────────────────
     'checkbox-with-other': {
       render(q, data) {
-        const selectedValues = Array.isArray(data[q.name]) ? data[q.name] :
-          (data[q.name]?.selected || []);
+        const selectedValues = Array.isArray(data[q.name]) ? data[q.name] : [];
         const opts = q.options.map(opt => {
           const isSelected = selectedValues.includes(opt.value);
           return `
@@ -613,7 +612,7 @@ window.dataUtils = (function () {
               </label>
             </div>`;
         }).join('');
-        const otherVal = data[q.name]?.other || '';
+       const otherVal = data['other' + q.id] || '';
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
           <p class="text-sm text-gray-600 mb-3 italic">You can select more than one option</p>
@@ -633,14 +632,16 @@ window.dataUtils = (function () {
         const otherInput     = document.getElementById(`other-${q.id}-text`);
         if (!container) return;
 
-        const save = () => {
-          const checked = container.querySelectorAll(`input[name="${q.name}"]:checked`);
-          const values  = Array.from(checked).map(cb => cb.value);
-          updateData(q.name, {
-            selected: values,
-            other: values.includes('Other') ? (otherInput?.value || '') : ''
-          });
-        };
+     const save = () => {
+  const checked = container.querySelectorAll(`input[name="${q.name}"]:checked`);
+  const values  = Array.from(checked).map(cb => cb.value);
+  // Store as plain array — validation.js uses Array.isArray(answer)
+  updateData(q.name, values);
+  // Store "Other" text separately under 'other' + q.id
+  // validation.js checks: formData['otherhearabout'] — matches q.id = 'hearabout'
+  updateData('other' + q.id, values.includes('Other') ? (otherInput?.value || '') : '');
+};
+      
 
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;

@@ -110,11 +110,10 @@ export function submitSurvey() {
   console.log('[SUBMIT] About to display checkmark...');
 
   // ── 10. Show completion screen ──────────────────────────────
-  if (typeof window.showCheckmark === 'function') {
-    window.showCheckmark();
-  } else {
-    _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
-  }
+// ── 10. Show completion screen ──────────────────────────────
+// NOTE: window.showCheckmark renders UI only — no countdown or reset logic.
+// Force _renderCheckmarkAndCountdown which owns the full 5s countdown + _doReset chain.
+_renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
 
   console.log('[SUBMIT] Survey submission complete');
 }

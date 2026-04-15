@@ -428,8 +428,17 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         return;
       }
 
+      // ── Set the new survey type ──
       if (window.KIOSK_CONFIG?.setActiveSurveyType) {
         window.KIOSK_CONFIG.setActiveSurveyType(type);
+      }
+
+      // ── RESET to Q1: clear question index, form data, and time tracking ──
+      if (window.appState) {
+        window.appState.currentQuestionIndex = 0;
+        window.appState.formData = {};
+        window.appState.questionTimeSpent = {};
+        console.log('[ADMIN] ✅ Survey state reset to Q1');
       }
 
       // Update button highlights immediately
@@ -458,7 +467,7 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
       trackAdminEvent('survey_type_switched', { surveyType: type });
       console.log(`[ADMIN] ✅ Survey type switched to: ${type} → sheet: ${config?.sheetName}`);
 
-      // Reload so new question set takes effect cleanly
+      // Reload so new question set takes effect cleanly from Q1
       setTimeout(() => {
         if (syncStatusMessage) syncStatusMessage.textContent = '';
         location.reload();

@@ -71,22 +71,26 @@ export function validateQuestion(question, formData) {
     // ─────────────────────────────────────────────────────────────────
     // RADIO WITH OTHER - Validate selection and "other" text
     // ─────────────────────────────────────────────────────────────────
-    else if (question.type === 'radio-with-other') {
-        // Check if required field is filled
-        if (question.required && (!answer || answer.trim() === '')) {
-            errorMessage = 'This response is required.';
-            isValid = false;
-        }
-        
-        // If "Other" is selected, validate the text field
-        if (answer === 'Other') {
-            const otherValue = formData['other_location'];
-            if (!otherValue || otherValue.trim() === '') {
-                displayError('other_location_textError', 'Please specify your location.');
-                isValid = false;
-            }
-        }
-    }
+   // REPLACE this (around line 73):
+else if (question.required && (!answer || (typeof answer === 'string' && answer.trim() === ''))) {
+    errorMessage = 'This response is required.';
+    isValid = false;
+}
+
+// WITH this:
+else if (question.required) {
+  const isEmpty =
+    !answer ||
+    (typeof answer === 'string' && answer.trim() === '') ||
+    (Array.isArray(answer) && answer.length === 0) ||
+    (typeof answer === 'object' && !Array.isArray(answer) &&
+      (!answer.main || String(answer.main).trim() === ''));
+
+  if (isEmpty) {
+    errorMessage = 'This response is required.';
+    isValid = false;
+  }
+}
     
     // ─────────────────────────────────────────────────────────────────
     // CUSTOM CONTACT - Validate name and email when consent given

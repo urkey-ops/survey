@@ -1,12 +1,11 @@
 // FILE: data-util.js
 // PURPOSE: Survey questions definition and question renderers
-// VERSION: 3.2.0 - Multi-survey type support + selected-state fixes
+// VERSION: 3.2.1 - Fix setupEvents arity for textarea + checkbox-with-other
 
 window.dataUtils = (function () {
 
   // ─── Config ───────────────────────────────────────────────────────────────
   const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
-  // BUG 4 FIX: was AUTOADVANCE_DELAY_MS (undefined) — correct key is AUTO_ADVANCE_DELAY_MS
   const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
 
   // Auto-advance timer tracking — prevents race conditions
@@ -17,8 +16,6 @@ window.dataUtils = (function () {
   }
 
   // ─── HELPER: Apply/remove orange selected state on radio labels ────────────
-  // NOTE: Only call this for types that want orange (location-radio, age-radio).
-  // emoji-radio and number-scale are intentionally handled by CSS (:checked + label).
   function applyRadioSelectedStyles(container, inputName) {
     const labels = container.querySelectorAll('label');
     labels.forEach(label => {
@@ -169,10 +166,10 @@ window.dataUtils = (function () {
       type: 'emoji-radio',
       question: 'How did your visit today make you feel?',
       options: [
-        { value: 'Peaceful',   label: 'Peaceful',   emoji: '🙏' },
-        { value: 'Inspired',   label: 'Inspired',   emoji: '✨' },
-        { value: 'Joyful',     label: 'Joyful',     emoji: '😊' },
-        { value: 'Overwhelmed',label: 'Overwhelmed',emoji: '🤯' },
+        { value: 'Peaceful',    label: 'Peaceful',    emoji: '🙏' },
+        { value: 'Inspired',    label: 'Inspired',    emoji: '✨' },
+        { value: 'Joyful',      label: 'Joyful',      emoji: '😊' },
+        { value: 'Overwhelmed', label: 'Overwhelmed', emoji: '🤯' },
       ],
       required: true,
     },
@@ -182,13 +179,13 @@ window.dataUtils = (function () {
       type: 'checkbox-with-other',
       question: 'Which parts of the visit did you experience today?',
       options: [
-        { value: 'Mandir Prayer',   label: 'Mandir Prayer' },
-        { value: 'Exhibition',      label: 'Exhibition' },
-        { value: 'Shayona Cafe',    label: 'Shayona Cafe' },
-        { value: 'Gift Shop',       label: 'Gift Shop' },
-        { value: 'Guided Tour',     label: 'Guided Tour' },
-        { value: 'Cultural Show',   label: 'Cultural Show' },
-        { value: 'Other',           label: 'Other' },
+        { value: 'Mandir Prayer', label: 'Mandir Prayer' },
+        { value: 'Exhibition',    label: 'Exhibition' },
+        { value: 'Shayona Cafe',  label: 'Shayona Cafe' },
+        { value: 'Gift Shop',     label: 'Gift Shop' },
+        { value: 'Guided Tour',   label: 'Guided Tour' },
+        { value: 'Cultural Show', label: 'Cultural Show' },
+        { value: 'Other',         label: 'Other' },
       ],
       required: true,
     },
@@ -198,11 +195,11 @@ window.dataUtils = (function () {
       type: 'radio-with-other',
       question: 'What stood out most during your visit?',
       options: [
-        { value: 'Architecture',    label: 'Architecture' },
-        { value: 'Spirituality',    label: 'Spirituality' },
+        { value: 'Architecture',      label: 'Architecture' },
+        { value: 'Spirituality',      label: 'Spirituality' },
         { value: 'Cultural Learning', label: { line1: 'Cultural', line2: 'Learning' } },
-        { value: 'Hospitality',     label: 'Hospitality' },
-        { value: 'Other',           label: 'Other' },
+        { value: 'Hospitality',       label: 'Hospitality' },
+        { value: 'Other',             label: 'Other' },
       ],
       required: true,
     },
@@ -224,10 +221,10 @@ window.dataUtils = (function () {
       type: 'radio-with-followup',
       question: 'Did the visit meet your expectations?',
       options: [
-        { value: 'Exceeded',    label: 'Exceeded',     followupLabel: null,                              followupOptions: [] },
-        { value: 'Met',         label: 'Met',          followupLabel: null,                              followupOptions: [] },
-        { value: 'Partially',   label: 'Partially',    followupLabel: 'What could have been better?',    followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
-        { value: 'Did not meet',label: 'Did not meet', followupLabel: 'What could have been better?',    followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
+        { value: 'Exceeded',     label: 'Exceeded',     followupLabel: null,                           followupOptions: [] },
+        { value: 'Met',          label: 'Met',          followupLabel: null,                           followupOptions: [] },
+        { value: 'Partially',    label: 'Partially',    followupLabel: 'What could have been better?', followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
+        { value: 'Did not meet', label: 'Did not meet', followupLabel: 'What could have been better?', followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
       ],
       required: true,
     },
@@ -237,11 +234,11 @@ window.dataUtils = (function () {
       type: 'radio-with-other',
       question: 'What would you most like to see or experience on a future visit?',
       options: [
-        { value: 'More Events',     label: 'More Events' },
-        { value: 'Deeper Tour',     label: { line1: 'Deeper', line2: 'Guided Tour' } },
-        { value: 'Kids Activities', label: { line1: 'Kids', line2: 'Activities' } },
+        { value: 'More Events',       label: 'More Events' },
+        { value: 'Deeper Tour',       label: { line1: 'Deeper',   line2: 'Guided Tour' } },
+        { value: 'Kids Activities',   label: { line1: 'Kids',     line2: 'Activities' } },
         { value: 'Wellness Programs', label: { line1: 'Wellness', line2: 'Programs' } },
-        { value: 'Other',           label: 'Other' },
+        { value: 'Other',             label: 'Other' },
       ],
       required: true,
     },
@@ -256,7 +253,6 @@ window.dataUtils = (function () {
   ];
 
   // ─── Active question set resolver ─────────────────────────────────────────
-  // Called by core.js and submit.js — always reflects current active type
   function getSurveyQuestions() {
     const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
     return activeType === 'type2' ? surveyQuestionsType2 : surveyQuestionsType1;
@@ -277,7 +273,8 @@ window.dataUtils = (function () {
             data-${q.name}></textarea>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden"></span>`;
       },
-      setupEvents(q, updateData) {
+      // FIX: was setupEvents(q, updateData) — updateData was receiving goNext from core.js
+      setupEvents(q, handleNextQuestion, updateData) {
         const el = document.getElementById(q.id);
         if (!el) return;
         el.addEventListener('input', e => updateData(q.name, e.target.value));
@@ -285,9 +282,6 @@ window.dataUtils = (function () {
     },
 
     // ── EMOJI RADIO ──────────────────────────────────────────────────────────
-    // BUG 3 FIX: removed orange Tailwind classes from selected ternary.
-    // CSS (.emoji-radio-group input:checked + label) owns the selected state.
-    // applyRadioSelectedStyles() is NOT called here — that would override CSS.
     'emoji-radio': {
       render(q, data) {
         const opts = q.options.map(opt => `
@@ -311,15 +305,12 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           updateData(q.name, e.target.value);
-          // CSS :checked + label handles the visual state — no JS style call needed
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
       },
     },
 
     // ── NUMBER SCALE ─────────────────────────────────────────────────────────
-    // BUG 3 FIX: removed orange Tailwind classes from selected ternary.
-    // CSS (.number-scale-group input:checked + label) owns the selected state.
     'number-scale': {
       render(q, data) {
         const btns = Array.from({ length: q.max }, (_, i) => i + 1).map(num => `
@@ -346,7 +337,6 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           updateData(q.name, e.target.value);
-          // CSS :checked + label handles the visual state — no JS style call needed
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
       },
@@ -422,7 +412,6 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           const val = e.target.value;
-          // Store as object with main + other for processor compatibility
           updateData(q.name, val === 'Other' ? { main: 'Other', other: otherInput?.value || '' } : { main: val });
           applyRadioSelectedStyles(container, q.name);
           if (otherContainer) {
@@ -475,11 +464,10 @@ window.dataUtils = (function () {
     },
 
     // ── RADIO WITH FOLLOWUP (Type 2: shayona_intent, expectation_met) ────────
-    // Stores { main, followup[] } — matches processSingleSubmissionType2 expectations
     'radio-with-followup': {
       render(q, data) {
-        const current = data[q.name] || {};
-        const mainVal = typeof current === 'object' ? current.main : current;
+        const current      = data[q.name] || {};
+        const mainVal      = typeof current === 'object' ? current.main : current;
         const followupVals = Array.isArray(current.followup) ? current.followup : [];
 
         const opts = q.options.map(opt => {
@@ -495,13 +483,11 @@ window.dataUtils = (function () {
               role="radio">${opt.label}</label>`;
         }).join('');
 
-        const activeOpt  = q.options.find(o => o.value === mainVal);
-        const showFollowup = activeOpt?.followupLabel && activeOpt.followupOptions.length > 0;
         const followupHtml = q.options.map(opt => {
           if (!opt.followupLabel || opt.followupOptions.length === 0) return '';
           const show = mainVal === opt.value;
           const cbOptions = opt.followupOptions.map(fv => {
-            const fid = `${q.id}_fu_${fv.replace(/\s+/g,'_')}`;
+            const fid     = `${q.id}_fu_${fv.replace(/\s+/g,'_')}`;
             const checked = followupVals.includes(fv);
             return `
               <div class="checkbox-tab-wrapper">
@@ -548,37 +534,30 @@ window.dataUtils = (function () {
           if (e.target.name !== q.name) return;
           const val = e.target.value;
           applyRadioSelectedStyles(container, q.name);
-
-          // Show/hide all followup panels
           q.options.forEach(opt => {
             const panel = document.getElementById(`${q.id}_followup_${opt.value.replace(/\s+/g,'_')}`);
             if (panel) panel.classList.toggle('hidden', opt.value !== val);
           });
-
           saveData(val);
-
           const activeOpt = q.options.find(o => o.value === val);
           if (!activeOpt?.followupLabel) {
             scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
           }
         });
 
-        // Followup checkbox changes
         document.addEventListener('change', e => {
           if (e.target.name !== `${q.id}_followup`) return;
           const mainVal = container.querySelector('input:checked')?.value || '';
           saveData(mainVal);
-
-          // Update checkbox label styles
           document.querySelectorAll(`input[name="${q.id}_followup"]`).forEach(cb => {
             const lbl = document.querySelector(`label[for="${cb.id}"]`);
             if (!lbl) return;
             if (cb.checked) {
-              lbl.classList.add('bg-orange-500','text-white','border-orange-500');
-              lbl.classList.remove('bg-white','text-gray-700','border-gray-300','hover:bg-gray-50');
+              lbl.classList.add('bg-orange-500', 'text-white', 'border-orange-500');
+              lbl.classList.remove('bg-white', 'text-gray-700', 'border-gray-300', 'hover:bg-gray-50');
             } else {
-              lbl.classList.remove('bg-orange-500','text-white','border-orange-500');
-              lbl.classList.add('bg-white','text-gray-700','border-gray-300','hover:bg-gray-50');
+              lbl.classList.remove('bg-orange-500', 'text-white', 'border-orange-500');
+              lbl.classList.add('bg-white', 'text-gray-700', 'border-gray-300', 'hover:bg-gray-50');
             }
           });
         });
@@ -612,7 +591,7 @@ window.dataUtils = (function () {
               </label>
             </div>`;
         }).join('');
-       const otherVal = data['other' + q.id] || '';
+        const otherVal = data['other' + q.id] || '';
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
           <p class="text-sm text-gray-600 mb-3 italic">You can select more than one option</p>
@@ -626,22 +605,23 @@ window.dataUtils = (function () {
           </div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
       },
-      setupEvents(q, updateData) {
+      // FIX: was setupEvents(q, updateData) — updateData was receiving goNext from core.js
+      // core.js always calls: renderer.setupEvents(question, goNext, updateData)
+      // Without handleNextQuestion as param 2, updateData slot received goNext instead.
+      setupEvents(q, handleNextQuestion, updateData) {
         const container      = document.querySelector('.checkbox-group');
         const otherContainer = document.getElementById(`other-${q.id}-container`);
         const otherInput     = document.getElementById(`other-${q.id}-text`);
         if (!container) return;
 
-     const save = () => {
-  const checked = container.querySelectorAll(`input[name="${q.name}"]:checked`);
-  const values  = Array.from(checked).map(cb => cb.value);
-  // Store as plain array — validation.js uses Array.isArray(answer)
-  updateData(q.name, values);
-  // Store "Other" text separately under 'other' + q.id
-  // validation.js checks: formData['otherhearabout'] — matches q.id = 'hearabout'
-  updateData('other' + q.id, values.includes('Other') ? (otherInput?.value || '') : '');
-};
-      
+        const save = () => {
+          const checked = container.querySelectorAll(`input[name="${q.name}"]:checked`);
+          const values  = Array.from(checked).map(cb => cb.value);
+          // Plain array — validation.js checks Array.isArray(answer) && answer.length > 0
+          updateData(q.name, values);
+          // "Other" text stored separately — validation.js reads formData['otherhearabout']
+          updateData('other' + q.id, values.includes('Other') ? (otherInput?.value || '') : '');
+        };
 
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;

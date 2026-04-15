@@ -159,98 +159,142 @@ window.dataUtils = (function () {
   //   expectation_diff (followup on expectation_met),
   //   future_wish, final_thoughts
   // ═══════════════════════════════════════════════════════════
-  const surveyQuestionsType2 = [
-    {
-      id: 'visit_feeling',
-      name: 'visit_feeling',
-      type: 'emoji-radio',
-      question: 'How did your visit today make you feel?',
-      options: [
-        { value: 'Peaceful',    label: 'Peaceful',    emoji: '🙏' },
-        { value: 'Inspired',    label: 'Inspired',    emoji: '✨' },
-        { value: 'Joyful',      label: 'Joyful',      emoji: '😊' },
-        { value: 'Overwhelmed', label: 'Overwhelmed', emoji: '🤯' },
-      ],
-      required: true,
-    },
-    {
-      id: 'experiences',
-      name: 'experiences',
-      type: 'checkbox-with-other',
-      question: 'Which parts of the visit did you experience today?',
-      options: [
-        { value: 'Mandir Prayer', label: 'Mandir Prayer' },
-        { value: 'Exhibition',    label: 'Exhibition' },
-        { value: 'Shayona Cafe',  label: 'Shayona Cafe' },
-        { value: 'Gift Shop',     label: 'Gift Shop' },
-        { value: 'Guided Tour',   label: 'Guided Tour' },
-        { value: 'Cultural Show', label: 'Cultural Show' },
-        { value: 'Other',         label: 'Other' },
-      ],
-      required: true,
-    },
-    {
-      id: 'standout',
-      name: 'standout',
-      type: 'radio-with-other',
-      question: 'What stood out most during your visit?',
-      options: [
-        { value: 'Architecture',      label: 'Architecture' },
-        { value: 'Spirituality',      label: 'Spirituality' },
-        { value: 'Cultural Learning', label: { line1: 'Cultural', line2: 'Learning' } },
-        { value: 'Hospitality',       label: 'Hospitality' },
-        { value: 'Other',             label: 'Other' },
-      ],
-      required: true,
-    },
-    {
-      id: 'shayona_intent',
-      name: 'shayona_intent',
-      type: 'radio-with-followup',
-      question: 'Did you visit or plan to visit Shayona Cafe?',
-      options: [
-        { value: 'Yes',         label: 'Yes',         followupLabel: 'What brought you to Shayona?', followupOptions: ['Food', 'Drinks', 'Convenience', 'Curiosity'] },
-        { value: 'No',          label: 'No',          followupLabel: null, followupOptions: [] },
-        { value: 'Maybe Later', label: 'Maybe Later', followupLabel: null, followupOptions: [] },
-      ],
-      required: true,
-    },
-    {
-      id: 'expectation_met',
-      name: 'expectation_met',
-      type: 'radio-with-followup',
-      question: 'Did the visit meet your expectations?',
-      options: [
-        { value: 'Exceeded',     label: 'Exceeded',     followupLabel: null,                           followupOptions: [] },
-        { value: 'Met',          label: 'Met',          followupLabel: null,                           followupOptions: [] },
-        { value: 'Partially',    label: 'Partially',    followupLabel: 'What could have been better?', followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
-        { value: 'Did not meet', label: 'Did not meet', followupLabel: 'What could have been better?', followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
-      ],
-      required: true,
-    },
-    {
-      id: 'future_wish',
-      name: 'future_wish',
-      type: 'radio-with-other',
-      question: 'What would you most like to see or experience on a future visit?',
-      options: [
-        { value: 'More Events',       label: 'More Events' },
-        { value: 'Deeper Tour',       label: { line1: 'Deeper',   line2: 'Guided Tour' } },
-        { value: 'Kids Activities',   label: { line1: 'Kids',     line2: 'Activities' } },
-        { value: 'Wellness Programs', label: { line1: 'Wellness', line2: 'Programs' } },
-        { value: 'Other',             label: 'Other' },
-      ],
-      required: true,
-    },
-    {
-      id: 'final_thoughts',
-      name: 'final_thoughts',
-      type: 'textarea',
-      question: 'Any final thoughts, suggestions, or messages you\'d like to share?',
-      placeholder: 'Type your thoughts here...',
-      required: false,
-    },
-  ];
+ const surveyQuestionsType2 = [
+  // Q1 — Visit Feeling
+  {
+    id: 'visit_feeling',
+    name: 'visit_feeling',
+    type: 'emoji-radio',
+    question: 'How was your visit today?',
+    options: [
+      { value: 'Peaceful',         label: 'Peaceful',         emoji: '😊' },
+      { value: 'Good',             label: 'Good',             emoji: '🙂' },
+      { value: 'Okay',             label: 'Okay',             emoji: '😐' },
+      { value: 'Not as expected',  label: 'Not as expected',  emoji: '🙁' },
+    ],
+    required: true,
+  },
+
+  // Q2 — Journey Map (checkbox, no Other)
+  {
+    id: 'experiences',
+    name: 'experiences',
+    type: 'checkbox-with-other',
+    question: 'What did you experience today? (Select all)',
+    options: [
+      { value: 'Architecture & Carvings',        label: '🏛️ Architecture & Carvings' },
+      { value: 'Darshan / Aarti',                label: '🙏 Darshan / Aarti (Shrines & Prayer)' },
+      { value: 'Walking the Grounds',            label: '🌿 Walking the Grounds' },
+      { value: 'Shayona (Gift Shop & Cafe)',     label: '🍽️ Shayona (Gift Shop & Cafe)' },
+      { value: 'Interaction with Volunteers',    label: '😊 Interaction with Volunteers' },
+    ],
+    required: true,
+  },
+
+  // Q3 — Sentiment Menu (radio-with-other, Other opens keyboard)
+  {
+    id: 'standout',
+    name: 'standout',
+    type: 'radio-with-other',
+    question: 'What stood out most to you?',
+    options: [
+      { value: 'Divine & Peaceful Atmosphere',  label: '✨ Divine & Peaceful Atmosphere' },
+      { value: 'Magnificent Architecture',      label: '🏛️ Magnificent Architecture' },
+      { value: 'Kind & Helpful Volunteers',     label: '😊 Kind & Helpful Volunteers' },
+      { value: 'Cleanliness & Maintenance',     label: '🧼 Cleanliness & Maintenance' },
+      { value: 'Great Family Experience',       label: '👨‍👩‍👧 Great Family Experience' },
+      { value: 'Other',                         label: '➕ Other...' },
+    ],
+    required: true,
+  },
+
+  // Q4 — Shayona Funnel (radio-with-followup)
+  // Followup triggers on "Maybe on a future visit" and "Not planning to visit today"
+  {
+    id: 'shayona_intent',
+    name: 'shayona_intent',
+    type: 'radio-with-followup',
+    question: 'Regarding the Shayona (Gift Shop/Cafe):',
+    options: [
+      {
+        value: 'Already visited',
+        label: '✅ I have already visited',
+        followupLabel: null,
+        followupOptions: [],
+      },
+      {
+        value: 'Plan to visit',
+        label: '🕒 I plan to visit before I leave',
+        followupLabel: null,
+        followupOptions: [],
+      },
+      {
+        value: 'Maybe future visit',
+        label: '📅 Maybe on a future visit',
+        followupLabel: 'What held you back?',
+        followupOptions: ['Too crowded', 'Hard to find', 'No time', 'Not interested'],
+      },
+      {
+        value: 'Not planning today',
+        label: '❌ Not planning to visit today',
+        followupLabel: 'What held you back?',
+        followupOptions: ['Too crowded', 'Hard to find', 'No time', 'Not interested'],
+      },
+    ],
+    required: true,
+  },
+
+  // Q5 — Expectation Check (radio-with-followup)
+  // Followup only on "A bit different"
+  {
+    id: 'expectation_met',
+    name: 'expectation_met',
+    type: 'radio-with-followup',
+    question: 'Did your visit go as you had planned?',
+    options: [
+      {
+        value: 'Yes perfectly',
+        label: '✅ Yes, perfectly',
+        followupLabel: null,
+        followupOptions: [],
+      },
+      {
+        value: 'A bit different',
+        label: '⚠️ It was a bit different than expected',
+        followupLabel: 'What was different?',
+        followupOptions: ['Darshan was during a break', 'Parking was difficult', 'Not enough signs', 'Too many people'],
+      },
+    ],
+    required: true,
+  },
+
+  // Q6 — Wish Menu (radio-with-other, Other opens keyboard)
+  {
+    id: 'future_wish',
+    name: 'future_wish',
+    type: 'radio-with-other',
+    question: 'If you had one wish for the Mandir\'s future, what would it be?',
+    options: [
+      { value: 'More seating',             label: '🪑 More seating / rest areas' },
+      { value: 'Easier parking',           label: '🚗 Easier parking or directions' },
+      { value: 'More info first-timers',   label: '📢 More info for first-time visitors' },
+      { value: 'More Shayona variety',     label: '🍪 More variety in Shayona/Cafe' },
+      { value: 'Quiet meditation spaces',  label: '✨ More quiet/meditation spaces' },
+      { value: 'Other',                    label: '✍️ Write a custom wish' },
+    ],
+    required: true,
+  },
+
+  // Q7 — Final Thoughts (optional textarea)
+  {
+    id: 'final_thoughts',
+    name: 'final_thoughts',
+    type: 'textarea',
+    question: 'Anything else you\'d like to share?',
+    placeholder: 'Type your thoughts here...',
+    required: false,
+  },
+];
 
   // ─── Active question set resolver ─────────────────────────────────────────
   function getSurveyQuestions() {

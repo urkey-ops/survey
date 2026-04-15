@@ -1,12 +1,13 @@
 // FILE: data-util.js
 // PURPOSE: Survey questions definition and question renderers
-// VERSION: 3.1.0 - Fixed selected-state highlighting for all question types + star CSS
+// VERSION: 3.2.0 - Multi-survey type support + selected-state fixes
 
 window.dataUtils = (function () {
 
   // ─── Config ───────────────────────────────────────────────────────────────
   const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
-  const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTOADVANCE_DELAY_MS || 50;
+  // BUG 4 FIX: was AUTOADVANCE_DELAY_MS (undefined) — correct key is AUTO_ADVANCE_DELAY_MS
+  const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
 
   // Auto-advance timer tracking — prevents race conditions
   let autoAdvanceTimer = null;
@@ -16,6 +17,8 @@ window.dataUtils = (function () {
   }
 
   // ─── HELPER: Apply/remove orange selected state on radio labels ────────────
+  // NOTE: Only call this for types that want orange (location-radio, age-radio).
+  // emoji-radio and number-scale are intentionally handled by CSS (:checked + label).
   function applyRadioSelectedStyles(container, inputName) {
     const labels = container.querySelectorAll('label');
     labels.forEach(label => {
@@ -39,8 +42,6 @@ window.dataUtils = (function () {
       const forAttr = label.getAttribute('for');
       const input   = forAttr ? document.getElementById(forAttr) : null;
       if (!input) return;
-      // star-rating uses flex-row-reverse so lower nums are to the right
-      // paint gold for all stars with value <= selectedValue
       const starVal = parseInt(input.value, 10);
       const selVal  = parseInt(selectedValue, 10);
       if (starVal <= selVal) {
@@ -53,18 +54,20 @@ window.dataUtils = (function () {
     });
   }
 
-  // ─── Survey Questions ─────────────────────────────────────────────────────
-  const surveyQuestions = [
+  // ═══════════════════════════════════════════════════════════
+  // SURVEY TYPE 1 — Original questions
+  // ═══════════════════════════════════════════════════════════
+  const surveyQuestionsType1 = [
     {
       id: 'satisfaction',
       name: 'satisfaction',
       type: 'emoji-radio',
       question: 'Overall, how satisfied were you with your visit today?',
       options: [
-        { value: 'Sad',        label: 'Sad',        emoji: '😢' },
-        { value: 'Neutral',    label: 'Neutral',    emoji: '😐' },
-        { value: 'Happy',      label: 'Happy',      emoji: '😊' },
-        { value: 'Super Happy',label: 'Super Happy',emoji: '🤩' },
+        { value: 'Sad',         label: 'Sad',         emoji: '😢' },
+        { value: 'Neutral',     label: 'Neutral',     emoji: '😐' },
+        { value: 'Happy',       label: 'Happy',       emoji: '😊' },
+        { value: 'Super Happy', label: 'Super Happy', emoji: '🤩' },
       ],
       required: true,
     },
@@ -79,7 +82,7 @@ window.dataUtils = (function () {
     },
     {
       id: 'stafffriendliness',
-      name: 'stafffriendliness',
+      name: 'staff_friendliness',
       type: 'star-rating',
       question: 'How friendly was the volunteer staff?',
       min: 1, max: 5,
@@ -91,11 +94,11 @@ window.dataUtils = (function () {
       type: 'radio-with-other',
       question: 'Where are you visiting from today?',
       options: [
-        { value: 'Lilburn Gwinnett County, GA',  label: 'Lilburn Gwinnett County, GA' },
-        { value: 'Metro Atlanta not Gwinnett',    label: { line1: 'Metro Atlanta', line2: 'not Gwinnett' } },
-        { value: 'Georgia outside Metro Atlanta', label: { line1: 'Georgia', line2: 'outside Metro Atlanta' } },
-        { value: 'U.S. outside Georgia',          label: { line1: 'U.S.', line2: 'outside Georgia' } },
-        { value: 'Outside the U.S. International',label: { line1: 'Outside the U.S.', line2: 'International' } },
+        { value: 'Lilburn Gwinnett County, GA',   label: 'Lilburn Gwinnett County, GA' },
+        { value: 'Metro Atlanta not Gwinnett',     label: { line1: 'Metro Atlanta',       line2: 'not Gwinnett' } },
+        { value: 'Georgia outside Metro Atlanta',  label: { line1: 'Georgia',             line2: 'outside Metro Atlanta' } },
+        { value: 'U.S. outside Georgia',           label: { line1: 'U.S.',                line2: 'outside Georgia' } },
+        { value: 'Outside the U.S. International', label: { line1: 'Outside the U.S.',    line2: 'International' } },
       ],
       required: true,
     },
@@ -115,7 +118,7 @@ window.dataUtils = (function () {
     },
     {
       id: 'hearabout',
-      name: 'hearabout',
+      name: 'hear_about',
       type: 'checkbox-with-other',
       question: 'How did you first hear about us?',
       options: [
@@ -131,7 +134,7 @@ window.dataUtils = (function () {
     },
     {
       id: 'giftshopvisit',
-      name: 'giftshopvisit',
+      name: 'gift_shop_visit',
       type: 'emoji-radio',
       question: 'Have you visited Shayona Cafe & the Gift Shop today?',
       options: [
@@ -150,6 +153,114 @@ window.dataUtils = (function () {
       required: true,
     },
   ];
+
+  // ═══════════════════════════════════════════════════════════
+  // SURVEY TYPE 2 — Visitor Experience questions
+  // Column names match COLUMN_ORDER_TYPE2 in api/submit-survey.js:
+  //   visit_feeling, experiences, standout, shayona_intent,
+  //   shayona_reason (followup on shayona_intent), expectation_met,
+  //   expectation_diff (followup on expectation_met),
+  //   future_wish, final_thoughts
+  // ═══════════════════════════════════════════════════════════
+  const surveyQuestionsType2 = [
+    {
+      id: 'visit_feeling',
+      name: 'visit_feeling',
+      type: 'emoji-radio',
+      question: 'How did your visit today make you feel?',
+      options: [
+        { value: 'Peaceful',   label: 'Peaceful',   emoji: '🙏' },
+        { value: 'Inspired',   label: 'Inspired',   emoji: '✨' },
+        { value: 'Joyful',     label: 'Joyful',     emoji: '😊' },
+        { value: 'Overwhelmed',label: 'Overwhelmed',emoji: '🤯' },
+      ],
+      required: true,
+    },
+    {
+      id: 'experiences',
+      name: 'experiences',
+      type: 'checkbox-with-other',
+      question: 'Which parts of the visit did you experience today?',
+      options: [
+        { value: 'Mandir Prayer',   label: 'Mandir Prayer' },
+        { value: 'Exhibition',      label: 'Exhibition' },
+        { value: 'Shayona Cafe',    label: 'Shayona Cafe' },
+        { value: 'Gift Shop',       label: 'Gift Shop' },
+        { value: 'Guided Tour',     label: 'Guided Tour' },
+        { value: 'Cultural Show',   label: 'Cultural Show' },
+        { value: 'Other',           label: 'Other' },
+      ],
+      required: true,
+    },
+    {
+      id: 'standout',
+      name: 'standout',
+      type: 'radio-with-other',
+      question: 'What stood out most during your visit?',
+      options: [
+        { value: 'Architecture',    label: 'Architecture' },
+        { value: 'Spirituality',    label: 'Spirituality' },
+        { value: 'Cultural Learning', label: { line1: 'Cultural', line2: 'Learning' } },
+        { value: 'Hospitality',     label: 'Hospitality' },
+        { value: 'Other',           label: 'Other' },
+      ],
+      required: true,
+    },
+    {
+      id: 'shayona_intent',
+      name: 'shayona_intent',
+      type: 'radio-with-followup',
+      question: 'Did you visit or plan to visit Shayona Cafe?',
+      options: [
+        { value: 'Yes',         label: 'Yes',         followupLabel: 'What brought you to Shayona?', followupOptions: ['Food', 'Drinks', 'Convenience', 'Curiosity'] },
+        { value: 'No',          label: 'No',          followupLabel: null, followupOptions: [] },
+        { value: 'Maybe Later', label: 'Maybe Later', followupLabel: null, followupOptions: [] },
+      ],
+      required: true,
+    },
+    {
+      id: 'expectation_met',
+      name: 'expectation_met',
+      type: 'radio-with-followup',
+      question: 'Did the visit meet your expectations?',
+      options: [
+        { value: 'Exceeded',    label: 'Exceeded',     followupLabel: null,                              followupOptions: [] },
+        { value: 'Met',         label: 'Met',          followupLabel: null,                              followupOptions: [] },
+        { value: 'Partially',   label: 'Partially',    followupLabel: 'What could have been better?',    followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
+        { value: 'Did not meet',label: 'Did not meet', followupLabel: 'What could have been better?',    followupOptions: ['Facilities', 'Information', 'Staff', 'Crowds', 'Other'] },
+      ],
+      required: true,
+    },
+    {
+      id: 'future_wish',
+      name: 'future_wish',
+      type: 'radio-with-other',
+      question: 'What would you most like to see or experience on a future visit?',
+      options: [
+        { value: 'More Events',     label: 'More Events' },
+        { value: 'Deeper Tour',     label: { line1: 'Deeper', line2: 'Guided Tour' } },
+        { value: 'Kids Activities', label: { line1: 'Kids', line2: 'Activities' } },
+        { value: 'Wellness Programs', label: { line1: 'Wellness', line2: 'Programs' } },
+        { value: 'Other',           label: 'Other' },
+      ],
+      required: true,
+    },
+    {
+      id: 'final_thoughts',
+      name: 'final_thoughts',
+      type: 'textarea',
+      question: 'Any final thoughts, suggestions, or messages you\'d like to share?',
+      placeholder: 'Type your thoughts here...',
+      required: false,
+    },
+  ];
+
+  // ─── Active question set resolver ─────────────────────────────────────────
+  // Called by core.js and submit.js — always reflects current active type
+  function getSurveyQuestions() {
+    const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+    return activeType === 'type2' ? surveyQuestionsType2 : surveyQuestionsType1;
+  }
 
   // ─── Question Renderers ───────────────────────────────────────────────────
   const questionRenderers = {
@@ -174,16 +285,17 @@ window.dataUtils = (function () {
     },
 
     // ── EMOJI RADIO ──────────────────────────────────────────────────────────
+    // BUG 3 FIX: removed orange Tailwind classes from selected ternary.
+    // CSS (.emoji-radio-group input:checked + label) owns the selected state.
+    // applyRadioSelectedStyles() is NOT called here — that would override CSS.
     'emoji-radio': {
       render(q, data) {
         const opts = q.options.map(opt => `
-          <input type="radio" id="${q.id}_${opt.value}" name="${q.name}" value="${opt.value}"
+          <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}" name="${q.name}" value="${opt.value}"
             class="visually-hidden" ${data[q.name] === opt.value ? 'checked' : ''}>
-          <label for="${q.id}_${opt.value}"
+          <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
             class="flex flex-col items-center p-4 sm:p-6 border-2 rounded-full cursor-pointer transition-all duration-200
-              ${data[q.name] === opt.value
-                ? 'bg-orange-500 border-orange-500 text-white'
-                : 'bg-white border-transparent hover:bg-gray-50 text-gray-700'}">
+              bg-white border-transparent hover:bg-gray-50 text-gray-700">
             <span class="text-4xl sm:text-5xl mb-2" aria-hidden="true">${opt.emoji}</span>
             <span class="text-sm font-medium">${opt.label}</span>
           </label>`).join('');
@@ -199,14 +311,15 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           updateData(q.name, e.target.value);
-          // Update label styles immediately
-          applyRadioSelectedStyles(container, q.name);
+          // CSS :checked + label handles the visual state — no JS style call needed
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
       },
     },
 
     // ── NUMBER SCALE ─────────────────────────────────────────────────────────
+    // BUG 3 FIX: removed orange Tailwind classes from selected ternary.
+    // CSS (.number-scale-group input:checked + label) owns the selected state.
     'number-scale': {
       render(q, data) {
         const btns = Array.from({ length: q.max }, (_, i) => i + 1).map(num => `
@@ -214,9 +327,7 @@ window.dataUtils = (function () {
             class="visually-hidden" ${String(data[q.name]) === String(num) ? 'checked' : ''}>
           <label for="${q.id}_${num}"
             class="flex items-center justify-center border-2 rounded-full font-bold cursor-pointer transition-all duration-200 w-12 h-12 sm:w-14 sm:h-14 text-lg
-              ${String(data[q.name]) === String(num)
-                ? 'bg-orange-500 border-orange-500 text-white'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}"
+              bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
             role="radio" aria-label="Rating ${num}">
             <span>${num}</span>
           </label>`).join('');
@@ -235,7 +346,7 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           updateData(q.name, e.target.value);
-          applyRadioSelectedStyles(container, q.name);
+          // CSS :checked + label handles the visual state — no JS style call needed
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
       },
@@ -244,8 +355,6 @@ window.dataUtils = (function () {
     // ── STAR RATING ──────────────────────────────────────────────────────────
     'star-rating': {
       render(q, data) {
-        // flex-row-reverse trick: CSS :checked ~ label highlights all previous siblings
-        // We also add JS-driven gold class for reliability (Tailwind purges CSS-only tricks)
         const stars = Array.from({ length: q.max }, (_, i) => q.max - i).map(num => `
           <input type="radio" id="${q.id}_${num}" name="${q.name}" value="${num}"
             class="visually-hidden" ${String(data[q.name]) === String(num) ? 'checked' : ''}>
@@ -271,14 +380,15 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── RADIO WITH OTHER (Location) ──────────────────────────────────────────
+    // ── RADIO WITH OTHER ─────────────────────────────────────────────────────
     'radio-with-other': {
       render(q, data) {
         const opts = q.options.map(opt => {
           const labelHtml = typeof opt.label === 'object'
             ? `<span>${opt.label.line1}</span><br><span>${opt.label.line2}</span>`
             : opt.label;
-          const isSelected = data[q.name] === opt.value;
+          const isSelected = data[q.name] === opt.value ||
+            (data[q.name] && typeof data[q.name] === 'object' && data[q.name].main === opt.value);
           return `
             <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}" name="${q.name}"
               value="${opt.value}" class="visually-hidden" ${isSelected ? 'checked' : ''}>
@@ -289,46 +399,49 @@ window.dataUtils = (function () {
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
               role="radio">${labelHtml}</label>`;
         }).join('');
+        const currentOther = (data[q.name] && typeof data[q.name] === 'object') ? data[q.name].other || '' : '';
+        const showOther    = (data[q.name] === 'Other') ||
+          (data[q.name] && typeof data[q.name] === 'object' && data[q.name].main === 'Other');
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
           <div class="location-radio-group grid grid-cols-2 sm:grid-cols-3 gap-2"
             role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
-          <div id="other-location-container" class="mt-4 ${data[q.name] === 'Other' ? '' : 'hidden'}">
-            <input type="text" id="otherlocationtext" name="otherlocation"
+          <div id="other-${q.id}-container" class="mt-4 ${showOther ? '' : 'hidden'}">
+            <input type="text" id="other-${q.id}-text" name="other-${q.id}"
               class="shadow-sm border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700"
-              placeholder="Please specify" value="${data['otherlocation'] || ''}">
-            <span id="otherlocationtextError" class="error-message text-red-500 text-sm hidden mt-1"></span>
+              placeholder="Please specify" value="${currentOther}">
+            <span id="other-${q.id}-textError" class="error-message text-red-500 text-sm hidden mt-1"></span>
           </div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
-        const container    = document.querySelector('.location-radio-group');
-        const otherContainer = document.getElementById('other-location-container');
-        const otherInput   = document.getElementById('otherlocationtext');
+        const container      = document.querySelector('.location-radio-group');
+        const otherContainer = document.getElementById(`other-${q.id}-container`);
+        const otherInput     = document.getElementById(`other-${q.id}-text`);
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          updateData(q.name, e.target.value);
+          const val = e.target.value;
+          // Store as object with main + other for processor compatibility
+          updateData(q.name, val === 'Other' ? { main: 'Other', other: otherInput?.value || '' } : { main: val });
           applyRadioSelectedStyles(container, q.name);
           if (otherContainer) {
-            if (e.target.value === 'Other') {
-              otherContainer.classList.remove('hidden');
-            } else {
-              otherContainer.classList.add('hidden');
-              updateData('otherlocation', '');
-            }
+            val === 'Other'
+              ? otherContainer.classList.remove('hidden')
+              : otherContainer.classList.add('hidden');
+            if (val !== 'Other' && otherInput) otherInput.value = '';
           }
-          if (e.target.value !== 'Other') {
-            scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
-          }
+          if (val !== 'Other') scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
         if (otherInput) {
-          otherInput.addEventListener('input', e => updateData('otherlocation', e.target.value));
+          otherInput.addEventListener('input', e => {
+            updateData(q.name, { main: 'Other', other: e.target.value });
+          });
         }
       },
     },
 
-    // ── RADIO (Age) ──────────────────────────────────────────────────────────
+    // ── RADIO (Age, and any simple radio) ────────────────────────────────────
     radio: {
       render(q, data) {
         const opts = q.options.map(opt => {
@@ -361,10 +474,122 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── CHECKBOX WITH OTHER (How did you hear) ───────────────────────────────
+    // ── RADIO WITH FOLLOWUP (Type 2: shayona_intent, expectation_met) ────────
+    // Stores { main, followup[] } — matches processSingleSubmissionType2 expectations
+    'radio-with-followup': {
+      render(q, data) {
+        const current = data[q.name] || {};
+        const mainVal = typeof current === 'object' ? current.main : current;
+        const followupVals = Array.isArray(current.followup) ? current.followup : [];
+
+        const opts = q.options.map(opt => {
+          const isSelected = mainVal === opt.value;
+          return `
+            <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}" name="${q.name}"
+              value="${opt.value}" class="visually-hidden" ${isSelected ? 'checked' : ''}>
+            <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+              class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
+                ${isSelected
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+              role="radio">${opt.label}</label>`;
+        }).join('');
+
+        const activeOpt  = q.options.find(o => o.value === mainVal);
+        const showFollowup = activeOpt?.followupLabel && activeOpt.followupOptions.length > 0;
+        const followupHtml = q.options.map(opt => {
+          if (!opt.followupLabel || opt.followupOptions.length === 0) return '';
+          const show = mainVal === opt.value;
+          const cbOptions = opt.followupOptions.map(fv => {
+            const fid = `${q.id}_fu_${fv.replace(/\s+/g,'_')}`;
+            const checked = followupVals.includes(fv);
+            return `
+              <div class="checkbox-tab-wrapper">
+                <input type="checkbox" id="${fid}" name="${q.id}_followup" value="${fv}"
+                  class="visually-hidden" ${checked ? 'checked' : ''}>
+                <label for="${fid}"
+                  class="px-3 py-2 text-sm font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
+                    ${checked
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}">
+                  ${fv}
+                </label>
+              </div>`;
+          }).join('');
+          return `
+            <div id="${q.id}_followup_${opt.value.replace(/\s+/g,'_')}"
+              class="mt-4 ${show ? '' : 'hidden'}">
+              <p class="text-sm font-semibold text-gray-700 mb-2">${opt.followupLabel}</p>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">${cbOptions}</div>
+            </div>`;
+        }).join('');
+
+        return `
+          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
+          <div class="followup-radio-group grid grid-cols-2 sm:grid-cols-3 gap-2"
+            role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
+          ${followupHtml}
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+      },
+      setupEvents(q, handleNextQuestion, updateData) {
+        const container = document.querySelector('.followup-radio-group');
+        if (!container) return;
+
+        const getFollowupValues = () => {
+          const checked = document.querySelectorAll(`input[name="${q.id}_followup"]:checked`);
+          return Array.from(checked).map(cb => cb.value);
+        };
+
+        const saveData = (mainVal) => {
+          updateData(q.name, { main: mainVal, followup: getFollowupValues() });
+        };
+
+        container.addEventListener('change', e => {
+          if (e.target.name !== q.name) return;
+          const val = e.target.value;
+          applyRadioSelectedStyles(container, q.name);
+
+          // Show/hide all followup panels
+          q.options.forEach(opt => {
+            const panel = document.getElementById(`${q.id}_followup_${opt.value.replace(/\s+/g,'_')}`);
+            if (panel) panel.classList.toggle('hidden', opt.value !== val);
+          });
+
+          saveData(val);
+
+          const activeOpt = q.options.find(o => o.value === val);
+          if (!activeOpt?.followupLabel) {
+            scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
+          }
+        });
+
+        // Followup checkbox changes
+        document.addEventListener('change', e => {
+          if (e.target.name !== `${q.id}_followup`) return;
+          const mainVal = container.querySelector('input:checked')?.value || '';
+          saveData(mainVal);
+
+          // Update checkbox label styles
+          document.querySelectorAll(`input[name="${q.id}_followup"]`).forEach(cb => {
+            const lbl = document.querySelector(`label[for="${cb.id}"]`);
+            if (!lbl) return;
+            if (cb.checked) {
+              lbl.classList.add('bg-orange-500','text-white','border-orange-500');
+              lbl.classList.remove('bg-white','text-gray-700','border-gray-300','hover:bg-gray-50');
+            } else {
+              lbl.classList.remove('bg-orange-500','text-white','border-orange-500');
+              lbl.classList.add('bg-white','text-gray-700','border-gray-300','hover:bg-gray-50');
+            }
+          });
+        });
+      },
+    },
+
+    // ── CHECKBOX WITH OTHER ──────────────────────────────────────────────────
     'checkbox-with-other': {
       render(q, data) {
-        const selectedValues = Array.isArray(data[q.name]) ? data[q.name] : [];
+        const selectedValues = Array.isArray(data[q.name]) ? data[q.name] :
+          (data[q.name]?.selected || []);
         const opts = q.options.map(opt => {
           const isSelected = selectedValues.includes(opt.value);
           return `
@@ -388,31 +613,39 @@ window.dataUtils = (function () {
               </label>
             </div>`;
         }).join('');
+        const otherVal = data[q.name]?.other || '';
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
           <p class="text-sm text-gray-600 mb-3 italic">You can select more than one option</p>
           <div class="checkbox-group grid grid-cols-2 sm:grid-cols-3 gap-2"
             role="group" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
-          <div id="other-hear-about-container" class="mt-4 ${selectedValues.includes('Other') ? '' : 'hidden'}">
-            <input type="text" id="otherhearabouttext" name="otherhearabout"
+          <div id="other-${q.id}-container" class="mt-4 ${selectedValues.includes('Other') ? '' : 'hidden'}">
+            <input type="text" id="other-${q.id}-text" name="other-${q.id}"
               class="shadow-sm border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700"
-              placeholder="Please specify" value="${data['otherhearabout'] || ''}">
-            <span id="otherhearabouttextError" class="error-message text-red-500 text-sm hidden mt-1"></span>
+              placeholder="Please specify" value="${otherVal}">
+            <span id="other-${q.id}-textError" class="error-message text-red-500 text-sm hidden mt-1"></span>
           </div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
       },
       setupEvents(q, updateData) {
         const container      = document.querySelector('.checkbox-group');
-        const otherContainer = document.getElementById('other-hear-about-container');
-        const otherInput     = document.getElementById('otherhearabouttext');
+        const otherContainer = document.getElementById(`other-${q.id}-container`);
+        const otherInput     = document.getElementById(`other-${q.id}-text`);
         if (!container) return;
-        container.addEventListener('change', e => {
-          if (e.target.name !== q.name) return;
+
+        const save = () => {
           const checked = container.querySelectorAll(`input[name="${q.name}"]:checked`);
           const values  = Array.from(checked).map(cb => cb.value);
-          updateData(q.name, values);
+          updateData(q.name, {
+            selected: values,
+            other: values.includes('Other') ? (otherInput?.value || '') : ''
+          });
+        };
 
-          // Update all label styles
+        container.addEventListener('change', e => {
+          if (e.target.name !== q.name) return;
+          save();
+
           container.querySelectorAll('label').forEach(label => {
             const checkbox  = document.getElementById(label.getAttribute('for'));
             const indicator = label.querySelector('.checkbox-indicator');
@@ -435,19 +668,20 @@ window.dataUtils = (function () {
           });
 
           if (otherContainer) {
+            const values = Array.from(container.querySelectorAll(`input[name="${q.name}"]:checked`)).map(cb => cb.value);
             values.includes('Other')
               ? otherContainer.classList.remove('hidden')
               : otherContainer.classList.add('hidden');
-            if (!values.includes('Other')) updateData('otherhearabout', '');
           }
         });
+
         if (otherInput) {
-          otherInput.addEventListener('input', e => updateData('otherhearabout', e.target.value));
+          otherInput.addEventListener('input', () => save());
         }
       },
     },
   };
 
-  return { surveyQuestions, questionRenderers, kioskId };
+  return { surveyQuestions: surveyQuestionsType1, getSurveyQuestions, questionRenderers, kioskId };
 
 })();

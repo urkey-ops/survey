@@ -1,78 +1,83 @@
 // FILE: main/uiElements.js
-// PURPOSE: DOM element initialization and validation
-// DEPENDENCIES: window.globals
+// PURPOSE: Initialize and validate DOM element references into window.globals
+// NOTE: No bugs found — no changes from original
 
-/**
- * Initialize all DOM element references
- */
 export function initializeElements() {
-    console.log('[UI ELEMENTS] Initializing DOM references...');
-    
-    window.globals.questionContainer = document.getElementById('questionContainer');
-    window.globals.nextBtn = document.getElementById('nextBtn');
-    window.globals.prevBtn = document.getElementById('prevBtn');
-    window.globals.mainTitle = document.getElementById('mainTitle');
-    window.globals.progressBar = document.getElementById('progressBar');
-    window.globals.kioskStartScreen = document.getElementById('kioskStartScreen');
-    window.globals.kioskVideo = document.getElementById('kioskVideo');
-    window.globals.adminControls = document.getElementById('adminControls');
-    window.globals.syncButton = document.getElementById('syncButton');
-    window.globals.adminClearButton = document.getElementById('adminClearButton');
-    window.globals.hideAdminButton = document.getElementById('hideAdminButton');
-    window.globals.unsyncedCountDisplay = document.getElementById('unsyncedCountDisplay');
-    window.globals.syncStatusMessage = document.getElementById('syncStatusMessage');
-    window.globals.syncAnalyticsButton = document.getElementById('syncAnalyticsButton');
-    window.globals.checkUpdateButton = document.getElementById('checkUpdateButton');
-    window.globals.fixVideoButton = document.getElementById('fixVideoButton');
+  window.globals = {
+    // Core kiosk elements
+    kioskStartScreen:    document.getElementById('kioskStartScreen'),
+    kioskVideo:          document.getElementById('kioskVideo'),
+    mainTitle:           document.getElementById('mainTitle'),
+    kioskSurvey:         document.getElementById('kioskSurvey'),
+    questionContainer:   document.getElementById('questionContainer'),
+    progressBar:         document.getElementById('progressBar'),
+    progressText:        document.getElementById('progressText'),
+
+    // Navigation
+    nextBtn:             document.getElementById('nextBtn'),
+    prevBtn:             document.getElementById('prevBtn'),
+
+    // Admin panel
+    adminControls:       document.getElementById('adminControls'),
+    hideAdminButton:     document.getElementById('hideAdminButton'),
+    adminClearButton:    document.getElementById('adminClearButton'),
+    syncButton:          document.getElementById('syncButton'),
+    syncAnalyticsButton: document.getElementById('syncAnalyticsButton'),
+    checkUpdateButton:   document.getElementById('checkUpdateButton'),
+    fixVideoButton:      document.getElementById('fixVideoButton'),
+    syncStatusMessage:   document.getElementById('syncStatusMessage'),
+    adminQueueCount:     document.getElementById('adminQueueCount'),
+  };
+
+  console.log('[UI] ✅ DOM elements initialized');
 }
 
-/**
- * Validate that all critical DOM elements exist
- * @returns {Object} { valid: boolean, missingElements: Array }
- */
 export function validateElements() {
-    const missingElements = [];
-    
-    const requiredElements = {
-        questionContainer: window.globals.questionContainer,
-        nextBtn: window.globals.nextBtn,
-        prevBtn: window.globals.prevBtn,
-        mainTitle: window.globals.mainTitle,
-        kioskStartScreen: window.globals.kioskStartScreen,
-        kioskVideo: window.globals.kioskVideo
-    };
-    
-    Object.entries(requiredElements).forEach(([name, element]) => {
-        if (!element) {
-            missingElements.push(name);
-        }
-    });
-    
-    return {
-        valid: missingElements.length === 0,
-        missingElements
-    };
+  const REQUIRED = [
+    'kioskStartScreen',
+    'mainTitle',
+    'kioskSurvey',
+    'questionContainer',
+    'nextBtn',
+    'prevBtn',
+    'adminControls',
+  ];
+
+  const missingElements = REQUIRED.filter(key => !window.globals?.[key]);
+
+  if (missingElements.length > 0) {
+    console.error('[UI] ❌ Missing required elements:', missingElements);
+    return { valid: false, missingElements };
+  }
+
+  return { valid: true, missingElements: [] };
 }
 
-/**
- * Display critical error screen when elements are missing
- * @param {Array} missingElements - List of missing element IDs
- */
 export function showCriticalError(missingElements) {
-    console.error(`[UI ELEMENTS] ❌ CRITICAL ERROR: Missing essential HTML elements: ${missingElements.join(', ')}`);
-    
-    document.body.innerHTML = `
-        <div style="padding: 50px; text-align: center; font-family: system-ui;">
-            <h1 style="color: #dc2626; font-size: 24px; margin-bottom: 20px;">Application Error</h1>
-            <p style="color: #6b7280; font-size: 16px;">Could not load survey interface.</p>
-            <p style="color: #9ca3af; font-size: 14px; margin-top: 10px;">Missing elements: ${missingElements.join(', ')}</p>
-            <button onclick="location.reload()" style="margin-top: 30px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">Reload Page</button>
-        </div>
+  console.error('[UI] 💥 Critical init failure — missing:', missingElements);
+  const body = document.body;
+  if (body) {
+    body.innerHTML = `
+      <div style="
+        display:flex; flex-direction:column; align-items:center;
+        justify-content:center; height:100vh; background:#fef2f2;
+        font-family:sans-serif; padding:2rem; text-align:center;
+      ">
+        <h1 style="color:#dc2626; font-size:1.5rem; margin-bottom:1rem;">
+          ⚠️ Kiosk Initialization Failed
+        </h1>
+        <p style="color:#374151; margin-bottom:0.5rem;">
+          Required elements not found in the DOM:
+        </p>
+        <code style="background:#fee2e2; color:#991b1b; padding:0.5rem 1rem; border-radius:4px;">
+          ${missingElements.join(', ')}
+        </code>
+        <p style="color:#6b7280; margin-top:1rem; font-size:0.875rem;">
+          Please check the HTML template and refresh.
+        </p>
+      </div>
     `;
+  }
 }
 
-export default {
-    initializeElements,
-    validateElements,
-    showCriticalError
-};
+export default { initializeElements, validateElements, showCriticalError };

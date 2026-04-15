@@ -1,6 +1,6 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// UPDATED: VERSION 3.0.0 - Stamps surveyType + uses correct queue key per type
+// UPDATED: VERSION 3.1.0 - Fixed queue key resolution (reads storageKey from SURVEY_TYPES)
 // DEPENDENCIES: core.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -29,35 +29,29 @@ export function submitSurvey() {
     ? window.uiHandlers.getTotalSurveyTime()
     : 0;
 
-  // ── Resolve active survey type and its dedicated queue key ──
-  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
-                     window.CONSTANTS?.ACTIVE_SURVEY_TYPE ||
-                     'type1';
+  // ── Resolve active survey type ──
+  // IMPORTANT: Only use getActiveSurveyType() — window.CONSTANTS has no ACTIVE_SURVEY_TYPE value
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+
+  // ── Resolve queue key directly from SURVEY_TYPES storageKey ──
   const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
-  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
-                   window.CONSTANTS?.ACTIVE_SURVEY_TYPE ||
-                   'type1';
+  const queueKey = surveyConfig?.storageKey ||
+                   (surveyType === 'type2'
+                     ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
+                     : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
+                   'submissionQueue';
 
-const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
-
-// Add this debug line temporarily to verify:
-console.log('[SUBMIT] surveyConfig:', surveyConfig);
-
-const queueKey = surveyConfig?.storageKey ||
-                 (surveyType === 'type2'
-                   ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
-                   : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
-                 'submissionQueue';
+  console.log(`[SUBMIT] surveyType: ${surveyType} | storageKey: ${surveyConfig?.storageKey} | queueKey: ${queueKey}`);
 
   // FIXED: Defensive copy + persistent state
   const submissionData = {
     ...appState.formData,
     id: appState.formData.id || dataHandlers.generateUUID(),
-    questionTimeSpent: { ...appState.questionTimeSpent }, // Defensive copy
+    questionTimeSpent: { ...appState.questionTimeSpent },
     completionTimeSeconds: totalTimeSeconds,
     completedAt: new Date().toISOString(),
     sync_status: 'unsynced',
-    surveyType,   // ← stamped so API and queue know which type this is
+    surveyType,
   };
 
   console.log(`[SUBMIT] Submitting survey (${surveyType}):`, submissionData.id);

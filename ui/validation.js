@@ -1,6 +1,14 @@
 // FILE: ui/validation.js
 // PURPOSE: Form validation logic for survey questions
-// VERSION: 2.1.0 - Fixed numeric answer validation (star-rating, number-scale)
+// VERSION: 2.2.0 - CHECKBOX FIX: validateQuestion now exposed on window so
+//                  core.js goNext() can actually call it. Previously the ES
+//                  module export was never assigned to window.validateQuestion,
+//                  so core.js fell through to the `true` fallback — every
+//                  question passed validation immediately, BUT for checkboxes
+//                  the real stopper was core.js using the wrong question array
+//                  (Bug 5). With Bug 5 now fixed in core.js, validateQuestion
+//                  must also be on window or goNext() still falls through.
+//                  Also added: radio-with-followup type support.
 // DEPENDENCIES: None (pure validation functions)
 
 /**
@@ -29,7 +37,7 @@ function displayError(elementId, message) {
     errorEl.textContent = message;
     errorEl.classList.remove('hidden');
   } else {
-    console.warn(`[VALIDATION] Missing HTML element for ID '${elementId}'`);
+    console.warn(`[VALIDATION] Missing error element for ID '${elementId}'`);
   }
 }
 
@@ -38,13 +46,13 @@ function displayError(elementId, message) {
  *   string, number, boolean, array, object, null, undefined
  */
 function _isEmpty(answer) {
-  if (answer === null || answer === undefined) return true;
-  if (typeof answer === 'string')  return answer.trim() === '';
-  if (typeof answer === 'number')  return false;          // 0 is a valid rating
-  if (typeof answer === 'boolean') return false;
-  if (Array.isArray(answer))       return answer.length === 0;
+  if (answer === null || answer === undefined)  return true;
+  if (typeof answer === 'string')               return answer.trim() === '';
+  if (typeof answer === 'number')               return false; // 0 is a valid rating
+  if (typeof answer === 'boolean')              return false;
+  if (Array.isArray(answer))                    return answer.length === 0;
   // plain object e.g. { main: '...' }
-  if (typeof answer === 'object')  return !answer.main || String(answer.main).trim() === '';
+  if (typeof answer === 'object')               return !answer.main || String(answer.main).trim() === '';
   return false;
 }
 
@@ -55,24 +63,35 @@ function _isEmpty(answer) {
  * @returns {boolean} True if validation passes
  */
 export function validateQuestion(question, formData) {
+  // ── SAFETY GUARD ──────────────────────────────────────────────────────────
+  // CHECKBOX FIX: if question is undefined (e.g. wrong array was used in
+  // core.js before the Bug 5 / getQuestions() fix), return false clearly
+  // instead of throwing a TypeError that swallows the real error.
+  if (!question) {
+    console.error('[VALIDATION] validateQuestion called with undefined question — check getQuestions() in core.js');
+    return false;
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   clearErrors();
 
   const answer = formData[question.name];
   let isValid = true;
   let errorMessage = '';
 
-  // ── CHECKBOX WITH OTHER ───────────────────────────────────
+  // ── CHECKBOX WITH OTHER ───────────────────────────────────────────────────
+  // CHECKBOX FIX: must check Array.isArray + length > 0, NOT just truthiness.
+  // An empty array [] is truthy in JS so a plain !answer check would pass it.
   if (question.type === 'checkbox-with-other') {
     if (question.required && (!Array.isArray(answer) || answer.length === 0)) {
       errorMessage = 'Please select at least one option.';
       isValid = false;
     }
 
-    // "Other" text field required when Other is selected
+    // If "Other" is selected, the specify field must be filled
     if (isValid && Array.isArray(answer) && answer.includes('Other')) {
       const otherValue = formData['otherhearabout'] || formData['other_hear_about'] || '';
       if (!otherValue || String(otherValue).trim() === '') {
-        // try both possible IDs the renderer might use
         displayError('otherhearabouttextError', 'Please specify other source.');
         displayError('other_hear_about_textError', 'Please specify other source.');
         isValid = false;
@@ -80,7 +99,7 @@ export function validateQuestion(question, formData) {
     }
   }
 
-  // ── RADIO WITH OTHER ──────────────────────────────────────
+  // ── RADIO WITH OTHER ──────────────────────────────────────────────────────
   else if (question.type === 'radio-with-other') {
     if (question.required && _isEmpty(answer)) {
       errorMessage = 'Please select an option.';
@@ -95,7 +114,28 @@ export function validateQuestion(question, formData) {
     }
   }
 
-  // ── CUSTOM CONTACT ────────────────────────────────────────
+  // ── RADIO WITH FOLLOW-UP ──────────────────────────────────────────────────
+  // Type 2 survey question type — main selection required; follow-up required
+  // only when the question definition marks followupRequired: true AND the
+  // selected option has a follow-up sub-question.
+  else if (question.type === 'radio-with-followup') {
+    if (question.required && _isEmpty(answer)) {
+      errorMessage = 'Please select an option.';
+      isValid = false;
+    }
+    if (isValid && question.followupRequired && answer) {
+      const followupKey  = question.followupName || (question.name + '_followup');
+      const followupVal  = formData[followupKey];
+      const selectedOpt  = question.options?.find(o => o.value === answer);
+      // Only validate follow-up if the selected option actually has one
+      if (selectedOpt?.followup && _isEmpty(followupVal)) {
+        displayError(question.id + 'FollowupError', 'Please answer the follow-up question.');
+        isValid = false;
+      }
+    }
+  }
+
+  // ── CUSTOM CONTACT ────────────────────────────────────────────────────────
   else if (question.type === 'custom-contact') {
     const consent = formData['newsletterConsent'] === 'Yes';
     if (consent) {
@@ -112,8 +152,9 @@ export function validateQuestion(question, formData) {
     }
   }
 
-  // ── STAR RATING & NUMBER SCALE ────────────────────────────
-  // answer is stored as a string "1"–"5" from radio input value
+  // ── STAR RATING & NUMBER SCALE ────────────────────────────────────────────
+  // Stored as string "1"–"5" from radio input value; treat empty string as
+  // unanswered even though typeof "" === 'string' (would pass _isEmpty)
   else if (question.type === 'star-rating' || question.type === 'number-scale') {
     if (question.required && (answer === null || answer === undefined || answer === '')) {
       errorMessage = 'Please make a selection.';
@@ -121,13 +162,13 @@ export function validateQuestion(question, formData) {
     }
   }
 
-  // ── ALL OTHER TYPES (emoji-radio, radio, textarea, etc.) ──
+  // ── ALL OTHER TYPES (emoji-radio, radio, textarea, etc.) ──────────────────
   else if (question.required && _isEmpty(answer)) {
     errorMessage = 'This response is required.';
     isValid = false;
   }
 
-  // Display error under the question
+  // Display the primary error message under the question element
   if (!isValid && errorMessage) {
     displayError(question.id + 'Error', errorMessage);
   }
@@ -158,11 +199,13 @@ export function validateArrayNotEmpty(arr) {
 }
 
 /**
- * Get all validation errors for a question (non-throwing)
+ * Get all validation errors for a question (non-throwing, used by batch validate)
  */
 export function getValidationErrors(question, formData) {
-  const errors  = [];
-  const answer  = formData[question.name];
+  if (!question) return ['Question definition missing.'];
+
+  const errors = [];
+  const answer = formData[question.name];
 
   if (question.required && _isEmpty(answer)) {
     errors.push('This response is required.');
@@ -221,6 +264,33 @@ export const validationUtils = {
   getValidationErrors,
   validateMultipleQuestions,
 };
+
+// ── CRITICAL: expose on window so core.js goNext() can call it ───────────────
+//
+// BEFORE (broken):
+//   validation.js only used ES module exports. No window assignment anywhere.
+//   core.js does: const isValid = window.validateQuestion ? window.validateQuestion(...) : true
+//   window.validateQuestion was undefined → ternary always fell to `true`
+//   → goNext() ALWAYS advanced regardless of validation state
+//   → BUT for checkboxes, the real stopper was Bug 5 (wrong question array)
+//     making currentQuestion undefined, which made validateQuestion return false
+//     even when it was called... wait — if window.validateQuestion was undefined
+//     the ternary returned true → goNext advanced. So why was checkbox stuck?
+//
+//   Answer: the ternary returned true → goNext tried to advance →
+//   stopQuestionTimer(currentQuestion.id) was called on undefined → THREW →
+//   goNext crashed silently in the try/catch above it → no advance.
+//
+// AFTER (fixed):
+//   window.validateQuestion = validateQuestion  (line below)
+//   window.clearErrors      = clearErrors       (line below)
+//   Now core.js goNext() calls real validation AND doesn't crash on undefined.
+//   The safety guard at the top of validateQuestion() handles the null case
+//   cleanly instead of throwing TypeError.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+window.validateQuestion = validateQuestion;
+window.clearErrors      = clearErrors;
 
 export default {
   validateQuestion,

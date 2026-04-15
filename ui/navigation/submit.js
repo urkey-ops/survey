@@ -1,6 +1,7 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.2.0 - Fixed reset, fixed queue key, matches YOUR existing CONSTANTS naming
+// VERSION: 3.3.0 - BUG 5 FIX: reads active survey type, uses correct queue key,
+//                  includes surveyType in submissionData for API routing
 // DEPENDENCIES: core.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -22,34 +23,59 @@ export function submitSurvey() {
     window.uiHandlers.clearAllTimers();
   }
 
-  // ── 2. Stop timer for last question ───────────────────────
-  const lastQuestion = dataUtils.surveyQuestions[appState.currentQuestionIndex];
+  // ── 2. Stop timer for last question ────────────────────────
+  // BUG 5 FIX: was dataUtils.surveyQuestions[...] — must use getSurveyQuestions()
+  // so the correct active question array is used when Type 2 is active
+  const questions    = dataUtils.getSurveyQuestions
+    ? dataUtils.getSurveyQuestions()
+    : dataUtils.surveyQuestions;
+  const lastQuestion = questions[appState.currentQuestionIndex];
   if (lastQuestion) stopQuestionTimer(lastQuestion.id);
 
-  // ── 3. Total survey time ───────────────────────────────────
+  // ── 3. Total survey time ────────────────────────────────────
   const totalTimeSeconds = window.uiHandlers?.getTotalSurveyTime
     ? window.uiHandlers.getTotalSurveyTime()
     : 0;
 
-  // ── 4. Resolve queue key — matches YOUR config.js naming ──
-  // Reads STORAGE_KEY_QUEUE from window.CONSTANTS (your existing key)
-  // Falls back to hard-coded string so it NEVER throws
-  const queueKey = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
+  // ── 4. BUG 5 FIX: resolve active survey type and correct queue key ──
+  //
+  // BEFORE (broken):
+  //   const queueKey = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
+  //   → always wrote to the Type 1 queue regardless of active type
+  //   → surveyType was never included in submissionData
+  //   → dataSync read the (always-empty) Type 2 queue and synced nothing
+  //   → API received no surveyType so always routed to Sheet1
+  //
+  // AFTER (fixed):
+  //   reads getActiveSurveyType() → resolves correct storageKey from SURVEY_TYPES
+  //   includes surveyType in submissionData so API routes to correct sheet tab
+  //
+  const surveyType   = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+  const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
+  const queueKey     = surveyConfig?.storageKey ||
+                       (surveyType === 'type2'
+                         ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
+                         : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
+                       'submissionQueue';
 
-  console.log(`[SUBMIT] Submitting survey: ${appState.formData.id || '(no id yet)'}`);
-  console.log(`[SUBMIT] Queue key: "${queueKey}"`);
+  console.log(`[SUBMIT] Survey type : ${surveyType}`);
+  console.log(`[SUBMIT] Queue key   : "${queueKey}"`);
+  console.log(`[SUBMIT] Submission  : ${appState.formData.id || '(no id yet)'}`);
 
-  // ── 5. Build submission object ─────────────────────────────
+  // ── 5. Build submission object ──────────────────────────────
+  // BUG 5 FIX: surveyType added — dataSync and API both read this field
+  // to route the payload to the correct Google Sheet tab
   const submissionData = {
     ...appState.formData,
     id:                    appState.formData.id || dataHandlers.generateUUID(),
+    surveyType,                                    // ← required by API + dataSync
     questionTimeSpent:     { ...appState.questionTimeSpent },
     completionTimeSeconds: totalTimeSeconds,
     completedAt:           new Date().toISOString(),
     sync_status:           'unsynced',
   };
 
-  // ── 6. Atomic queue add ────────────────────────────────────
+  // ── 6. Atomic queue add ─────────────────────────────────────
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
   let submissionQueue  = dataHandlers.getSubmissionQueue(queueKey);
 
@@ -62,13 +88,14 @@ export function submitSurvey() {
   dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
   console.log(`[QUEUE] Added to "${queueKey}" (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
 
-  // ── 7. Persist app state ───────────────────────────────────
+  // ── 7. Persist app state ────────────────────────────────────
   if (typeof saveState === 'function') saveState();
 
-  // ── 8. Record analytics — never crash survey flow ─────────
+  // ── 8. Record analytics — never crash survey flow ──────────
   try {
     dataHandlers.recordAnalytics('survey_completed', {
       surveyId:              submissionData.id,
+      surveyType,
       questionIndex:         appState.currentQuestionIndex,
       totalTimeSeconds,
       completedAllQuestions: true,
@@ -77,17 +104,15 @@ export function submitSurvey() {
     console.warn('[ANALYTICS] Failed to record completion:', analyticsErr);
   }
 
-  // ── 9. Progress bar to 100% ────────────────────────────────
+  // ── 9. Progress bar to 100% ─────────────────────────────────
   if (progressBar) progressBar.style.width = '100%';
 
   console.log('[SUBMIT] About to display checkmark...');
 
-  // ── 10. Show completion screen ─────────────────────────────
+  // ── 10. Show completion screen ──────────────────────────────
   if (typeof window.showCheckmark === 'function') {
-    // Use app-defined checkmark if available
     window.showCheckmark();
   } else {
-    // Built-in fallback — renders checkmark + live countdown
     _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
   }
 
@@ -122,11 +147,9 @@ function _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appSt
   if (prevBtn) prevBtn.disabled = true;
   if (nextBtn) nextBtn.disabled = true;
 
-  // ── Countdown ──
   const RESET_DELAY_MS = window.CONSTANTS?.RESET_DELAY_MS || 5000;
-  let timeLeft = RESET_DELAY_MS / 1000; // e.g. 5
+  let timeLeft = RESET_DELAY_MS / 1000;
 
-  // Clear any leftover countdown from a previous submission
   if (appState.countdownInterval) {
     clearInterval(appState.countdownInterval);
     appState.countdownInterval = null;
@@ -157,25 +180,21 @@ function _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appSt
 function _doReset() {
   console.log('[RESET] Performing kiosk reset...');
   try {
-    // Path 1 — uiHandlers.performKioskReset (registered by uiHandlers.js)
     if (typeof window.uiHandlers?.performKioskReset === 'function') {
       console.log('[RESET] Using uiHandlers.performKioskReset');
       window.uiHandlers.performKioskReset();
       return;
     }
-    // Path 2 — showStartScreen exported from startScreen.js and exposed on window
     if (typeof window.showStartScreen === 'function') {
       console.log('[RESET] Using window.showStartScreen');
       window.showStartScreen();
       return;
     }
-    // Path 3 — navigationHandler.resetSurvey
     if (typeof window.navigationHandler?.resetSurvey === 'function') {
       console.log('[RESET] Using navigationHandler.resetSurvey');
       window.navigationHandler.resetSurvey();
       return;
     }
-    // Path 4 — hard page reload (last resort)
     console.warn('[RESET] No reset handler found — falling back to location.reload()');
     location.reload();
   } catch (err) {

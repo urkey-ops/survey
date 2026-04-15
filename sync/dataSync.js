@@ -8,7 +8,6 @@ import {
   safeSetLocalStorage,
   safeGetLocalStorage,
   showUserError,
-  updatSyncStatus,
   checkStorageQuota
 } from './storageUtils.js';
 

@@ -140,6 +140,19 @@
 
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
+
+    <!--
+      ============================================================
+      BUG FIX: window.globals MUST be initialized as an empty
+      object BEFORE any module calls initializeElements().
+      Without this, window.globals.kioskVideo = ... throws a
+      TypeError (cannot set property on undefined), all globals
+      stay undefined, and validateElements() reports 1+ missing.
+      ============================================================
+    -->
+    <script>
+      window.globals = {};
+    </script>
     
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
         <div class="mb-8 content">
@@ -206,7 +219,6 @@
       // Catch all uncaught errors
       window.addEventListener('error', function(e) {
         console.error('🚨 [GLOBAL ERROR]', e.message, e.filename, e.lineno);
-        // Log but don't break the app
         try {
           if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
             window.dataHandlers.recordAnalytics('app_error', {
@@ -218,7 +230,6 @@
         } catch (err) {
           console.error('Failed to log error:', err);
         }
-        // Don't propagate - prevent crash
         e.preventDefault();
         return true;
       });
@@ -241,24 +252,17 @@
       // SAFETY FIX: Cleanup on page unload (iPad restart/close)
       window.addEventListener('beforeunload', function() {
         console.log('[CLEANUP] Page unloading - cleaning up...');
-        
         try {
-          // Clear all timers
           if (window.uiHandlers && window.uiHandlers.clearAllTimers) {
             window.uiHandlers.clearAllTimers();
           }
-          
-          // Clear video interval
           if (window.videoPlaybackInterval) {
             clearInterval(window.videoPlaybackInterval);
           }
-          
-          // Pause video
           const video = document.getElementById('kioskVideo');
           if (video) {
             video.pause();
           }
-          
           console.log('[CLEANUP] ✅ Cleanup complete');
         } catch (err) {
           console.error('[CLEANUP] Error during cleanup:', err);
@@ -274,12 +278,11 @@
     <script type="module" src="uiHandlers.js"></script>
     <script type="module" src="main/index.js"></script>
     
-    <!-- SAFETY FIX: Sanitized checkmark display function -->
+    <!-- Sanitized checkmark display + iPad gesture locks -->
     <script>
       window.showCheckmark = function() {
         const container = document.getElementById('questionContainer');
         if (container) {
-          // SAFETY: Create elements safely instead of innerHTML
           const checkmarkDiv = document.createElement('div');
           checkmarkDiv.className = 'checkmark-container';
           
@@ -325,26 +328,17 @@
       };
       
       // Prevent zoom on iPad
-      document.addEventListener('gesturestart', function(e) {
-        e.preventDefault();
-      });
+      document.addEventListener('gesturestart',  function(e) { e.preventDefault(); });
+      document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
+      document.addEventListener('gestureend',    function(e) { e.preventDefault(); });
       
-      document.addEventListener('gesturechange', function(e) {
-        e.preventDefault();
-      });
-      
-      document.addEventListener('gestureend', function(e) {
-        e.preventDefault();
-      });
-      
-      // iPad PWA: Allow rapid taps on admin title
+      // iPad PWA: Allow rapid taps on admin title, block double-tap zoom elsewhere
       let lastTouchEnd = 0;
       document.addEventListener('touchend', function(e) {
         const target = e.target;
         if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
           return;
         }
-        
         const now = Date.now();
         if (now - lastTouchEnd <= 300) {
           e.preventDefault();
@@ -357,45 +351,24 @@
         if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
           return;
         }
-        
         if (e.touches && e.touches.length > 1) {
           e.preventDefault();
         }
       }, { passive: false });
       
-      // Enhanced click detection for admin title
+      // Enhanced tap detection for admin title
+      // NOTE: The 5-tap unlock logic lives in adminPanel.js (handleTitleClick).
+      // This block only adds visual feedback — it does NOT duplicate the unlock logic.
       const mainTitle = document.getElementById('mainTitle');
       if (mainTitle) {
-        let tapCount = 0;
-        let tapTimer = null;
-        
         mainTitle.addEventListener('touchstart', function(e) {
           e.stopPropagation();
-          tapCount++;
-          console.log(`[ADMIN] Tap ${tapCount}/5 detected`);
           this.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
-          
-          if (tapTimer) {
-            clearTimeout(tapTimer);
-          }
-          
-          tapTimer = setTimeout(() => {
-            console.log('[ADMIN] Tap count reset');
-            tapCount = 0;
-          }, 2000);
-          
         }, { passive: false });
         
         mainTitle.addEventListener('touchend', function(e) {
           e.stopPropagation();
-          setTimeout(() => {
-            this.style.backgroundColor = '';
-          }, 100);
-        }, { passive: false });
-        
-        mainTitle.addEventListener('click', function(e) {
-          e.stopPropagation();
-          console.log('[ADMIN] Click event detected');
+          setTimeout(() => { this.style.backgroundColor = ''; }, 100);
         }, { passive: false });
       }
     </script>

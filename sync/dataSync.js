@@ -30,6 +30,20 @@ import {
 
 import { sendRequest, isOnline } from './networkHandler.js';
 
+
+// ← ADD THIS RIGHT HERE, after all imports, before STATE section
+// Safe wrapper — uses uiHandlers if available, silently skips if not
+function updatSyncStatus(msg) {
+  try {
+    if (window.globals?.syncStatusMessage) {
+      window.globals.syncStatusMessage.textContent = msg;
+    }
+    if (window.uiHandlers?.updatSyncStatus) {
+      window.uiHandlers.updatSyncStatus(msg);
+    }
+  } catch (e) { /* non-critical */ }
+}
+
 // ═══════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════

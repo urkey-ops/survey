@@ -34,9 +34,20 @@ export function submitSurvey() {
                      window.CONSTANTS?.ACTIVE_SURVEY_TYPE ||
                      'type1';
   const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
-  const queueKey = surveyConfig?.storageKey ||
-                   window.CONSTANTS?.STORAGE_KEY_QUEUE ||
-                   'submissionQueue';
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
+                   window.CONSTANTS?.ACTIVE_SURVEY_TYPE ||
+                   'type1';
+
+const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
+
+// Add this debug line temporarily to verify:
+console.log('[SUBMIT] surveyConfig:', surveyConfig);
+
+const queueKey = surveyConfig?.storageKey ||
+                 (surveyType === 'type2'
+                   ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
+                   : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
+                 'submissionQueue';
 
   // FIXED: Defensive copy + persistent state
   const submissionData = {

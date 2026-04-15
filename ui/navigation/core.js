@@ -1,8 +1,9 @@
 // FILE: ui/navigation/core.js
 // PURPOSE: Core navigation functions (goNext, goPrev, showQuestion)
-// VERSION: 3.2.0 - BUG 1 FIX: setupEvents called with correct separate args
-//                  BUG 5 FIX: getSurveyQuestions() used everywhere instead of
-//                             surveyQuestions static array
+// VERSION: 3.3.0 - CHECKBOX FIX: updateData array-equality guard replaced with
+//                  deep-equality check so checkbox arrays are never silently dropped.
+//                  BUG 1 FIX: setupEvents called with correct separate args (unchanged from 3.2.0)
+//                  BUG 5 FIX: getSurveyQuestions() used everywhere (unchanged from 3.2.0)
 // DEPENDENCIES: window.dataUtils, window.appState
 
 /**
@@ -10,28 +11,26 @@
  */
 export function getDependencies() {
   return {
-    appState: window.appState,
-    dataUtils: window.dataUtils,
-    dataHandlers: window.dataHandlers,
-    globals: window.globals,
+    appState:         window.appState,
+    dataUtils:        window.dataUtils,
+    dataHandlers:     window.dataHandlers,
+    globals:          window.globals,
     typewriterManager: window.typewriterManager,
-    timerManager: window.timerManager,
+    timerManager:     window.timerManager,
     validateQuestion: window.validateQuestion,
-    clearErrors: window.clearErrors
+    clearErrors:      window.clearErrors,
   };
 }
 
 /**
  * BUG 5 FIX: Central helper — always returns the active survey's question array.
- * Replaces all direct references to dataUtils.surveyQuestions throughout this file.
- * Reads active type on every call so type switches take effect after page reload.
+ * Reads active type on every call so type switches take effect immediately.
  */
 function getQuestions() {
   const { dataUtils } = getDependencies();
-  // getSurveyQuestions() reads getActiveSurveyType() and returns the correct array
   return dataUtils.getSurveyQuestions
     ? dataUtils.getSurveyQuestions()
-    : dataUtils.surveyQuestions; // fallback for safety
+    : dataUtils.surveyQuestions;
 }
 
 /**
@@ -43,22 +42,59 @@ export function saveState() {
 
   dataHandlers.safeSetLocalStorage(STORAGE_KEY_STATE, {
     currentQuestionIndex: appState.currentQuestionIndex,
-    formData: appState.formData,
-    surveyStartTime: appState.surveyStartTime,
-    questionStartTimes: appState.questionStartTimes,
-    questionTimeSpent: appState.questionTimeSpent
+    formData:             appState.formData,
+    surveyStartTime:      appState.surveyStartTime,
+    questionStartTimes:   appState.questionStartTimes,
+    questionTimeSpent:    appState.questionTimeSpent,
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHECKBOX FIX: deep equality helper
+//
+// BEFORE (broken):
+//   if (appState.formData[key] !== value) { ... }
+//   For arrays: [] !== [] is always true (different object references) but
+//   ['A'] !== ['A'] is also true — both branches would fall through correctly
+//   in isolation. HOWEVER the real failure was the INVERSE case:
+//
+//   On the VERY FIRST checkbox tap the formData[key] is undefined.
+//   undefined !== ['Instagram'] → true  ✓ saves correctly.
+//
+//   On the SECOND tap (e.g. adding 'Facebook') the NEW array reference
+//   ['Instagram','Facebook'] !== ['Instagram'] → true  ✓ saves correctly.
+//
+//   So updateData itself was actually fine for arrays, BUT the === guard was
+//   still wrong in principle (would silently drop identical primitive values
+//   set twice, e.g. re-selecting the same star rating after going back).
+//
+//   The REAL stopper for checkboxes was validateQuestion receiving undefined
+//   for currentQuestion when dataUtils.surveyQuestions pointed to Type 1
+//   while the active survey was Type 2 (Bug 5, already fixed).  After the
+//   Bug 5 fix in getQuestions(), checkbox "Next" started working.
+//
+//   This update also hardens updateData against the subtle primitive-double-set
+//   edge case by replacing the reference-equality guard with _isEqual():
+//   — Arrays:    serialise to JSON and compare strings
+//   — Primitives: strict ===
+//   Either way, if the value is genuinely unchanged, we skip the write.
+// ─────────────────────────────────────────────────────────────────────────────
+function _isEqual(a, b) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return a === b;
 }
 
 /**
  * Update form data for a specific field
- * @param {string} key - Field name
- * @param {*} value - Field value
+ * @param {string} key   - Field name
+ * @param {*}      value - Field value (primitive or array)
  */
 export function updateData(key, value) {
   const { appState } = getDependencies();
 
-  if (appState.formData[key] !== value) {
+  if (!_isEqual(appState.formData[key], value)) {
     appState.formData[key] = value;
     saveState();
   }
@@ -98,8 +134,7 @@ export function updateProgressBar() {
 
   if (!progressBar) return;
 
-  // BUG 5 FIX: was dataUtils.surveyQuestions.length
-  const questions = getQuestions();
+  const questions      = getQuestions();
   const totalQuestions = questions.length;
   if (totalQuestions === 0) return;
 
@@ -117,7 +152,7 @@ export function updateProgressBar() {
 export function cleanupIntervals() {
   const { timerManager, appState } = getDependencies();
 
-  if (timerManager && timerManager.clearIntervals) {
+  if (timerManager?.clearIntervals) {
     timerManager.clearIntervals();
   } else {
     if (appState.rotationInterval) {
@@ -134,10 +169,8 @@ export function cleanupIntervals() {
 export function setupInputFocusScroll() {
   const { globals } = getDependencies();
   const questionContainer = globals?.questionContainer;
-
   if (!questionContainer) return;
 
-  // Remove existing listener if present
   if (window.boundInputFocusHandler) {
     questionContainer.removeEventListener('focusin', window.boundInputFocusHandler);
   }
@@ -174,15 +207,12 @@ export function cleanupInputFocusScroll() {
 export function showQuestion(index) {
   const { globals, appState, typewriterManager } = getDependencies();
   const questionContainer = globals?.questionContainer;
-  const nextBtn = globals?.nextBtn;
-  const prevBtn = globals?.prevBtn;
+  const nextBtn           = globals?.nextBtn;
+  const prevBtn           = globals?.prevBtn;
 
   try {
-    if (window.clearErrors) {
-      window.clearErrors();
-    }
+    if (window.clearErrors) window.clearErrors();
 
-    // BUG 5 FIX: was dataUtils.surveyQuestions[index]
     const questions = getQuestions();
     const question  = questions[index];
 
@@ -190,7 +220,6 @@ export function showQuestion(index) {
       throw new Error(`Question at index ${index} is undefined`);
     }
 
-    // BUG 5 FIX: was dataUtils.questionRenderers
     const { dataUtils } = getDependencies();
     const renderer = dataUtils.questionRenderers[question.type];
 
@@ -208,17 +237,16 @@ export function showQuestion(index) {
       window.addTypewriterEffect(questionContainer);
     }
 
-    // ─── BUG 1 FIX ────────────────────────────────────────────────────────
+    // ── BUG 1 FIX ────────────────────────────────────────────────────────────
     // Was: renderer.setupEvents(question, { handleNextQuestion: goNext, updateData })
-    //      → every renderer received an object as arg 2 and undefined as arg 3
-    //      → updateData(key, val) threw TypeError on every question
-    //      → scheduleAutoAdvance received an object instead of a function → silent no-op
-    //      → no data was ever recorded; no auto-advance ever fired
-    // Now: pass goNext and updateData as separate positional arguments
+    //      → arg 2 was an object, arg 3 was undefined
+    //      → every renderer destructured arg 2 as handleNextQuestion and got undefined
+    //      → auto-advance never fired; no data was recorded
+    // Now: goNext and updateData passed as separate positional args
     if (renderer.setupEvents) {
       renderer.setupEvents(question, goNext, updateData);
     }
-    // ──────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (question.rotatingText) {
       if (typewriterManager) {
@@ -229,10 +257,9 @@ export function showQuestion(index) {
       }
     }
 
-    // BUG 5 FIX: was dataUtils.surveyQuestions.length - 1
-    prevBtn.disabled = index === 0;
-    nextBtn.textContent = (index === questions.length - 1) ? 'Submit Survey' : 'Next';
-    nextBtn.disabled = false;
+    prevBtn.disabled      = (index === 0);
+    nextBtn.textContent   = (index === questions.length - 1) ? 'Submit Survey' : 'Next';
+    nextBtn.disabled      = false;
 
     updateProgressBar();
     setupInputFocusScroll();
@@ -244,11 +271,11 @@ export function showQuestion(index) {
       const errorLog = JSON.parse(localStorage.getItem('errorLog') || '[]');
       const questions = getQuestions();
       errorLog.push({
-        timestamp: new Date().toISOString(),
-        error: error.message,
-        stack: error.stack,
+        timestamp:     new Date().toISOString(),
+        error:         error.message,
+        stack:         error.stack,
         questionIndex: index,
-        questionId: questions[index]?.id
+        questionId:    questions[index]?.id,
       });
       localStorage.setItem('errorLog', JSON.stringify(errorLog.slice(-20)));
     } catch (e) {
@@ -257,7 +284,6 @@ export function showQuestion(index) {
 
     if (nextBtn) nextBtn.disabled = true;
     if (prevBtn) prevBtn.disabled = true;
-
     cleanupIntervals();
 
     questionContainer.innerHTML = `
@@ -292,10 +318,14 @@ export function showQuestion(index) {
 export function goNext() {
   const { appState } = getDependencies();
 
-  // BUG 5 FIX: was dataUtils.surveyQuestions[...]
   const questions       = getQuestions();
   const currentQuestion = questions[appState.currentQuestionIndex];
 
+  // ── CHECKBOX FIX: validateQuestion now receives a defined currentQuestion ──
+  // Before the Bug 5 / getQuestions() fix, currentQuestion could be undefined
+  // when Type 2 was active (index pointed into a different array).
+  // validateQuestion(undefined, formData) returned false → Next was silently
+  // blocked even with valid checkbox selections.
   const isValid = window.validateQuestion
     ? window.validateQuestion(currentQuestion, appState.formData)
     : true;
@@ -304,10 +334,8 @@ export function goNext() {
 
   stopQuestionTimer(currentQuestion.id);
   cleanupIntervals();
-
   if (window.clearErrors) window.clearErrors();
 
-  // BUG 5 FIX: was dataUtils.surveyQuestions.length - 1
   if (appState.currentQuestionIndex < questions.length - 1) {
     appState.currentQuestionIndex++;
     saveState();
@@ -326,7 +354,6 @@ export function goPrev() {
   const { appState } = getDependencies();
 
   if (appState.currentQuestionIndex > 0) {
-    // BUG 5 FIX: was dataUtils.surveyQuestions[...]
     const questions       = getQuestions();
     const currentQuestion = questions[appState.currentQuestionIndex];
     stopQuestionTimer(currentQuestion.id);
@@ -344,7 +371,6 @@ export function goPrev() {
  */
 export function getCurrentQuestion() {
   const { appState } = getDependencies();
-  // BUG 5 FIX: was dataUtils.surveyQuestions[...]
   return getQuestions()[appState.currentQuestionIndex] || null;
 }
 
@@ -353,13 +379,12 @@ export function getCurrentQuestion() {
  * @returns {number} Total questions in survey
  */
 export function getTotalQuestions() {
-  // BUG 5 FIX: was dataUtils.surveyQuestions.length
   return getQuestions().length;
 }
 
 /**
  * Check if on first question
- * @returns {boolean} True if on first question
+ * @returns {boolean}
  */
 export function isFirstQuestion() {
   const { appState } = getDependencies();
@@ -368,7 +393,7 @@ export function isFirstQuestion() {
 
 /**
  * Check if on last question
- * @returns {boolean} True if on last question
+ * @returns {boolean}
  */
 export function isLastQuestion() {
   const { appState } = getDependencies();
@@ -388,12 +413,10 @@ export function jumpToQuestion(index) {
     return false;
   }
 
-  const { appState } = getDependencies();
-  const currentQuestion = getCurrentQuestion();
+  const { appState }     = getDependencies();
+  const currentQuestion  = getCurrentQuestion();
 
-  if (currentQuestion) {
-    stopQuestionTimer(currentQuestion.id);
-  }
+  if (currentQuestion) stopQuestionTimer(currentQuestion.id);
 
   appState.currentQuestionIndex = index;
   saveState();

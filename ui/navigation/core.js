@@ -1,5 +1,8 @@
 // FILE: ui/navigation/core.js
 // PURPOSE: Core navigation functions (goNext, goPrev, showQuestion)
+// VERSION: 3.2.0 - BUG 1 FIX: setupEvents called with correct separate args
+//                  BUG 5 FIX: getSurveyQuestions() used everywhere instead of
+//                             surveyQuestions static array
 // DEPENDENCIES: window.dataUtils, window.appState
 
 /**
@@ -16,6 +19,19 @@ export function getDependencies() {
     validateQuestion: window.validateQuestion,
     clearErrors: window.clearErrors
   };
+}
+
+/**
+ * BUG 5 FIX: Central helper — always returns the active survey's question array.
+ * Replaces all direct references to dataUtils.surveyQuestions throughout this file.
+ * Reads active type on every call so type switches take effect after page reload.
+ */
+function getQuestions() {
+  const { dataUtils } = getDependencies();
+  // getSurveyQuestions() reads getActiveSurveyType() and returns the correct array
+  return dataUtils.getSurveyQuestions
+    ? dataUtils.getSurveyQuestions()
+    : dataUtils.surveyQuestions; // fallback for safety
 }
 
 /**
@@ -77,12 +93,14 @@ export function stopQuestionTimer(questionId) {
  * Update the progress bar based on current question
  */
 export function updateProgressBar() {
-  const { globals, dataUtils, appState } = getDependencies();
+  const { globals, appState } = getDependencies();
   const progressBar = globals?.progressBar;
 
   if (!progressBar) return;
 
-  const totalQuestions = dataUtils.surveyQuestions.length;
+  // BUG 5 FIX: was dataUtils.surveyQuestions.length
+  const questions = getQuestions();
+  const totalQuestions = questions.length;
   if (totalQuestions === 0) return;
 
   const progressPercentage = Math.min(
@@ -128,10 +146,7 @@ export function setupInputFocusScroll() {
     const target = event.target;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
       setTimeout(() => {
-        target.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     }
   };
@@ -145,7 +160,7 @@ export function setupInputFocusScroll() {
 export function cleanupInputFocusScroll() {
   const { globals } = getDependencies();
   const questionContainer = globals?.questionContainer;
-  
+
   if (questionContainer && window.boundInputFocusHandler) {
     questionContainer.removeEventListener('focusin', window.boundInputFocusHandler);
     window.boundInputFocusHandler = null;
@@ -157,48 +172,54 @@ export function cleanupInputFocusScroll() {
  * @param {number} index - Question index to display
  */
 export function showQuestion(index) {
-  const { globals, dataUtils, appState, typewriterManager } = getDependencies();
+  const { globals, appState, typewriterManager } = getDependencies();
   const questionContainer = globals?.questionContainer;
   const nextBtn = globals?.nextBtn;
   const prevBtn = globals?.prevBtn;
 
   try {
-    // Clear any validation errors
     if (window.clearErrors) {
       window.clearErrors();
     }
 
-    const question = dataUtils.surveyQuestions[index];
+    // BUG 5 FIX: was dataUtils.surveyQuestions[index]
+    const questions = getQuestions();
+    const question  = questions[index];
 
     if (!question) {
       throw new Error(`Question at index ${index} is undefined`);
     }
 
+    // BUG 5 FIX: was dataUtils.questionRenderers
+    const { dataUtils } = getDependencies();
     const renderer = dataUtils.questionRenderers[question.type];
 
     if (!renderer) {
       throw new Error(`No renderer found for question type: ${question.type}`);
     }
 
-    // Start tracking time for this question
     startQuestionTimer(question.id);
 
-    // Render the question
     questionContainer.innerHTML = renderer.render(question, appState.formData);
 
-    // Add typewriter effect after rendering
     if (typewriterManager) {
       typewriterManager.addEffect(questionContainer);
     } else if (window.addTypewriterEffect) {
       window.addTypewriterEffect(questionContainer);
     }
 
-    // Setup event handlers for the question
+    // ─── BUG 1 FIX ────────────────────────────────────────────────────────
+    // Was: renderer.setupEvents(question, { handleNextQuestion: goNext, updateData })
+    //      → every renderer received an object as arg 2 and undefined as arg 3
+    //      → updateData(key, val) threw TypeError on every question
+    //      → scheduleAutoAdvance received an object instead of a function → silent no-op
+    //      → no data was ever recorded; no auto-advance ever fired
+    // Now: pass goNext and updateData as separate positional arguments
     if (renderer.setupEvents) {
- renderer.setupEvents(question, goNext, updateData);
+      renderer.setupEvents(question, goNext, updateData);
     }
+    // ──────────────────────────────────────────────────────────────────────
 
-    // Handle rotating text if present
     if (question.rotatingText) {
       if (typewriterManager) {
         const interval = typewriterManager.rotateText(question, appState.rotationInterval);
@@ -208,73 +229,59 @@ export function showQuestion(index) {
       }
     }
 
-    // Update navigation buttons
+    // BUG 5 FIX: was dataUtils.surveyQuestions.length - 1
     prevBtn.disabled = index === 0;
-    nextBtn.textContent = (index === dataUtils.surveyQuestions.length - 1)
-      ? 'Submit Survey'
-      : 'Next';
+    nextBtn.textContent = (index === questions.length - 1) ? 'Submit Survey' : 'Next';
     nextBtn.disabled = false;
 
-    // Update progress bar
     updateProgressBar();
-
-    // Setup input focus scrolling
     setupInputFocusScroll();
 
   } catch (error) {
-    console.error("[ERROR] Fatal error during showQuestion render:", error);
-    
-    // Log error for later review
+    console.error('[ERROR] Fatal error during showQuestion render:', error);
+
     try {
-        const errorLog = JSON.parse(localStorage.getItem('errorLog') || '[]');
-        errorLog.push({
-            timestamp: new Date().toISOString(),
-            error: error.message,
-            stack: error.stack,
-            questionIndex: index,
-            questionId: dataUtils.surveyQuestions[index]?.id
-        });
-        localStorage.setItem('errorLog', JSON.stringify(errorLog.slice(-20)));
+      const errorLog = JSON.parse(localStorage.getItem('errorLog') || '[]');
+      const questions = getQuestions();
+      errorLog.push({
+        timestamp: new Date().toISOString(),
+        error: error.message,
+        stack: error.stack,
+        questionIndex: index,
+        questionId: questions[index]?.id
+      });
+      localStorage.setItem('errorLog', JSON.stringify(errorLog.slice(-20)));
     } catch (e) {
-        console.error('Could not log error:', e);
+      console.error('Could not log error:', e);
     }
-    
-    // Disable navigation
+
     if (nextBtn) nextBtn.disabled = true;
     if (prevBtn) prevBtn.disabled = true;
-    
-    // Cleanup
+
     cleanupIntervals();
-    
-    // Show recovery UI
+
     questionContainer.innerHTML = `
-        <div class="text-center p-8">
-            <h2 class="text-xl font-bold text-red-600 mb-4">
-                ⚠️ Technical Issue
-            </h2>
-            <p class="text-gray-600 mb-6">
-                We're having trouble loading this question.
-            </p>
-            <div class="space-y-4">
-                <button id="errorRestart" class="w-full px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-lg font-semibold">
-                    Restart Survey
-                </button>
-                <p class="text-sm text-gray-500">
-                    Your previous answers have been saved if you were on Question 2 or later.
-                </p>
-            </div>
+      <div class="text-center p-8">
+        <h2 class="text-xl font-bold text-red-600 mb-4">⚠️ Technical Issue</h2>
+        <p class="text-gray-600 mb-6">We're having trouble loading this question.</p>
+        <div class="space-y-4">
+          <button id="errorRestart"
+            class="w-full px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-lg font-semibold">
+            Restart Survey
+          </button>
+          <p class="text-sm text-gray-500">
+            Your previous answers have been saved if you were on Question 2 or later.
+          </p>
         </div>
-    `;
-    
-    // Add restart handler
+      </div>`;
+
     document.getElementById('errorRestart')?.addEventListener('click', () => {
-        console.log('[ERROR RECOVERY] User initiated restart');
-        
-        if (window.uiHandlers?.performKioskReset) {
-            window.uiHandlers.performKioskReset();
-        } else {
-            location.reload();
-        }
+      console.log('[ERROR RECOVERY] User initiated restart');
+      if (window.uiHandlers?.performKioskReset) {
+        window.uiHandlers.performKioskReset();
+      } else {
+        location.reload();
+      }
     });
   }
 }
@@ -283,36 +290,30 @@ export function showQuestion(index) {
  * Navigate to the next question or submit survey
  */
 export function goNext() {
-  const { appState, dataUtils } = getDependencies();
-  const currentQuestion = dataUtils.surveyQuestions[appState.currentQuestionIndex];
+  const { appState } = getDependencies();
 
-  // Validate current question
+  // BUG 5 FIX: was dataUtils.surveyQuestions[...]
+  const questions       = getQuestions();
+  const currentQuestion = questions[appState.currentQuestionIndex];
+
   const isValid = window.validateQuestion
     ? window.validateQuestion(currentQuestion, appState.formData)
     : true;
 
-  if (!isValid) {
-    return;
-  }
+  if (!isValid) return;
 
-  // Stop timer for current question
   stopQuestionTimer(currentQuestion.id);
-
-  // Cleanup animations and timers
   cleanupIntervals();
 
-  if (window.clearErrors) {
-    window.clearErrors();
-  }
+  if (window.clearErrors) window.clearErrors();
 
-  // Move to next question or submit
-  if (appState.currentQuestionIndex < dataUtils.surveyQuestions.length - 1) {
+  // BUG 5 FIX: was dataUtils.surveyQuestions.length - 1
+  if (appState.currentQuestionIndex < questions.length - 1) {
     appState.currentQuestionIndex++;
     saveState();
     showQuestion(appState.currentQuestionIndex);
   } else {
-    // Import submitSurvey dynamically to avoid circular dependency
-    if (window.navigationHandler && window.navigationHandler.submitSurvey) {
+    if (window.navigationHandler?.submitSurvey) {
       window.navigationHandler.submitSurvey();
     }
   }
@@ -322,17 +323,15 @@ export function goNext() {
  * Navigate to the previous question
  */
 export function goPrev() {
-  const { appState, dataUtils } = getDependencies();
+  const { appState } = getDependencies();
 
   if (appState.currentQuestionIndex > 0) {
-    // Stop timer for current question (going back)
-    const currentQuestion = dataUtils.surveyQuestions[appState.currentQuestionIndex];
+    // BUG 5 FIX: was dataUtils.surveyQuestions[...]
+    const questions       = getQuestions();
+    const currentQuestion = questions[appState.currentQuestionIndex];
     stopQuestionTimer(currentQuestion.id);
-
-    // Cleanup animations
     cleanupIntervals();
 
-    // Go back
     appState.currentQuestionIndex--;
     saveState();
     showQuestion(appState.currentQuestionIndex);
@@ -344,8 +343,9 @@ export function goPrev() {
  * @returns {Object|null} Current question or null
  */
 export function getCurrentQuestion() {
-  const { appState, dataUtils } = getDependencies();
-  return dataUtils.surveyQuestions[appState.currentQuestionIndex] || null;
+  const { appState } = getDependencies();
+  // BUG 5 FIX: was dataUtils.surveyQuestions[...]
+  return getQuestions()[appState.currentQuestionIndex] || null;
 }
 
 /**
@@ -353,8 +353,8 @@ export function getCurrentQuestion() {
  * @returns {number} Total questions in survey
  */
 export function getTotalQuestions() {
-  const { dataUtils } = getDependencies();
-  return dataUtils.surveyQuestions.length;
+  // BUG 5 FIX: was dataUtils.surveyQuestions.length
+  return getQuestions().length;
 }
 
 /**
@@ -391,12 +391,10 @@ export function jumpToQuestion(index) {
   const { appState } = getDependencies();
   const currentQuestion = getCurrentQuestion();
 
-  // Stop timer for current question
   if (currentQuestion) {
     stopQuestionTimer(currentQuestion.id);
   }
 
-  // Update index and show question
   appState.currentQuestionIndex = index;
   saveState();
   showQuestion(index);

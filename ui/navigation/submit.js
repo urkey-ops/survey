@@ -1,6 +1,8 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
+// UPDATED: VERSION 3.0.0 - Stamps surveyType + uses correct queue key per type
 // DEPENDENCIES: core.js
+
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
 
 /**
@@ -27,6 +29,15 @@ export function submitSurvey() {
     ? window.uiHandlers.getTotalSurveyTime()
     : 0;
 
+  // ── Resolve active survey type and its dedicated queue key ──
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
+                     window.CONSTANTS?.ACTIVE_SURVEY_TYPE ||
+                     'type1';
+  const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
+  const queueKey = surveyConfig?.storageKey ||
+                   window.CONSTANTS?.STORAGE_KEY_QUEUE ||
+                   'submissionQueue';
+
   // FIXED: Defensive copy + persistent state
   const submissionData = {
     ...appState.formData,
@@ -34,15 +45,16 @@ export function submitSurvey() {
     questionTimeSpent: { ...appState.questionTimeSpent }, // Defensive copy
     completionTimeSeconds: totalTimeSeconds,
     completedAt: new Date().toISOString(),
-    sync_status: 'unsynced'
+    sync_status: 'unsynced',
+    surveyType,   // ← stamped so API and queue know which type this is
   };
 
-  console.log('[SUBMIT] Submitting survey:', submissionData.id);
+  console.log(`[SUBMIT] Submitting survey (${surveyType}):`, submissionData.id);
+  console.log(`[SUBMIT] Queue key: "${queueKey}"`);
 
-  // ATOMIC QUEUE ADD - FIXED race condition
+  // ATOMIC QUEUE ADD - uses correct queue for this survey type
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
-  const queueKey = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-  let submissionQueue = dataHandlers.getSubmissionQueue();
+  let submissionQueue = dataHandlers.getSubmissionQueue(queueKey);
 
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
     console.warn(`[QUEUE] Full (${MAX_QUEUE_SIZE}) - trimming oldest`);
@@ -51,7 +63,7 @@ export function submitSurvey() {
 
   submissionQueue.push(submissionData);
   dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
-  console.log(`[QUEUE] Added survey ${submissionData.id} (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
+  console.log(`[QUEUE] Added to "${queueKey}" (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
 
   // CRITICAL: Persist app state
   if (typeof saveState === 'function') {
@@ -62,6 +74,7 @@ export function submitSurvey() {
   try {
     dataHandlers.recordAnalytics('survey_completed', {
       surveyId: submissionData.id,
+      surveyType,
       questionIndex: appState.currentQuestionIndex,
       totalTimeSeconds,
       completedAllQuestions: true
@@ -77,63 +90,23 @@ export function submitSurvey() {
 
   console.log('[SUBMIT] About to display checkmark...');
 
-  // Show completion screen using global function
+  // Show completion screen
   if (typeof window.showCheckmark === 'function') {
     window.showCheckmark();
   } else {
     console.error('[SUBMIT] window.showCheckmark function not found!');
-    // Fallback: Safe DOM creation (no innerHTML)
+    // Fallback
     if (questionContainer) {
-      questionContainer.innerHTML = `
-        <div class="checkmark-container flex flex-col items-center justify-center min-h-[400px] p-8">
-          <div class="checkmark-circle w-32 h-32 bg-emerald-100 border-8 border-emerald-400 rounded-full flex items-center justify-center mb-8 shadow-xl">
-            <svg class="checkmark-icon w-20 h-20 text-emerald-600" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M15 30 L25 40 L45 20" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="text-center">
-            <h2 class="text-3xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
-            <p id="resetCountdown" class="text-xl text-gray-600 font-semibold bg-white px-6 py-3 rounded-full shadow-lg">Kiosk resetting in 5 seconds...</p>
-          </div>
-        </div>
-      `;
+      const msg = document.createElement('div');
+      msg.className = 'text-center p-8';
+      const h2 = document.createElement('h2');
+      h2.textContent = '✅ Thank you!';
+      const p = document.createElement('p');
+      p.textContent = 'Kiosk resetting in 5 seconds...';
+      msg.appendChild(h2);
+      msg.appendChild(p);
+      questionContainer.innerHTML = '';
+      questionContainer.appendChild(msg);
     }
   }
-
-  if (prevBtn) prevBtn.disabled = true;
-  if (nextBtn) nextBtn.disabled = true;
-
-  // Start countdown to reset
-  const RESET_DELAY_MS = window.CONSTANTS?.RESET_DELAY_MS || 5000;
-  let timeLeft = RESET_DELAY_MS / 1000;
-
-  appState.countdownInterval = setInterval(() => {
-    timeLeft--;
-    const countdownEl = document.getElementById('resetCountdown');
-    if (countdownEl) {
-      countdownEl.textContent = `Kiosk resetting in ${timeLeft} seconds...`;
-    }
-
-    if (timeLeft <= 0) {
-      clearInterval(appState.countdownInterval);
-      appState.countdownInterval = null;
-
-      // Perform reset
-      try {
-        if (window.uiHandlers && window.uiHandlers.performKioskReset) {
-          window.uiHandlers.performKioskReset();
-        } else {
-          console.warn('[RESET] performKioskReset not available - manual reset fallback');
-          // Fallback reset
-          if (typeof window.showStartScreen === 'function') {
-            window.showStartScreen();
-          }
-        }
-      } catch (resetErr) {
-        console.error('[RESET] Reset failed:', resetErr);
-      }
-    }
-  }, 1000);
-
-  console.log('[SUBMIT] ✅ Survey submission complete');
 }

@@ -195,10 +195,7 @@ export function showQuestion(index) {
 
     // Setup event handlers for the question
     if (renderer.setupEvents) {
-      renderer.setupEvents(question, {
-        handleNextQuestion: goNext,
-        updateData: updateData
-      });
+ renderer.setupEvents(question, goNext, updateData);
     }
 
     // Handle rotating text if present

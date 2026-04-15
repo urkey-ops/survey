@@ -1,11 +1,11 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS 26 KIOSK SAFE)
 // UPDATED: Battery optimized with throttled background updates + complete module list
-// VERSION: 9.1.0 - FIXED: Added missing video modules to critical cache
+// VERSION: 9.2.0 - FIXED: Version bump to force cache bust + window.globals fix delivery
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v17'; // BUMPED from v15 to v16
-const RUNTIME_CACHE = 'kiosk-runtime-v17'; // BUMPED from v15 to v16
-const MEDIA_CACHE = 'kiosk-media-v1'; // NEW: Separate cache for video
+const CACHE_NAME    = 'kiosk-survey-v18';  // BUMPED — forces old SW out
+const RUNTIME_CACHE = 'kiosk-runtime-v18'; // BUMPED
+const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation
 const CRITICAL_CACHE = [
@@ -23,6 +23,7 @@ const CRITICAL_CACHE = [
   '/appState.js',
   '/data-util.js',
   '/uiHandlers.js',
+  '/pwa-update-manager.js',
 
   // Main modules
   '/main/index.js',
@@ -48,10 +49,10 @@ const CRITICAL_CACHE = [
   '/ui/navigation/index.js',
   '/ui/navigation/startScreen.js',
   '/ui/navigation/submit.js',
-  '/ui/navigation/videoLoopManager.js',   // ADDED: Missing video module
-  '/ui/navigation/videoPlayer.js',        // ADDED: Missing video module
-  '/ui/navigation/videoScheduler.js',     // ADDED: Missing video module
-  
+  '/ui/navigation/videoLoopManager.js',
+  '/ui/navigation/videoPlayer.js',
+  '/ui/navigation/videoScheduler.js',
+
   // UI modules - Other
   '/ui/typewriterEffect.js',
   '/ui/validation.js',
@@ -73,33 +74,30 @@ const MEDIA_FILES = [
   '/asset/video/1.mp4'
 ];
 
-// BATTERY OPTIMIZATION: Track recently updated resources
-// Map<url, timestamp> to prevent excessive background fetches
-const recentlyUpdated = new Map();
-const THROTTLE_MS = 300000; // 5 minutes
-const CLEANUP_INTERVAL = 600000; // 10 minutes
-const CLEANUP_AGE = 3600000; // 1 hour
+// BATTERY OPTIMIZATION: Throttled background updates
+const recentlyUpdated   = new Map();
+const THROTTLE_MS       = 300000;   // 5 minutes
+const CLEANUP_INTERVAL  = 600000;   // 10 minutes
+const CLEANUP_AGE       = 3600000;  // 1 hour
 
 // ----------------------------
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v9.1 with complete module cache...');
+  console.log('[SW] Installing v9.2 with complete module cache...');
 
   event.waitUntil(
     (async () => {
-      // Step 1: Cache critical files first (must succeed)
       const criticalCache = await caches.open(CACHE_NAME);
-      
-      // Use allSettled so ONE bad file does not kill install (iOS safe)
+
+      // allSettled — one bad file does NOT kill install (iOS safe)
       const criticalResults = await Promise.allSettled(
         CRITICAL_CACHE.map(url => criticalCache.add(url))
       );
-      
+
       const criticalFailed = criticalResults.filter(r => r.status === 'rejected');
       if (criticalFailed.length > 0) {
         console.warn('[SW] Some critical files failed to cache:', criticalFailed.length);
-        // Log which files failed for debugging
         criticalResults.forEach((result, index) => {
           if (result.status === 'rejected') {
             console.error('[SW] Failed to cache:', CRITICAL_CACHE[index], result.reason);
@@ -108,39 +106,36 @@ self.addEventListener('install', event => {
       } else {
         console.log('[SW] ✅ All critical files cached successfully');
       }
-      
-      // Step 2: Cache media files separately (can fail without breaking install)
+
+      // Cache media separately — failure here does NOT block install
       const mediaCache = await caches.open(MEDIA_CACHE);
-      
+
       const mediaResults = await Promise.allSettled(
         MEDIA_FILES.map(async (url) => {
           try {
-            // Use fetch with no-cors mode for better compatibility
-            const response = await fetch(url, { 
+            const response = await fetch(url, {
               mode: 'no-cors',
-              cache: 'force-cache' 
+              cache: 'force-cache'
             });
-            
             if (response.ok || response.type === 'opaque') {
               await mediaCache.put(url, response);
               console.log('[SW] ✅ Cached video:', url);
               return url;
-            } else {
-              throw new Error(`Failed to fetch ${url}: ${response.status}`);
             }
+            throw new Error(`Failed to fetch ${url}: ${response.status}`);
           } catch (error) {
             console.warn('[SW] ⚠️ Could not cache video:', url, error.message);
-            // Don't throw - allow install to succeed even if video caching fails
             return null;
           }
         })
       );
-      
+
       const mediaSuccessCount = mediaResults.filter(r => r.status === 'fulfilled' && r.value).length;
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
+      // KEY: skipWaiting immediately — don't wait for old SW to be released
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v9.1 (complete module cache)');
+      console.log('[SW] ✅ Installed v9.2 (complete module cache)');
     })()
   );
 });
@@ -149,28 +144,35 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v9.1...');
+  console.log('[SW] Activating v9.2...');
 
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
 
-      // Clean up old caches but keep current ones
+      // Delete ALL old caches — only keep current v18 names
       await Promise.all(
         keys.map(key => {
           if (key !== CACHE_NAME && key !== RUNTIME_CACHE && key !== MEDIA_CACHE) {
-            console.log('[SW] Deleting old cache:', key);
+            console.log('[SW] 🗑️ Deleting old cache:', key);
             return caches.delete(key);
           }
         })
       );
 
+      // Claim all clients immediately — new SW takes over without reload
       await self.clients.claim();
-      
-      // Start periodic cleanup of recentlyUpdated Map
+
       startPeriodicCleanup();
-      
-      console.log('[SW] ✅ Activated v9.1 (battery optimized, complete cache)');
+
+      // Notify all open tabs that SW has updated
+      // This allows pwa-update-manager.js to prompt or auto-reload
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach(client => {
+        client.postMessage({ type: 'SW_ACTIVATED', version: '9.2' });
+      });
+
+      console.log('[SW] ✅ Activated v9.2 (battery optimized, complete cache)');
     })()
   );
 });
@@ -180,9 +182,9 @@ self.addEventListener('activate', event => {
 // ----------------------------
 self.addEventListener('fetch', event => {
   const request = event.request;
-  const url = new URL(request.url);
+  const url     = new URL(request.url);
 
-  // ✅ Offline-safe navigation fallback (critical for kiosks)
+  // Navigation — always serve index.html from cache (offline-safe kiosk)
   if (request.mode === 'navigate') {
     event.respondWith(
       caches.match('/index.html').then(res => res || fetch(request))
@@ -190,25 +192,24 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Special handling for video files
+  // Video files — dedicated handler with media cache
   if (url.pathname.startsWith('/asset/video/')) {
     event.respondWith(handleVideoRequest(request));
     return;
   }
 
-  // API requests (network-first, offline-aware)
+  // API requests — network-first, offline-aware JSON fallback
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(handleAPIRequest(request));
     return;
   }
 
-  // Cache-first for all other GET requests
+  // Everything else — cache-first with throttled background revalidation
   if (request.method === 'GET') {
     event.respondWith(
       caches.match(request).then(cached => {
         if (cached) {
-          // BATTERY OPTIMIZED: Throttled background update
-          fetchAndUpdateCache(request);
+          fetchAndUpdateCache(request); // background revalidate (throttled)
           return cached;
         }
         return fetchAndCache(request);
@@ -224,47 +225,38 @@ self.addEventListener('fetch', event => {
 // ----------------------------
 async function handleVideoRequest(request) {
   try {
-    // Try media cache first (fast path for offline)
     const mediaCache = await caches.open(MEDIA_CACHE);
-    const cached = await mediaCache.match(request);
-    
+    const cached     = await mediaCache.match(request);
+
     if (cached) {
       console.log('[SW] Serving video from cache');
       return cached;
     }
-    
-    // If not in cache, try to fetch
+
     console.log('[SW] Video not in cache, fetching...');
-    const response = await fetch(request, {
-      cache: 'force-cache' // Use browser cache if available
-    });
-    
+    const response = await fetch(request, { cache: 'force-cache' });
+
     if (response.ok) {
-      // Cache the video for next time
-      const responseToCache = response.clone();
-      mediaCache.put(request, responseToCache).catch(err => {
+      mediaCache.put(request, response.clone()).catch(err => {
         console.warn('[SW] Could not cache video:', err);
       });
-      
       return response;
     }
-    
+
     throw new Error('Video fetch failed');
-    
+
   } catch (error) {
     console.error('[SW] Video request failed:', error);
-    
-    // Last resort: try runtime cache or main cache
+
     const runtimeCache = await caches.open(RUNTIME_CACHE);
-    const fallback = await runtimeCache.match(request);
-    
+    const fallback     = await runtimeCache.match(request);
+
     if (fallback) {
       console.log('[SW] Serving video from fallback cache');
       return fallback;
     }
-    
-    // Return error response
-    return new Response('Video unavailable offline', { 
+
+    return new Response('Video unavailable offline', {
       status: 503,
       statusText: 'Service Unavailable'
     });
@@ -278,38 +270,23 @@ async function handleAPIRequest(request) {
   try {
     const response = await fetch(request);
 
-    if (response.ok) {
-      return response;
-    }
+    if (response.ok) return response;
 
     return new Response(
-      JSON.stringify({
-        error: 'Server error',
-        status: response.status,
-        offline: false
-      }),
-      {
-        status: response.status,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ error: 'Server error', status: response.status, offline: false }),
+      { status: response.status, headers: { 'Content-Type': 'application/json' } }
     );
 
   } catch {
     return new Response(
-      JSON.stringify({
-        error: 'Offline - request queued',
-        offline: true
-      }),
-      {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ error: 'Offline - request queued', offline: true }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }
 
 // ----------------------------
-// FETCH & CACHE
+// FETCH & CACHE (cold miss)
 // ----------------------------
 async function fetchAndCache(request) {
   const response = await fetch(request);
@@ -327,22 +304,14 @@ async function fetchAndCache(request) {
 // ----------------------------
 function fetchAndUpdateCache(request) {
   const url = request.url;
-  
-  // BATTERY OPTIMIZATION: Only update if online
-  if (!self.navigator.onLine) {
-    return; // Don't attempt fetch when offline
-  }
-  
-  // BATTERY OPTIMIZATION: Check if we updated this resource recently
+
+  if (!self.navigator.onLine) return; // Skip when offline
+
   const lastUpdate = recentlyUpdated.get(url);
-  const now = Date.now();
-  
-  if (lastUpdate && (now - lastUpdate) < THROTTLE_MS) {
-    // Skip update - too soon since last update
-    return;
-  }
-  
-  // Attempt background update
+  const now        = Date.now();
+
+  if (lastUpdate && (now - lastUpdate) < THROTTLE_MS) return; // Throttled
+
   fetch(request)
     .then(response => {
       if (response.ok) {
@@ -354,26 +323,25 @@ function fetchAndUpdateCache(request) {
       }
     })
     .catch(() => {
-      // Silent fail – offline or network error
-      // This is fine, we already served from cache
+      // Silent — already served from cache, offline or network error is fine
     });
 }
 
 // ----------------------------
-// PERIODIC CLEANUP (BATTERY OPTIMIZATION)
+// PERIODIC CLEANUP
 // ----------------------------
 function startPeriodicCleanup() {
   setInterval(() => {
     const now = Date.now();
     let cleaned = 0;
-    
+
     for (const [url, timestamp] of recentlyUpdated.entries()) {
       if (now - timestamp > CLEANUP_AGE) {
         recentlyUpdated.delete(url);
         cleaned++;
       }
     }
-    
+
     if (cleaned > 0) {
       console.log(`[SW] 🧹 Cleaned ${cleaned} old entries from throttle map`);
     }
@@ -395,8 +363,6 @@ self.addEventListener('message', event => {
       (async () => {
         const keys = await caches.keys();
         await Promise.all(keys.map(key => caches.delete(key)));
-        
-        // Clear throttle map
         recentlyUpdated.clear();
 
         const clients = await self.clients.matchAll();
@@ -406,14 +372,13 @@ self.addEventListener('message', event => {
       })()
     );
   }
-  
-  // Force video re-cache
+
   if (event.data.type === 'RECACHE_VIDEO') {
     event.waitUntil(
       (async () => {
         console.log('[SW] Re-caching video...');
         const mediaCache = await caches.open(MEDIA_CACHE);
-        
+
         for (const videoUrl of MEDIA_FILES) {
           try {
             await mediaCache.delete(videoUrl);
@@ -426,7 +391,7 @@ self.addEventListener('message', event => {
             console.error('[SW] ❌ Failed to re-cache:', videoUrl, error);
           }
         }
-        
+
         const clients = await self.clients.matchAll();
         clients.forEach(client =>
           client.postMessage({ type: 'VIDEO_RECACHED' })

@@ -1,6 +1,6 @@
 // FILE: sync/dataSync.js
 // PURPOSE: Core data synchronization - offline-first, queue-based, retry-safe
-// UPDATED: VERSION 3.0.0 - Passes surveyType in sync payload + uses correct queue per type
+// UPDATED: VERSION 3.1.0 - Fixed queue key resolution (reads storageKey from SURVEY_TYPES)
 // DEPENDENCIES: storageUtils.js, queueManager.js, analyticsManager.js, networkHandler.js
 
 import {
@@ -30,8 +30,6 @@ import {
 
 import { sendRequest, isOnline } from './networkHandler.js';
 
-
-// ← ADD THIS RIGHT HERE, after all imports, before STATE section
 // Safe wrapper — uses uiHandlers if available, silently skips if not
 function updatSyncStatus(msg) {
   try {
@@ -98,15 +96,17 @@ async function doSyncData(isManual = false) {
   const SYNC_ENDPOINT = window.CONSTANTS?.SYNC_ENDPOINT || '/api/submit-survey';
   const STORAGE_KEY_LAST_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_SYNC || 'lastSync';
 
-  // ── Determine active survey type and its dedicated queue key ──
- const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
-const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
-const queueKey = surveyConfig?.storageKey ||
-                 (surveyType === 'type2'
-                   ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
-                   : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
-                 'submissionQueue';
+  // ── Resolve active survey type ──
+  // IMPORTANT: Only use getActiveSurveyType() — window.CONSTANTS has no ACTIVE_SURVEY_TYPE value
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
 
+  // ── Resolve queue key directly from SURVEY_TYPES storageKey ──
+  const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
+  const queueKey = surveyConfig?.storageKey ||
+                   (surveyType === 'type2'
+                     ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
+                     : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
+                   'submissionQueue';
 
   console.log(`[DATA SYNC] Type: ${surveyType} | Queue: "${queueKey}"`);
 
@@ -178,7 +178,7 @@ const queueKey = surveyConfig?.storageKey ||
       return false;
     }
 
-    // ── Remove synced records from the queue ──
+    // ── Remove synced records from the correct queue ──
     removeFromQueue(successfulIds, queueKey);
     safeSetLocalStorage(STORAGE_KEY_LAST_SYNC, Date.now());
     updateAdminCount();
@@ -418,10 +418,19 @@ export {
 // BOOT LOG
 // ═══════════════════════════════════════════════════════════
 
+const _bootSurveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+const _bootSurveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[_bootSurveyType];
+const _bootQueueKey = _bootSurveyConfig?.storageKey ||
+                      (_bootSurveyType === 'type2'
+                        ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
+                        : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
+                      'submissionQueue';
+
 console.log('═══════════════════════════════════════════════════════');
-console.log('🔄 DATA SYNC MODULE LOADED (v3.0.0)');
+console.log('🔄 DATA SYNC MODULE LOADED (v3.1.0)');
 console.log('═══════════════════════════════════════════════════════');
-console.log(`  Active Survey : ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
+console.log(`  Active Survey : ${_bootSurveyType}`);
+console.log(`  Queue Key     : ${_bootQueueKey}`);
 console.log(`  Network       : ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
 console.log(`  Sync Endpoint : ${window.CONSTANTS?.SYNC_ENDPOINT || '/api/submit-survey'}`);
 console.log('═══════════════════════════════════════════════════════');

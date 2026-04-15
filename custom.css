@@ -955,3 +955,174 @@ textarea:focus {
         border-width: 3px !important;
     }
 }
+
+/* ===== TYPE 2 SURVEY — ADDITIONAL QUESTION STYLES ===== */
+
+/* Radio with Other */
+.radio-with-other-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.radio-with-other-group label {
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background: var(--bg-surface-pure);
+  border-radius: 10px;
+  border: 2px solid var(--border-strong);
+  color: var(--text-secondary);
+  padding: 14px 24px;
+  font-weight: 600;
+  font-size: 17px;
+  min-height: var(--touch-target-min);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radio-with-other-group label:active {
+  transform: scale(0.97);
+}
+
+.radio-with-other-group input:checked + label {
+  background: var(--sewa-orange);
+  color: var(--text-on-accent);
+  border-color: var(--sewa-orange-deep);
+  box-shadow: 0 4px 12px var(--sewa-orange-glow);
+  animation: successShake 0.4s ease;
+}
+
+/* "Other" text input that slides in */
+.other-text-input-wrapper {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.other-text-input-wrapper input {
+  border: 2px solid var(--border-input);
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 17px;
+  width: 100%;
+  background: var(--bg-surface-pure);
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+.other-text-input-wrapper input:focus {
+  border-color: var(--focus-blue-strong);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25);
+  outline: none;
+}
+
+/* Radio with Follow-up */
+.radio-with-followup-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.radio-with-followup-group .main-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.radio-with-followup-group .main-options label {
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background: var(--bg-surface-pure);
+  border-radius: 10px;
+  border: 2px solid var(--border-strong);
+  color: var(--text-secondary);
+  padding: 14px 28px;
+  font-weight: 600;
+  font-size: 17px;
+  min-height: var(--touch-target-min);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radio-with-followup-group .main-options label:active {
+  transform: scale(0.97);
+}
+
+.radio-with-followup-group .main-options input:checked + label {
+  background: var(--sewa-orange);
+  color: var(--text-on-accent);
+  border-color: var(--sewa-orange-deep);
+  box-shadow: 0 4px 12px var(--sewa-orange-glow);
+  animation: successShake 0.4s ease;
+}
+
+/* Follow-up sub-question that slides in */
+.followup-section {
+  background: var(--bg-subtle);
+  border-radius: 10px;
+  padding: 16px 20px;
+  border-left: 4px solid var(--sewa-orange);
+  transition: all 0.3s ease;
+}
+
+.followup-section p {
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 12px !important;
+}
+
+.followup-section .followup-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.followup-section .followup-options label {
+  cursor: pointer;
+  background: var(--bg-surface-pure);
+  border-radius: 8px;
+  border: 2px solid var(--border-strong);
+  color: var(--text-secondary);
+  padding: 10px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  min-height: var(--touch-target-min);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.followup-section .followup-options input:checked + label {
+  background: var(--sewa-orange);
+  color: var(--text-on-accent);
+  border-color: var(--sewa-orange-deep);
+  box-shadow: 0 3px 8px var(--sewa-orange-glow);
+}
+
+/* Checkbox group — already styled, but ensure "Other" text matches */
+.checkbox-group .other-specify-wrapper {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.checkbox-group .other-specify-wrapper input {
+  border: 2px solid var(--border-input);
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 17px;
+  width: 100%;
+}

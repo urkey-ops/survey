@@ -1,24 +1,31 @@
 // FILE: ui/validation.js
 // PURPOSE: Form validation logic for survey questions
-// VERSION: 2.2.0 - CHECKBOX FIX: validateQuestion now exposed on window so
-//                  core.js goNext() can actually call it. Previously the ES
-//                  module export was never assigned to window.validateQuestion,
-//                  so core.js fell through to the `true` fallback — every
-//                  question passed validation immediately, BUT for checkboxes
-//                  the real stopper was core.js using the wrong question array
-//                  (Bug 5). With Bug 5 now fixed in core.js, validateQuestion
-//                  must also be on window or goNext() still falls through.
-//                  Also added: radio-with-followup type support.
-// DEPENDENCIES: None (pure validation functions)
+// VERSION: 2.3.0
+// CHANGES FROM 2.2.0:
+//   - radio-with-other: validates against { main, other } object shape
+//     (was checking answer === 'Other' on a string — never matched object)
+//   - radio-with-followup: validates against { main, followup[] } object shape
+//     (was checking answer directly as string or using followupName key)
+//   - checkbox-with-other: uses otherKey(q.name) from dataUtils (was hardcoded
+//     'otherhearabout' / 'other_hear_about' — brittle, breaks other questions)
+//   - star-rating / number-scale: accepts Number type (data-util now stores Number)
+//   - getValidationErrors: same shape fixes applied for batch validation
+//   - All hardcoded fallback key strings removed — single source of truth via
+//     window.dataUtils.otherKey()
 
-/**
- * Email validation regex
- */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/**
- * Clear all error messages in the form
- */
+// ── Companion key helper — must match data-util.js otherKey() exactly ────────
+// We call through window.dataUtils so there is one source of truth.
+// Falls back to inline formula if dataUtils not yet loaded (defensive).
+function otherKey(qName) {
+  return (typeof window.dataUtils?.otherKey === 'function')
+    ? window.dataUtils.otherKey(qName)
+    : `other_${qName}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function clearErrors() {
   document.querySelectorAll('.error-message').forEach(el => {
     el.textContent = '';
@@ -26,11 +33,6 @@ export function clearErrors() {
   });
 }
 
-/**
- * Display an error message for a specific field
- * @param {string} elementId - ID of the error message element
- * @param {string} message   - Error message to display
- */
 function displayError(elementId, message) {
   const errorEl = document.getElementById(elementId);
   if (errorEl) {
@@ -42,8 +44,9 @@ function displayError(elementId, message) {
 }
 
 /**
- * Core "is this answer empty?" check — handles ALL value types:
- *   string, number, boolean, array, object, null, undefined
+ * Core "is this answer empty?" check — handles ALL value types.
+ * For { main, other } and { main, followup[] } objects, empty means no main.
+ * For Number, 0 is valid (never empty).
  */
 function _isEmpty(answer) {
   if (answer === null || answer === undefined)  return true;
@@ -51,27 +54,28 @@ function _isEmpty(answer) {
   if (typeof answer === 'number')               return false; // 0 is a valid rating
   if (typeof answer === 'boolean')              return false;
   if (Array.isArray(answer))                    return answer.length === 0;
-  // plain object e.g. { main: '...' }
+  // Object shape: { main, other } or { main, followup[] }
   if (typeof answer === 'object')               return !answer.main || String(answer.main).trim() === '';
   return false;
 }
 
 /**
- * Validate a survey question based on its type and requirements.
- * @param {Object} question - Question object with validation rules
- * @param {Object} formData - Current form data to validate against
- * @returns {boolean} True if validation passes
+ * Extract the main selection value from any stored answer shape.
+ * Handles: plain string, number, { main, ... } object.
  */
+function _mainValue(answer) {
+  if (answer === null || answer === undefined) return '';
+  if (typeof answer === 'object' && !Array.isArray(answer)) return answer.main || '';
+  return answer;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function validateQuestion(question, formData) {
-  // ── SAFETY GUARD ──────────────────────────────────────────────────────────
-  // CHECKBOX FIX: if question is undefined (e.g. wrong array was used in
-  // core.js before the Bug 5 / getQuestions() fix), return false clearly
-  // instead of throwing a TypeError that swallows the real error.
   if (!question) {
     console.error('[VALIDATION] validateQuestion called with undefined question — check getQuestions() in core.js');
     return false;
   }
-  // ─────────────────────────────────────────────────────────────────────────
 
   clearErrors();
 
@@ -80,57 +84,70 @@ export function validateQuestion(question, formData) {
   let errorMessage = '';
 
   // ── CHECKBOX WITH OTHER ───────────────────────────────────────────────────
-  // CHECKBOX FIX: must check Array.isArray + length > 0, NOT just truthiness.
-  // An empty array [] is truthy in JS so a plain !answer check would pass it.
   if (question.type === 'checkbox-with-other') {
     if (question.required && (!Array.isArray(answer) || answer.length === 0)) {
       errorMessage = 'Please select at least one option.';
       isValid = false;
     }
 
-    // If "Other" is selected, the specify field must be filled
+    // If "Other" is in the selection, the specify field must be filled
     if (isValid && Array.isArray(answer) && answer.includes('Other')) {
-      const otherValue = formData['otherhearabout'] || formData['other_hear_about'] || '';
-      if (!otherValue || String(otherValue).trim() === '') {
-        displayError('otherhearabouttextError', 'Please specify other source.');
-        displayError('other_hear_about_textError', 'Please specify other source.');
+      const otherVal = formData[otherKey(question.name)] || '';
+      if (!otherVal || String(otherVal).trim() === '') {
+        displayError(`${question.id}Error`, 'Please specify your other answer.');
         isValid = false;
       }
     }
   }
 
   // ── RADIO WITH OTHER ──────────────────────────────────────────────────────
+  // answer shape: { main: string, other: string }
   else if (question.type === 'radio-with-other') {
     if (question.required && _isEmpty(answer)) {
       errorMessage = 'Please select an option.';
       isValid = false;
     }
-    if (isValid && answer === 'Other') {
-      const otherValue = formData['otherlocation'] || formData['other_location'] || '';
-      if (!otherValue || String(otherValue).trim() === '') {
-        displayError('otherlocationtextError', 'Please specify your location.');
-        isValid = false;
+
+    if (isValid) {
+      const mainVal = _mainValue(answer);
+      if (mainVal === 'Other') {
+        // other text lives inside the object itself (set by data-util)
+        const otherText = (answer && typeof answer === 'object')
+          ? (answer.other || '')
+          : (formData[otherKey(question.name)] || '');
+        if (!otherText || String(otherText).trim() === '') {
+          displayError(`${question.id}Error`, 'Please specify your answer.');
+          isValid = false;
+        }
       }
     }
   }
 
   // ── RADIO WITH FOLLOW-UP ──────────────────────────────────────────────────
-  // Type 2 survey question type — main selection required; follow-up required
-  // only when the question definition marks followupRequired: true AND the
-  // selected option has a follow-up sub-question.
+  // answer shape: { main: string, followup: string[] }
   else if (question.type === 'radio-with-followup') {
     if (question.required && _isEmpty(answer)) {
       errorMessage = 'Please select an option.';
       isValid = false;
     }
-    if (isValid && question.followupRequired && answer) {
-      const followupKey  = question.followupName || (question.name + '_followup');
-      const followupVal  = formData[followupKey];
-      const selectedOpt  = question.options?.find(o => o.value === answer);
-      // Only validate follow-up if the selected option actually has one
-      if (selectedOpt?.followup && _isEmpty(followupVal)) {
-        displayError(question.id + 'FollowupError', 'Please answer the follow-up question.');
-        isValid = false;
+
+    if (isValid) {
+      const mainVal = _mainValue(answer);
+
+      // Only validate follow-up if the question definition requires it
+      // AND the selected option actually has follow-up options
+      if (question.followupRequired && mainVal) {
+        const selectedOpt = question.options?.find(o => o.value === mainVal);
+        if (selectedOpt?.followupLabel && selectedOpt.followupOptions?.length > 0) {
+          // followup array lives inside the object (set by data-util)
+          const followupArr = (answer && typeof answer === 'object' && Array.isArray(answer.followup))
+            ? answer.followup
+            : [];
+          if (followupArr.length === 0) {
+            displayError(`${question.id}Error`, 'Please answer the follow-up question.');
+            isValid = false;
+          }
+        }
       }
     }
   }
@@ -153,10 +170,10 @@ export function validateQuestion(question, formData) {
   }
 
   // ── STAR RATING & NUMBER SCALE ────────────────────────────────────────────
-  // Stored as string "1"–"5" from radio input value; treat empty string as
-  // unanswered even though typeof "" === 'string' (would pass _isEmpty)
+  // data-util now stores these as Number — null/undefined means unanswered.
+  // 0 would be a valid number so we check explicitly for null/undefined only.
   else if (question.type === 'star-rating' || question.type === 'number-scale') {
-    if (question.required && (answer === null || answer === undefined || answer === '')) {
+    if (question.required && (answer === null || answer === undefined)) {
       errorMessage = 'Please make a selection.';
       isValid = false;
     }
@@ -168,45 +185,40 @@ export function validateQuestion(question, formData) {
     isValid = false;
   }
 
-  // Display the primary error message under the question element
   if (!isValid && errorMessage) {
-    displayError(question.id + 'Error', errorMessage);
+    displayError(`${question.id}Error`, errorMessage);
   }
 
   return isValid;
 }
 
-/**
- * Validate email format
- */
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function validateEmail(email) {
   if (!email || typeof email !== 'string') return false;
   return emailRegex.test(email.trim());
 }
 
-/**
- * Validate required field (any type)
- */
 export function validateRequired(value) {
   return !_isEmpty(value);
 }
 
-/**
- * Validate array has at least one selection
- */
 export function validateArrayNotEmpty(arr) {
   return Array.isArray(arr) && arr.length > 0;
 }
 
 /**
- * Get all validation errors for a question (non-throwing, used by batch validate)
+ * Get all validation errors for a question (non-throwing, used by batch validate).
+ * Mirrors the same shape-aware logic as validateQuestion().
  */
 export function getValidationErrors(question, formData) {
   if (!question) return ['Question definition missing.'];
 
-  const errors = [];
-  const answer = formData[question.name];
+  const errors  = [];
+  const answer  = formData[question.name];
+  const mainVal = _mainValue(answer);
 
+  // Required check — works for all shapes via _isEmpty
   if (question.required && _isEmpty(answer)) {
     errors.push('This response is required.');
   }
@@ -215,32 +227,45 @@ export function getValidationErrors(question, formData) {
     errors.push('Please enter a valid email address.');
   }
 
-  if (question.type === 'checkbox-with-other' && question.required) {
-    if (!validateArrayNotEmpty(answer)) {
-      errors.push('Please select at least one option.');
+  // checkbox-with-other
+  if (question.type === 'checkbox-with-other') {
+    if (question.required && !validateArrayNotEmpty(answer)) {
+      if (!errors.length) errors.push('Please select at least one option.');
+    }
+    if (Array.isArray(answer) && answer.includes('Other')) {
+      const ov = formData[otherKey(question.name)] || '';
+      if (!ov || String(ov).trim() === '') {
+        errors.push('Please specify your other answer.');
+      }
     }
   }
 
-  if (question.type === 'checkbox-with-other' && Array.isArray(answer) && answer.includes('Other')) {
-    const ov = formData['otherhearabout'] || formData['other_hear_about'] || '';
-    if (!ov || String(ov).trim() === '') {
-      errors.push('Please specify other source.');
+  // radio-with-other — other text lives in answer.other
+  if (question.type === 'radio-with-other' && mainVal === 'Other') {
+    const otherText = (answer && typeof answer === 'object')
+      ? (answer.other || '')
+      : (formData[otherKey(question.name)] || '');
+    if (!otherText || String(otherText).trim() === '') {
+      errors.push('Please specify your answer.');
     }
   }
 
-  if (question.type === 'radio-with-other' && answer === 'Other') {
-    const ov = formData['otherlocation'] || formData['other_location'] || '';
-    if (!ov || String(ov).trim() === '') {
-      errors.push('Please specify your location.');
+  // radio-with-followup — followup lives in answer.followup[]
+  if (question.type === 'radio-with-followup' && question.followupRequired && mainVal) {
+    const selectedOpt = question.options?.find(o => o.value === mainVal);
+    if (selectedOpt?.followupLabel && selectedOpt.followupOptions?.length > 0) {
+      const followupArr = (answer && typeof answer === 'object' && Array.isArray(answer.followup))
+        ? answer.followup
+        : [];
+      if (followupArr.length === 0) {
+        errors.push('Please answer the follow-up question.');
+      }
     }
   }
 
   return errors;
 }
 
-/**
- * Batch validate multiple questions
- */
 export function validateMultipleQuestions(questions, formData) {
   const allErrors = {};
   let isValid = true;
@@ -265,30 +290,7 @@ export const validationUtils = {
   validateMultipleQuestions,
 };
 
-// ── CRITICAL: expose on window so core.js goNext() can call it ───────────────
-//
-// BEFORE (broken):
-//   validation.js only used ES module exports. No window assignment anywhere.
-//   core.js does: const isValid = window.validateQuestion ? window.validateQuestion(...) : true
-//   window.validateQuestion was undefined → ternary always fell to `true`
-//   → goNext() ALWAYS advanced regardless of validation state
-//   → BUT for checkboxes, the real stopper was Bug 5 (wrong question array)
-//     making currentQuestion undefined, which made validateQuestion return false
-//     even when it was called... wait — if window.validateQuestion was undefined
-//     the ternary returned true → goNext advanced. So why was checkbox stuck?
-//
-//   Answer: the ternary returned true → goNext tried to advance →
-//   stopQuestionTimer(currentQuestion.id) was called on undefined → THREW →
-//   goNext crashed silently in the try/catch above it → no advance.
-//
-// AFTER (fixed):
-//   window.validateQuestion = validateQuestion  (line below)
-//   window.clearErrors      = clearErrors       (line below)
-//   Now core.js goNext() calls real validation AND doesn't crash on undefined.
-//   The safety guard at the top of validateQuestion() handles the null case
-//   cleanly instead of throwing TypeError.
-//
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Expose on window so core.js goNext() can call without ES module import ───
 window.validateQuestion = validateQuestion;
 window.clearErrors      = clearErrors;
 

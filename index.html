@@ -36,7 +36,7 @@
   
   /* Disable zoom and touch manipulation - BUT NOT ON VIDEO OR ADMIN */
   body, main, section, div:not(#kioskStartScreen):not(#mainTitle):not(header) {
-    touch-action: none;
+
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
@@ -198,9 +198,15 @@
             </div>
             
             <div class="absolute inset-x-0 bottom-0">
-                <div id="progressBarContainer" class="w-full">
-                    <div id="progressBar" class="h-full" style="width: 0;"></div>
-                </div>
+
+                
+             
+
+<div id="progressBarContainer" class="w-full bg-gray-200 rounded-full h-2 mb-6 relative">
+  <div id="progressBar" class="bg-orange-500 h-2 rounded-full transition-all duration-300 will-change-width" style="width: 0%"></div>
+  <span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
+</div>
+                
             </div>
         </header>
         

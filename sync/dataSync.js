@@ -354,13 +354,13 @@ async function syncSingleQueue(target, isManual = false) {
     console.warn(`[DATA SYNC] ${invalidSubmissions.length} invalid record(s) filtered out for ${surveyType}`);
   }
 
-  const payload = {
-    submissions: validSubmissions,
-    surveyType,
-    kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
-    timestamp: new Date().toISOString()
-  };
-
+ const payload = {
+  submissions: validSubmissions,
+  surveyType,
+  sheetName,
+  kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+  timestamp: new Date().toISOString()
+};
   try {
     const syncResult = await sendRequest(SYNC_ENDPOINT, payload);
     console.log(`[DATA SYNC] Server response for ${surveyType}:`, syncResult);

@@ -1,6 +1,6 @@
 /* =============================================================================
-   input.css — Tailwind CLI entry point  (Sewa Kiosk v3.3.0)
-   Command: npx tailwindcss -i ./css/input.css -o ./css/output.css --watch
+   input.css — Tailwind CLI entry point  (Sewa Kiosk v3.3.1)
+   Command: npx tailwindcss -i ./input.css -o ./dist/output.css --watch
 
    Load order inside this file determines cascade precedence:
      1. @tailwind base       — Preflight normalisation
@@ -8,7 +8,7 @@
      3. @tailwind utilities  — Utility classes generated from tailwind.config.js
 
    DO NOT add component or structural rules here.
-   All custom styles live in:  css/custom.css   (loaded after output.css in HTML)
+   All custom styles live in: custom.css   (loaded after output.css in HTML)
    ============================================================================= */
 
 @tailwind base;
@@ -21,29 +21,39 @@
    Heavy component rules stay in custom.css — this file stays thin.
 ─────────────────────────────────────────────────────────────────────────────── */
 @layer base {
-  /* Prevent iOS input auto-zoom — must be >= 16px */
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    overscroll-behavior: none;
+  }
+
+  /* Prevent iOS input auto-zoom — rendered size must be >= 16px */
   input[type="text"],
   input[type="email"],
   input[type="number"],
+  input[type="tel"],
+  input[type="search"],
+  input[type="url"],
+  input[type="password"],
+  input[type="date"],
   textarea,
   select {
     font-size: max(16px, 1rem);
   }
 
-  /* Kill iOS tap-highlight on all interactive elements */
+  /* Kill iOS tap-highlight on interactive elements */
   button,
   a,
   label,
   input,
   textarea,
-  select {
+  select,
+  [role="button"] {
     -webkit-tap-highlight-color: transparent;
-  }
-
-  /* Smooth font rendering */
-  html {
-    -webkit-font-smoothing:  antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
 
   /* Prevent body scroll-bounce when admin panel / modal is open */
@@ -51,7 +61,7 @@
   body.modal-open {
     overflow: hidden;
     position: fixed;
-    width:    100%;
+    width: 100%;
   }
 }
 
@@ -67,7 +77,7 @@
 
   /* Safe-area inset helpers for notch / home-bar devices */
   .px-safe {
-    padding-left:  env(safe-area-inset-left,  0px);
+    padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
 
@@ -75,13 +85,31 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  /* GPU compositing hint for animated progress bar */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* GPU compositing hint for animated progress bar / transforms */
   .will-change-width {
     will-change: width;
   }
 
+  .will-change-transform {
+    will-change: transform;
+  }
+
   /* Thin scrollbar for textarea on iPad */
-  .scrollbar-thin::-webkit-scrollbar       { width: 4px; }
-  .scrollbar-thin::-webkit-scrollbar-track  { background: #F3F4F6; border-radius: 2px; }
-  .scrollbar-thin::-webkit-scrollbar-thumb  { background: #D1D5DB; border-radius: 2px; }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #F3F4F6;
+    border-radius: 2px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #D1D5DB;
+    border-radius: 2px;
+  }
 }

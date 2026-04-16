@@ -1,86 +1,55 @@
 /* =============================================================================
-   custom.css — Sewa Kiosk v6.0.0
-   Design vision: Two sibling white cards on a cool grey page.
-   Card 1 (header): "Share Your Thoughts" title + step counter + progress bar
-   Card 2 (question): Question text + options — TOP aligned, no dead space
-   Both cards same width, same border-radius, same shadow, same horizontal pad.
-   Buttons are a third visual zone below Card 2 — not inside it.
+   custom.css — Sewa Kiosk v5.0.0  (Design Upgrade)
+   Target: iPad Air 10.9" landscape, Guided Access, iOS PWA
+   Brand orange: #E86000
+   Two-card stacked layout: top card (title + progress) · bottom card (question + options)
+   All question content top-aligned, not vertically centred
    ============================================================================= */
 
 /* ─── 0. Design Tokens ──────────────────────────────────────────────────────── */
 :root {
-  /* Brand — single source of truth */
-  --sewa-orange:         #E86000;
-  --sewa-orange-dark:    #C45200;
-  --sewa-orange-tint:    rgba(232, 96, 0, 0.07);
-  --sewa-orange-ring:    rgba(232, 96, 0, 0.22);
-
-  /* Page */
-  --sewa-page-bg:        #ECEEF2;
-
-  /* Cards — both cards identical */
-  --sewa-card-bg:        #FFFFFF;
-  --sewa-card-radius:    0.875rem;           /* 14px */
-  --sewa-card-shadow:    0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04);
-  --sewa-card-pad-v:     1.25rem;
-  --sewa-card-pad-h:     1.5rem;
-
-  /* Gap between cards */
-  --sewa-card-gap:       0.75rem;
-
-  /* Page horizontal margin */
-  --sewa-page-pad:       1.25rem;
-
-  /* Type scale — clear 3-level hierarchy */
-  --sewa-text-title:     1rem;              /* header card title */
-  --sewa-text-question:  1.125rem;          /* question label — prominent */
-  --sewa-text-option:    0.875rem;          /* option button labels */
-  --sewa-text-meta:      0.7rem;            /* step counter, admin meta */
-
-  /* Option cells — all same fixed height for grid row alignment */
-  --sewa-option-h:       54px;
-  --sewa-option-radius:  0.5rem;
-  --sewa-option-border:  1.5px solid #D1D5DB;
-
-  /* Buttons */
-  --sewa-btn-h:          44px;
-  --sewa-btn-radius:     0.5rem;
-
-  /* Motion */
-  --sewa-ease:           cubic-bezier(0.4, 0, 0.2, 1);
-  --sewa-t:              all 0.15s var(--sewa-ease);
-
-  /* Secondary surface */
-  --sewa-surface-2:      #F4F5F7;
-  --sewa-surface-hover:  #EAECEF;
-  --sewa-text-primary:   #111827;
-  --sewa-text-muted:     #6B7280;
-  --sewa-text-option:    #374151;
-  --sewa-border-color:   #D1D5DB;
+  --orange:          #E86000;
+  --orange-dark:     #C45200;
+  --orange-light:    #FFF3EB;
+  --orange-mid:      #FFD4B0;
+  --bg:              #EDEBE7;          /* warm off-white — less cold than #ECEEF2  */
+  --card-bg:         #FFFFFF;
+  --card-border:     1px solid rgba(0,0,0,0.07);
+  --card-radius:     14px;
+  --card-shadow:     0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
+  --text-primary:    #111827;
+  --text-secondary:  #4B5563;
+  --text-muted:      #9CA3AF;
+  --border-default:  1.5px solid #D1D5DB;
+  --border-selected: 2px solid var(--orange);
+  --radius-sm:       8px;
+  --radius-md:       10px;
+  --min-tap:         52px;             /* larger tap target for glass kiosk      */
+  --font-option:     1rem;             /* was 0.9rem — readable at arm's length  */
+  --gap-grid:        8px;
+  --transition:      background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
+  --card-gap:        10px;             /* gap between top and bottom card        */
+  --page-h-pad:      28px;            /* horizontal padding of the two cards    */
+  --page-v-pad:      18px;            /* vertical padding top / between cards   */
+  --col-max:         820px;           /* max column width on 10.9" landscape    */
+  --keyboard-height: 0px;             /* updated by Visual Viewport API in HTML */
 }
 
-/* ─── 1. Base ───────────────────────────────────────────────────────────────── */
+/* ─── 1. Base ────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
-  background:             var(--sewa-page-bg);
-  min-height:             100vh;
-  width:                  100%;
-  display:                block !important;
-  padding:                0 !important;
-  margin:                 0;
-  overflow-y:             auto;          /* fallback if main fails */
-  font-family:            -apple-system, 'Inter', 'Helvetica Neue', sans-serif;
+  background:   var(--bg);
+  min-height:   100vh;
+  width:        100%;
+  overflow:     hidden;
+  display:      block !important;
+  padding:      0 !important;
+  margin:       0;
+  font-family:  -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
-  color:                  var(--sewa-text-primary);
+  color:        var(--text-primary);
 }
-
-/* Prevent zoom on text inputs only */
-input[type="text"],
-input[type="email"],
-input[type="number"],
-textarea,
-select { font-size: 16px !important; }
 
 label {
   -webkit-touch-callout: none;
@@ -89,7 +58,7 @@ label {
   touch-action:          manipulation;
 }
 
-/* ─── 2. Start Screen ───────────────────────────────────────────────────────── */
+/* ─── 2. Start Screen (unchanged — managed by other JS) ─────────────────────── */
 #kioskStartScreen {
   position:        fixed !important;
   inset:           0;
@@ -103,547 +72,617 @@ label {
   color:           #fff;
 }
 #kioskStartScreen.hidden { display: none !important; }
-
 #kioskStartScreen h1,
 #kioskStartScreen h2,
 #kioskStartScreen h3,
 #kioskStartScreen p,
 #kioskStartScreen span { color: #fff; }
-
 #rotatingQuestion {
   color:       #fff;
   font-weight: 600;
-  font-size:   var(--sewa-text-title);
   text-shadow: 0 1px 8px rgba(0,0,0,0.6);
   text-align:  center;
-  padding:     0 1.5rem;
-  margin-top:  1.5rem;
 }
-
-/* Video — fixed dimensions, consistent across all iPad models */
-#kioskVideo {
-  width:         100%;
-  max-width:     560px;
-  aspect-ratio:  16 / 9;
-  object-fit:    cover;
-  border-radius: var(--sewa-card-radius);
-  transform:     none !important;
-  animation:     none !important;
-}
-
-/* Animate-pulse — defined ONLY here (remove from index.html <style> tag) */
-@keyframes subtle-pulse {
-  0%, 100% { transform: scale(1);     filter: brightness(100%); }
-  50%       { transform: scale(1.025); filter: brightness(110%); }
-}
-.animate-pulse { animation: subtle-pulse 6s infinite ease-in-out !important; will-change: transform; }
-.active-press  { transform: scale(0.96) !important; opacity: 0.8 !important; transition: transform 0.05s ease-out !important; animation: none !important; }
 
 /* ─── 3. Main Survey Shell ──────────────────────────────────────────────────── */
 main {
-  position:         fixed !important;
-  inset:            0;
-  z-index:          50;
-  display:          none !important;
-  flex-direction:   column;
-  align-items:      center;            /* centre the column horizontally */
-  background:       var(--sewa-page-bg);
-  overflow-y:       auto;
-  overflow-x:       hidden;
+  position:       fixed !important;
+  inset:          0;
+  z-index:        50;
+  display:        none !important;
+  flex-direction: column;
+  align-items:    center;                /* centre the column */
+  background:     var(--bg);
+  overflow-y:     auto;
+  overflow-x:     hidden;
   -webkit-overflow-scrolling: touch;
-  max-width:        100% !important;
-  padding:          0;
+  padding:        var(--page-v-pad) var(--page-h-pad)
+                  calc(var(--page-v-pad) + var(--keyboard-height, 0px));
+  gap:            var(--card-gap);
+  max-width:      100% !important;
 }
 main:not(.hidden) { display: flex !important; }
 
-/* ─── 4. Header Card ────────────────────────────────────────────────────────── */
+/* ─── 4. Header — TOP CARD ──────────────────────────────────────────────────── */
 /*
-   LAYOUT PHILOSOPHY:
-   header = full-width wrapper (no card styles here)
-   .header-card = the actual white card — width-constrained, with card styles
-   This way the card sits centred on the page with the same max-width as the
-   question card, while the header element itself can go full-width for admin mode.
+   The header becomes Card 1: same width as Card 2, white, rounded, shadowed.
+   It contains title (left) + admin controls (right).
+   Progress bar is INSIDE this card at the bottom — not edge-to-edge.
 */
 header {
-  width:       100%;
-  flex-shrink: 0;
-  padding:     var(--sewa-card-gap) var(--sewa-page-pad) 0;
+  width:           100%;
+  max-width:       var(--col-max);
+  background:      var(--card-bg);
+  border:          var(--card-border);
+  border-radius:   var(--card-radius);
+  box-shadow:      var(--card-shadow);
+  padding:         0;                   /* inner padding handled by children    */
+  display:         flex;
+  flex-direction:  column;
+  flex-shrink:     0;
+  overflow:        hidden;              /* clip progress bar corners            */
 }
 
-.header-card {
-  background:    var(--sewa-card-bg);
-  border-radius: var(--sewa-card-radius);
-  box-shadow:    var(--sewa-card-shadow);
-  padding:       var(--sewa-card-pad-v) var(--sewa-card-pad-h);
-  max-width:     700px;
-  margin:        0 auto;
-  display:       flex;
-  flex-direction: column;
-  gap:           0.875rem;
-}
-
-/* Top row: title left, step counter right */
-.header-card__top {
+/* Top row: title + admin */
+header > :first-child,
+header .header-top {
   display:         flex;
   align-items:     center;
   justify-content: space-between;
-  gap:             0.5rem;
+  padding:         14px 20px 12px;
 }
 
-/* Title button (5-tap unlock) */
+/* Wrap existing header content in a flex row — achieved via CSS only */
+/* The header has: h1#mainTitle + div#adminControls as direct children */
+/* We treat header as column-flex; add a pseudo top-row via display */
+header {
+  /* Override: header children (h1 + adminControls) are in normal flow,
+     we use CSS grid to put them side-by-side in row 1,
+     and progress bar in row 2 */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 16px;
+  padding: 14px 20px 0;               /* bottom padding comes from progress bar spacing */
+}
+
 #mainTitle {
-  font-size:       var(--sewa-text-title);
-  font-weight:     700;
-  color:           var(--sewa-text-primary);
-  line-height:     1.2;
-  cursor:          pointer;
-  background:      none;
-  border:          none;
-  padding:         8px 10px;
-  margin:          -8px -10px;
-  border-radius:   6px;
-  min-height:      44px;
-  display:         inline-flex;
-  align-items:     center;
-  transition:      background 0.15s ease;
+  grid-column:   1;
+  grid-row:      1;
+  font-size:     1.15rem;
+  font-weight:   700;
+  color:         var(--text-primary);
+  line-height:   1.2;
+  cursor:        pointer;
+  padding:       6px 8px;
+  margin:        -6px -8px;
+  border-radius: 6px;
+  min-height:    36px;
+  display:       inline-flex;
+  align-items:   center;
+  transition:    background 0.15s ease;
   -webkit-user-select: none;
-  text-align:      left;
 }
-#mainTitle:active      { background: var(--sewa-orange-tint); }
-.admin-active #mainTitle { display: none !important; }
+#mainTitle:active { background: rgba(232,96,0,0.10); }
 
-/* Step counter — tabular nums so "1 of 7" doesn't shift width */
-#stepCounter {
-  font-size:       var(--sewa-text-meta);
-  font-weight:     600;
-  color:           var(--sewa-text-muted);
-  white-space:     nowrap;
-  font-variant-numeric: tabular-nums;
-  flex-shrink:     0;
-}
-
-/* ─── 5. Progress Bar — inside the header card ──────────────────────────────── */
-#progressBarContainer {
-  width:         100%;
-  height:        6px;
-  background:    #E5E7EB;
-  border-radius: 999px;         /* pill shape — contained, not edge-to-edge */
-  overflow:      hidden;
-  flex-shrink:   0;
-}
-#progressBar {
-  height:        100%;
-  background:    var(--sewa-orange);   /* single orange token — no Tailwind bg-orange-500 */
-  border-radius: 999px;
-  transition:    width 0.45s var(--sewa-ease);
-  min-width:     0;
-}
-
-/* ─── 6. Admin Controls — inside header card ────────────────────────────────── */
 #adminControls {
-  display:        flex;
+  grid-column:   2;
+  grid-row:      1;
+  display:       flex;
   flex-direction: column;
-  gap:            0.4rem;
+  align-items:   flex-end;
+  gap:           4px;
 }
 #adminControls.hidden { display: none !important; }
 
-/* Admin buttons — secondary style, uppercase micro-labels */
-#adminControls button {
-  height:         32px;
-  padding:        0 0.7rem;
-  font-size:      0.68rem;
-  font-weight:    700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border:         1.5px solid #CBD5E1;
-  border-radius:  5px;
-  background:     var(--sewa-surface-2);
-  color:          #374151;
-  cursor:         pointer;
-  white-space:    nowrap;
-  transition:     var(--sewa-t);
+/* Progress bar: spans full width inside header card (row 2) */
+#progressBarContainer {
+  grid-column:   1 / -1;
+  grid-row:      2;
+  width:         calc(100% + 40px);    /* bleed to card edges (undo 20px side padding × 2) */
+  margin-left:   -20px;
+  margin-right:  -20px;
+  margin-top:    12px;
+  position:      relative;
+  height:        8px;                  /* was 5px — visible at kiosk distance  */
+  background:    #E5E7EB;
+  flex-shrink:   0;
+  overflow:      hidden;
 }
-#adminControls button:hover    { background: var(--sewa-surface-hover); border-color: #94A3B8; }
-#adminControls button:active   { transform: scale(0.96); }
-#adminControls button:disabled { opacity: 0.38; cursor: not-allowed; transform: none; }
 
-/* Destructive variants */
-#adminClearButton,
-#fixVideoButton   { border-color: #FCA5A5; color: #DC2626; }
-#adminClearButton:hover,
-#fixVideoButton:hover  { background: #FEF2F2; border-color: #F87171; }
+#progressBar {
+  height:     100%;
+  background: var(--orange);
+  transition: width 0.45s cubic-bezier(0.4,0,0.2,1);
+  min-width:  0;
+}
 
-/* Hide button */
-#hideAdminButton       { background: #1F2937; color: #fff; border-color: #1F2937; }
-#hideAdminButton:hover { background: #374151; border-color: #374151; }
-
-/* Status messages */
-#syncStatusMessage {
-  font-size:   var(--sewa-text-meta);
+#stepCounter {
+  position:    absolute;
+  right:       20px;
+  top:         -22px;
+  font-size:   0.72rem;
   font-weight: 600;
-  color:       #059669;
-  min-height:  14px;
-  line-height: 1.3;
+  color:       var(--text-muted);
+  white-space: nowrap;
+  line-height: 1;
 }
-#unsyncedCountDisplay { font-weight: 700; color: var(--sewa-orange); }
 
-/* Admin-active: header goes full-width, controls go horizontal */
-.admin-active header          { padding-bottom: 0; }
-.admin-active .header-card    { max-width: 100%; border-radius: 0; box-shadow: none; border-bottom: 1.5px solid #E5E7EB; }
-.admin-active #adminControls  { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
-
-/* ─── 7. Survey Section — question card container ───────────────────────────── */
-section#surveyContent {
-  flex:            1 1 auto;
+/* ─── 5. Survey Section — BOTTOM CARD ───────────────────────────────────────── */
+#surveyContent {
   width:           100%;
+  max-width:       var(--col-max);
+  background:      var(--card-bg);
+  border:          var(--card-border);
+  border-radius:   var(--card-radius);
+  box-shadow:      var(--card-shadow);
+  flex:            1 1 auto;
   display:         flex !important;
   flex-direction:  column !important;
-  align-items:     center;
-  padding:         var(--sewa-card-gap) var(--sewa-page-pad) calc(var(--sewa-page-pad) + var(--keyboard-height, 0px)) !important;
+  padding:         24px 24px 20px !important;
   overflow-y:      auto;
   -webkit-overflow-scrolling: touch;
+  min-height:      0;
 }
 
-/* ─── 8. Question Card ──────────────────────────────────────────────────────── */
+/* ─── 6. Question Container — TOP ALIGNED ───────────────────────────────────── */
+/*
+   CRITICAL: was flex-1 + justify-center which pushed content to middle.
+   Now top-aligned, content stacks from top.
+*/
 #questionContainer {
-  background:      var(--sewa-card-bg);
-  border-radius:   var(--sewa-card-radius);
-  box-shadow:      var(--sewa-card-shadow);
-  padding:         var(--sewa-card-pad-v) var(--sewa-card-pad-h);
-  width:           100%;
-  max-width:       700px;
-
-  /* TOP-ALIGNED — content starts at top, no vertical centering */
-  display:         flex;
-  flex-direction:  column;
-  align-items:     stretch;
-  justify-content: flex-start;   /* ← always top-aligned */
-  gap:             1.125rem;
-
-  /* Don't grow to fill viewport — natural height only */
-  flex:            0 0 auto;
+  width:          100%;
+  flex:           1 1 auto;
+  display:        flex;
+  flex-direction: column;
+  justify-content: flex-start;         /* TOP aligned — was center             */
+  align-items:    flex-start;
+  gap:            16px;
+  padding:        0;
+  background:     transparent;
+  box-shadow:     none;
+  border-radius:  0;
 }
 
-/* Question label — most visually prominent text on screen */
-.question-label,
-#questionContainer > p:first-child,
-#questionContainer > label:first-child,
-#questionContainer label.block {
-  font-size:   var(--sewa-text-question);   /* 1.125rem */
-  font-weight: 700;
-  color:       var(--sewa-text-primary);
-  line-height: 1.45;
-  margin:      0;
+/* Question label text */
+#questionContainer > label,
+#questionContainer label.block,
+.question-text,
+label[id$="Label"] {
+  font-size:   1.2rem;                 /* was 1.05rem — readable at distance   */
+  font-weight: 600;
+  color:       var(--text-primary);
+  line-height: 1.4;
+  margin:      0 0 2px;
+  text-align:  left;
+  width:       100%;
 }
 
-/* ─── 9. Nav Buttons — third visual zone below the question card ────────────── */
+/* Sub-hint text (e.g. "You can select more than one option") */
+#questionContainer p.text-sm {
+  font-size:  0.85rem;
+  color:      var(--text-secondary);
+  margin:     -8px 0 0;
+  font-style: italic;
+}
+
+/* ─── 7. Navigation Buttons — anchored bottom of Card 2 ─────────────────────── */
 #buttonContainer {
-  display:         flex;
-  justify-content: space-between;
-  align-items:     center;
-  width:           100%;
-  max-width:       700px;
-  margin-top:      0.625rem;
-  flex-shrink:     0;
-  gap:             0.75rem;
+  display:          flex;
+  justify-content:  space-between;
+  align-items:      center;
+  padding-top:      16px;
+  margin-top:       auto;              /* push to bottom of card               */
+  flex-shrink:      0;
+  gap:              12px;
+  border-top:       1px solid #F0EEE8;
 }
 
 #prevBtn {
-  height:        var(--sewa-btn-h);
+  height:        var(--min-tap);
   padding:       0 1.5rem;
-  background:    var(--sewa-card-bg);
-  color:         #374151;
-  border:        1.5px solid var(--sewa-border-color);
-  border-radius: var(--sewa-btn-radius);
-  font-size:     0.875rem;
+  background:    #FFFFFF;
+  color:         var(--text-secondary);
+  border:        1.5px solid #D1D5DB;
+  border-radius: var(--radius-sm);
+  font-size:     0.95rem;
   font-weight:   600;
   cursor:        pointer;
-  transition:    var(--sewa-t);
-  min-width:     84px;
+  transition:    var(--transition);
+  min-width:     100px;
+  flex-shrink:   0;
 }
-#prevBtn:hover  { background: var(--sewa-surface-2); border-color: #9CA3AF; }
+#prevBtn:hover  { background: #F9F8F6; border-color: #9CA3AF; }
 #prevBtn:active { transform: scale(0.97); }
 
 #nextBtn {
-  height:        var(--sewa-btn-h);
-  padding:       0 1.75rem;
-  background:    var(--sewa-orange);
-  color:         #fff;
+  height:        var(--min-tap);
+  padding:       0 2.25rem;
+  background:    var(--orange);
+  color:         #FFFFFF;
   border:        none;
-  border-radius: var(--sewa-btn-radius);
-  font-size:     0.875rem;
+  border-radius: var(--radius-sm);
+  font-size:     0.95rem;
   font-weight:   700;
   cursor:        pointer;
-  transition:    var(--sewa-t);
-  min-width:     84px;
+  transition:    var(--transition);
+  min-width:     160px;                /* dominant — primary action            */
+  flex-shrink:   0;
   box-shadow:    0 2px 8px rgba(232,96,0,0.30);
 }
-#nextBtn:hover  { background: var(--sewa-orange-dark); box-shadow: 0 3px 12px rgba(232,96,0,0.38); }
+#nextBtn:hover  { background: var(--orange-dark); box-shadow: 0 3px 12px rgba(232,96,0,0.38); }
 #nextBtn:active { transform: scale(0.97); }
-
 #nextBtn:disabled,
-#prevBtn:disabled { opacity: 0.40; cursor: not-allowed; transform: none; box-shadow: none; }
+#prevBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
-/* ─── 10. Option Shared Base ────────────────────────────────────────────────── */
-/*
-   Every option label:
-   - Fixed height (54px) → rows always align regardless of text length
-   - padding: 0 horizontal only → height is owned by the fixed value
-   - TOP-aligned text via align-items:flex-start — reads naturally
-   - Left-aligned text — faster to scan than centered for multi-word labels
-*/
-.location-radio-group  label,
-.age-radio-group       label,
-.followup-radio-group  label,
-.checkbox-group        label {
-  border:          var(--sewa-option-border);
-  border-radius:   var(--sewa-option-radius);
-  background:      var(--sewa-surface-2);
-  transition:      var(--sewa-t);
-  cursor:          pointer;
-  height:          var(--sewa-option-h);     /* FIXED — all cells same height */
-  display:         flex;
-  align-items:     center;
-  justify-content: flex-start;              /* left-aligned text */
-  text-align:      left;
-  padding:         0 0.875rem;              /* horizontal padding only */
-  word-break:      break-word;
-  overflow-wrap:   anywhere;
-  hyphens:         auto;
-  font-size:       var(--sewa-text-option);  /* 0.875rem — clearly smaller than question */
-  font-weight:     500;
-  line-height:     1.3;
-  color:           var(--sewa-text-option);
-}
-.location-radio-group  label:hover,
-.age-radio-group       label:hover,
-.followup-radio-group  label:hover,
-.checkbox-group        label:hover {
-  background:   var(--sewa-surface-hover);
-  border-color: #9CA3AF;
-}
-.location-radio-group  label:active,
-.age-radio-group       label:active,
-.followup-radio-group  label:active,
-.checkbox-group        label:active { transform: scale(0.97); }
-
-/* Selected state — orange left accent + tint background */
+/* ─── 8. Shared Selected State ──────────────────────────────────────────────── */
+/* Used by applyRadioSelectedStyles() — Tailwind classes bg-orange-500 / border-orange-500 */
+/* The CSS here backs up the JS class approach for any missed cases */
 .location-radio-group  input.visually-hidden:checked + label,
 .age-radio-group       input.visually-hidden:checked + label,
 .followup-radio-group  input.visually-hidden:checked + label,
 .checkbox-group        input.visually-hidden:checked + label {
-  background:    var(--sewa-orange-tint);
-  border-color:  var(--sewa-orange);
-  border-left-width: 3px;
-  color:         var(--sewa-text-primary);
-  font-weight:   600;
+  background:   var(--orange-light) !important;
+  border-color: var(--orange) !important;
+  color:        var(--orange-dark) !important;
 }
 
-/* ─── 11. Option Grid Layouts ───────────────────────────────────────────────── */
-/*
-   Use min() to prevent single orphan spanning full row.
-   minmax(min(Xpx, 100%), 1fr) means: each cell is at least X px wide,
-   but if X > container width, cell shrinks to 100% (single column) — no orphan stretching.
-*/
-.location-radio-group {
-  display:               grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(min(155px, 100%), 1fr)) !important;
-  gap:                   0.5rem !important;
-  width:                 100%;
-}
-
-.age-radio-group {
-  display:               grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)) !important;
-  gap:                   0.5rem !important;
-  width:                 100%;
-}
-
-.followup-radio-group {
-  display:               grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)) !important;
-  gap:                   0.5rem !important;
-  width:                 100%;
-}
-
-.checkbox-group {
-  display:               grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(min(155px, 100%), 1fr)) !important;
-  gap:                   0.5rem !important;
-  width:                 100%;
-}
-
-/* Checkbox: keep left-aligned with indicator */
-.checkbox-group label { gap: 0.5rem; }
-.checkbox-indicator {
-  width:       18px;
-  height:      18px;
-  min-width:   18px;
-  border:      2px solid var(--sewa-border-color);
-  border-radius: 4px;
-  background:  #fff;
-  display:     flex;
-  align-items: center;
-  justify-content: center;
-  transition:  var(--sewa-t);
-  flex-shrink: 0;
-}
-
-/* ─── 12. Emoji Rating ──────────────────────────────────────────────────────── */
-/*
-   True circles: explicit equal width AND height.
-   padding: 0 — rely entirely on flex centering.
-   Emoji font-size constrained so glyph never overflows.
-   Caption text below emoji in muted small type.
-*/
+/* ─── 9. Emoji Rating ───────────────────────────────────────────────────────── */
 .emoji-radio-group {
   display:         flex;
   flex-wrap:       nowrap;
-  justify-content: space-between;   /* even spacing across full width */
-  gap:             0.375rem;
+  justify-content: space-around;
+  align-items:     stretch;
+  gap:             10px;
   width:           100%;
 }
 
 .emoji-radio-group label {
-  width:           66px;     /* explicit — equal width AND height = true circle */
-  height:          66px;
-  min-width:       66px;
-  min-height:      66px;
-  padding:         0;        /* no padding — flex centering handles it */
-  border:          var(--sewa-option-border);
-  border-radius:   50%;
-  background:      var(--sewa-surface-2);
+  border:          1.5px solid #D1D5DB;
+  border-radius:   var(--radius-md);   /* rectangular pill — not circle — more uniform */
+  background:      #FAFAFA;
+  padding:         14px 10px 10px;
+  transition:      var(--transition);
+  cursor:          pointer;
+  flex:            1 1 0;              /* equal width for all options          */
+  min-width:       72px;
+  min-height:      var(--min-tap);
   display:         flex;
   flex-direction:  column;
   align-items:     center;
   justify-content: center;
-  cursor:          pointer;
-  flex-shrink:     0;
-  transition:      var(--sewa-t);
-  overflow:        hidden;   /* safety net — glyph never overflows circle */
+  gap:             6px;
+}
+.emoji-radio-group label:hover  { background: #F3F0EC; border-color: #9CA3AF; }
+.emoji-radio-group label:active { transform: scale(0.95); }
+
+/* Emoji glyph — fixed size, decoupled from label size */
+.emoji-radio-group label > span:first-child {
+  font-size:   2.2rem;
+  line-height: 1;
+  width:       2.4rem;
+  height:      2.4rem;
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-/* Emoji glyph size — controlled, consistent across devices */
-.emoji-radio-group label > span.emoji-glyph,
-.emoji-radio-group label > .text-2xl,
-.emoji-radio-group label > .text-3xl {
-  font-size:   1.625rem;     /* 26px — fits comfortably in 66px circle */
-  line-height: 1;
-  display:     block;
-}
-
-/* Caption below emoji */
-.emoji-radio-group label > span.emoji-caption,
-.emoji-radio-group label > .text-xs {
-  font-size:   0.6rem;
-  line-height: 1;
-  color:       var(--sewa-text-muted);
-  margin-top:  2px;
+/* Emoji label text */
+.emoji-radio-group label > span:last-child {
+  font-size:   0.8rem;
+  font-weight: 500;
+  color:       var(--text-secondary);
   text-align:  center;
-  display:     block;
+  line-height: 1.2;
 }
 
-.emoji-radio-group label:hover  { background: var(--sewa-surface-hover); border-color: #9CA3AF; }
-.emoji-radio-group label:active { transform: scale(0.92); }
-
-/* Selected emoji */
+/* Selected emoji card */
 .emoji-radio-group input.visually-hidden:checked + label {
-  background:    var(--sewa-orange-tint);
-  border-color:  var(--sewa-orange);
-  border-width:  2px;
-  box-shadow:    0 0 0 2px var(--sewa-orange-ring);
+  background:    var(--orange-light) !important;
+  border-color:  var(--orange) !important;
+  border-width:  2px !important;
+  transform:     scale(1.04);
+}
+.emoji-radio-group input.visually-hidden:checked + label > span:last-child {
+  color: var(--orange-dark) !important;
 }
 
-/* ─── 13. Number Scale ──────────────────────────────────────────────────────── */
+/* ─── 10. Number Scale ──────────────────────────────────────────────────────── */
 .number-scale-group {
   display:         flex !important;
   flex-wrap:       nowrap !important;
   justify-content: space-between !important;
-  gap:             0.25rem !important;
-  overflow-x:      auto;
-  padding-bottom:  2px;
+  gap:             6px !important;
   width:           100%;
 }
+
 .number-scale-group label {
-  width:           44px;
-  height:          44px;
-  min-width:       44px;
-  padding:         0;
-  flex-shrink:     0;
-  border:          var(--sewa-option-border);
+  border:          1.5px solid #D1D5DB;
   border-radius:   50%;
-  background:      var(--sewa-surface-2);
+  background:      #FAFAFA;
+  transition:      var(--transition);
+  cursor:          pointer;
+  flex:            1 1 0;
+  min-width:       48px;               /* was 44px */
+  min-height:      48px;
   display:         flex;
   align-items:     center;
   justify-content: center;
-  cursor:          pointer;
-  font-size:       0.875rem;
+  font-size:       var(--font-option);
   font-weight:     600;
-  color:           var(--sewa-text-option);
-  transition:      var(--sewa-t);
-  font-variant-numeric: tabular-nums;
+  color:           var(--text-secondary);
 }
-.number-scale-group label:hover  { background: var(--sewa-surface-hover); border-color: #9CA3AF; }
-.number-scale-group label:active { transform: scale(0.92); }
-.number-scale-group input.visually-hidden:checked + label {
-  background:   var(--sewa-orange-tint);
-  border-color: var(--sewa-orange);
-  border-width: 2px;
-  box-shadow:   0 0 0 2px var(--sewa-orange-ring);
-  color:        var(--sewa-text-primary);
-  font-weight:  700;
+.number-scale-group label:hover  { background: #F3F0EC; border-color: #9CA3AF; }
+.number-scale-group label:active { transform: scale(0.93); }
+
+/* Scale anchor labels */
+.number-scale-group + div {
+  display:         flex;
+  justify-content: space-between;
+  font-size:       0.78rem;
+  color:           var(--text-muted);
+  margin-top:      4px;
 }
 
-/* ─── 14. Star Rating ───────────────────────────────────────────────────────── */
+/* ─── 11. Star Rating ───────────────────────────────────────────────────────── */
 .star-rating {
   display:         flex;
   flex-direction:  row-reverse;
-  justify-content: center;
-  gap:             0.375rem;
+  justify-content: flex-end;          /* left-aligned, not centered            */
+  gap:             4px;
 }
-.star-rating label.star {
-  font-size:  2rem;
-  line-height: 1;
-  cursor:     pointer;
-  transition: color 0.12s ease, transform 0.1s ease;
-}
-.star-rating label.star:active { transform: scale(1.15); }
-.star-rating:not(:has(input:checked)) label.star:hover,
-.star-rating:not(:has(input:checked)) label.star:hover ~ label.star { color: #FBBF24; }
 
-/* ─── 15. Other / Free-text Inputs ─────────────────────────────────────────── */
+.star-rating label.star {
+  transition:  color 0.10s ease, transform 0.08s ease;
+  cursor:      pointer;
+  line-height: 1;
+  font-size:   2.8rem;                /* was 2rem — more visible on kiosk      */
+}
+.star-rating label.star:active { transform: scale(1.18); }
+
+/* ─── 12. Location / Generic Radio Grid ─────────────────────────────────────── */
+.location-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+  gap:                   var(--gap-grid) !important;
+  width:                 100%;
+}
+
+.location-radio-group label {
+  border:          1.5px solid #D1D5DB;
+  border-radius:   var(--radius-sm);
+  background:      #FAFAFA;
+  transition:      var(--transition);
+  cursor:          pointer;
+  min-height:      var(--min-tap);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  text-align:      center;
+  padding:         10px 12px;
+  line-height:     1.35;
+  word-break:      break-word;
+  overflow-wrap:   anywhere;
+  hyphens:         auto;
+  font-size:       var(--font-option);
+  font-weight:     500;
+  color:           var(--text-secondary);
+}
+.location-radio-group label:hover  { background: #F3F0EC; border-color: #9CA3AF; }
+.location-radio-group label:active { transform: scale(0.97); }
+
+/* ─── 13. Age Radio ─────────────────────────────────────────────────────────── */
+.age-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)) !important;
+  gap:                   var(--gap-grid) !important;
+  width:                 100%;
+}
+
+.age-radio-group label {
+  border:          1.5px solid #D1D5DB;
+  border-radius:   var(--radius-sm);
+  background:      #FAFAFA;
+  transition:      var(--transition);
+  cursor:          pointer;
+  min-height:      var(--min-tap);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  text-align:      center;
+  padding:         10px 12px;
+  word-break:      break-word;
+  overflow-wrap:   anywhere;
+  font-size:       var(--font-option);
+  font-weight:     500;
+  color:           var(--text-secondary);
+}
+.age-radio-group label:hover  { background: #F3F0EC; border-color: #9CA3AF; }
+.age-radio-group label:active { transform: scale(0.97); }
+
+/* ─── 14. Followup Radio ────────────────────────────────────────────────────── */
+.followup-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap:                   var(--gap-grid) !important;
+  width:                 100%;
+}
+
+.followup-radio-group label {
+  border:          1.5px solid #D1D5DB;
+  border-radius:   var(--radius-sm);
+  background:      #FAFAFA;
+  transition:      var(--transition);
+  cursor:          pointer;
+  min-height:      var(--min-tap);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  text-align:      center;
+  padding:         10px 12px;
+  word-break:      break-word;
+  overflow-wrap:   anywhere;
+  font-size:       var(--font-option);
+  font-weight:     500;
+  color:           var(--text-secondary);
+}
+.followup-radio-group label:hover  { background: #F3F0EC; border-color: #9CA3AF; }
+.followup-radio-group label:active { transform: scale(0.97); }
+
+/* Followup sub-panel */
+[id$="_followup_"] {
+  background:    #F9F8F6;
+  border:        1px solid #E5E3DE;
+  border-radius: var(--radius-sm);
+  padding:       14px 16px;
+}
+
+[id$="_followup_"] > p {
+  font-size:   0.85rem;
+  font-weight: 600;
+  color:       var(--text-secondary);
+  margin:      0 0 10px;
+}
+
+/* ─── 15. Checkbox Group ────────────────────────────────────────────────────── */
+.checkbox-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+  gap:                   var(--gap-grid) !important;
+  width:                 100%;
+}
+
+.checkbox-tab-wrapper { display: contents; }
+
+.checkbox-group label {
+  border:        1.5px solid #D1D5DB;
+  border-radius: var(--radius-sm);
+  background:    #FAFAFA;
+  transition:    var(--transition);
+  cursor:        pointer;
+  min-height:    var(--min-tap);
+  padding:       10px 14px;
+  display:       flex;
+  align-items:   center;
+  gap:           8px;
+  word-break:    break-word;
+  overflow-wrap: anywhere;
+  font-size:     var(--font-option);
+  font-weight:   500;
+  line-height:   1.35;
+  color:         var(--text-secondary);
+}
+.checkbox-group label:hover  { background: #F3F0EC; border-color: #9CA3AF; }
+.checkbox-group label:active { transform: scale(0.97); }
+
+.checkbox-indicator {
+  width:           20px;
+  height:          20px;
+  border:          2px solid #D1D5DB;
+  border-radius:   5px;
+  flex-shrink:     0;
+  background:      #fff;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  transition:      var(--transition);
+}
+
+/* ─── 16. Other Text Inputs ─────────────────────────────────────────────────── */
 [id^="other-"][id$="-container"] input[type="text"],
 [id^="other-"][id$="-container"] textarea {
-  border:        var(--sewa-option-border);
-  border-radius: var(--sewa-option-radius);
-  padding:       0.75rem 1rem;
+  border:        1.5px solid #D1D5DB;
+  border-radius: var(--radius-sm);
+  padding:       12px 16px;
+  font-size:     1rem;
   width:         100%;
-  background:    var(--sewa-surface-2);
-  color:         var(--sewa-text-primary);
+  background:    #FAFAFA;
   transition:    border-color 0.15s ease, box-shadow 0.15s ease;
   -webkit-appearance: none;
-  outline:       none;
+  color:         var(--text-primary);
 }
 [id^="other-"][id$="-container"] input[type="text"]:focus,
 [id^="other-"][id$="-container"] textarea:focus {
-  border-color: var(--sewa-orange);
-  box-shadow:   0 0 0 3px var(--sewa-orange-ring);
+  outline:      none;
+  border-color: var(--orange);
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.12);
   background:   #fff;
 }
 
-/* ─── 16. Validation Error ──────────────────────────────────────────────────── */
-.validation-error {
-  color:       #DC2626;
-  font-size:   0.75rem;
-  font-weight: 600;
-  margin-top:  0.375rem;
-  display:     flex;
-  align-items: center;
-  gap:         0.25rem;
-  line-height: 1.3;
+/* Textarea (free text questions) */
+textarea {
+  border:        1.5px solid #D1D5DB;
+  border-radius: var(--radius-sm);
+  padding:       12px 16px;
+  font-size:     1rem;
+  width:         100%;
+  background:    #FAFAFA;
+  color:         var(--text-primary);
+  resize:        none;
+  -webkit-appearance: none;
+  transition:    border-color 0.15s ease, box-shadow 0.15s ease;
+}
+textarea:focus {
+  outline:      none;
+  border-color: var(--orange);
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.12);
+  background:   #fff;
 }
 
-/* ─── 17. Inactivity / Timeout Overlays ─────────────────────────────────────── */
+/* ─── 17. Admin Panel ───────────────────────────────────────────────────────── */
+#adminControls button {
+  height:         30px;
+  padding:        0 10px;
+  font-size:      0.68rem;
+  font-weight:    700;
+  border:         1.5px solid #D1D5DB;
+  border-radius:  5px;
+  background:     #F9F8F6;
+  color:          var(--text-secondary);
+  cursor:         pointer;
+  white-space:    nowrap;
+  transition:     var(--transition);
+  letter-spacing: 0.01em;
+}
+#adminControls button:hover    { background: #EDEBE7; border-color: #9CA3AF; }
+#adminControls button:active   { transform: scale(0.96); }
+#adminControls button:disabled { opacity: 0.4; cursor: not-allowed; }
+#hideAdminButton { background: #1F2937 !important; color: #fff !important; border-color: #1F2937 !important; }
+#syncStatusMessage { font-size: 0.7rem; font-weight: 600; color: #059669; min-height: 14px; }
+#unsyncedCountDisplay { font-weight: 700; color: var(--orange); }
+
+/* Admin active: title hidden, controls full width */
+.admin-active #mainTitle      { display: none !important; }
+.admin-active header          {
+  grid-template-columns: 1fr;
+  padding: 10px 20px 0;
+  justify-items: center;
+}
+.admin-active #adminControls  {
+  grid-column:    1;
+  flex-direction: row !important;
+  flex-wrap:      wrap !important;
+  justify-content: center !important;
+  align-items:    center !important;
+  gap:            6px !important;
+  padding-bottom: 4px;
+}
+
+/* ─── 18. Validation Error ──────────────────────────────────────────────────── */
+.validation-error,
+.error-message:not(.hidden) {
+  color:       #DC2626;
+  font-size:   0.8rem;
+  font-weight: 600;
+  margin-top:  6px;
+  display:     flex;
+  align-items: center;
+  gap:         4px;
+}
+
+/* ─── 19. Inactivity Overlay ────────────────────────────────────────────────── */
 #inactivityWarning,
 #timeoutWarning {
   position:        fixed;
@@ -652,44 +691,42 @@ section#surveyContent {
   display:         flex;
   align-items:     center;
   justify-content: center;
-  background:      rgba(0,0,0,0.55);
-  backdrop-filter: blur(3px);
+  background:      rgba(0,0,0,0.50);
+  backdrop-filter: blur(2px);
 }
 #inactivityWarning.hidden,
 #timeoutWarning.hidden { display: none !important; }
-
 #inactivityWarning > div,
 #timeoutWarning > div {
-  background:    var(--sewa-card-bg);
-  border-radius: var(--sewa-card-radius);
+  background:    var(--card-bg);
+  border-radius: var(--card-radius);
   padding:       2rem 2.5rem;
   text-align:    center;
   max-width:     380px;
   width:         90%;
-  box-shadow:    0 8px 32px rgba(0,0,0,0.22);
+  box-shadow:    0 8px 32px rgba(0,0,0,0.2);
 }
 
-/* ─── 18. Checkmark / Thank You ─────────────────────────────────────────────── */
+/* ─── 20. Checkmark / Thank You ─────────────────────────────────────────────── */
 .checkmark-container {
   display:         flex;
   flex-direction:  column;
   align-items:     center;
   justify-content: center;
   gap:             1.5rem;
-  padding:         2rem 1rem;
+  padding:         2rem 0;
   text-align:      center;
   width:           100%;
-  max-width:       700px;
 }
 .checkmark-circle {
   width:           96px;
   height:          96px;
-  background:      var(--sewa-orange);
+  background:      var(--orange);
   border-radius:   50%;
   display:         flex;
   align-items:     center;
   justify-content: center;
-  box-shadow:      0 4px 20px rgba(232,96,0,0.38);
+  box-shadow:      0 4px 20px rgba(232,96,0,0.35);
   animation:       pop-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
 }
 .checkmark-icon { width: 48px; height: 48px; }
@@ -702,49 +739,60 @@ section#surveyContent {
   stroke-dashoffset: 50;
   animation:         draw-check 0.5s 0.3s ease forwards;
 }
-@keyframes pop-in     { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes draw-check { to   { stroke-dashoffset: 0; } }
-#resetCountdown { color: var(--sewa-text-muted); font-size: 0.95rem; }
+@keyframes pop-in    { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes draw-check { to { stroke-dashoffset: 0; } }
+#resetCountdown { color: var(--text-muted); font-size: 1rem; margin-top: 0.25rem; }
 
-/* ─── 19. Visually Hidden ───────────────────────────────────────────────────── */
+/* ─── 21. Visually Hidden ───────────────────────────────────────────────────── */
 .visually-hidden {
   position: absolute !important; width: 1px !important; height: 1px !important;
   padding: 0 !important; margin: -1px !important; overflow: hidden !important;
   clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important;
 }
 
-/* ─── 20. Focus Ring (accessibility) ────────────────────────────────────────── */
-:focus-visible {
-  outline:        2px solid var(--sewa-orange);
-  outline-offset: 2px;
-  border-radius:  4px;
+/* ─── 22. Start Screen Animations (unchanged) ───────────────────────────────── */
+@keyframes subtle-pulse {
+  0%, 100% { transform: scale(1);     filter: brightness(100%); }
+  50%       { transform: scale(1.025); filter: brightness(110%); }
 }
+.animate-pulse { animation: subtle-pulse 6s infinite ease-in-out !important; will-change: transform; }
+.active-press  { transform: scale(0.96) !important; opacity: 0.8 !important; transition: transform 0.05s ease-out !important; animation: none !important; }
+#kioskVideo    { transform: none !important; animation: none !important; }
 
-/* ─── 21. Responsive ────────────────────────────────────────────────────────── */
-@media (max-width: 600px) {
-  :root {
-    --sewa-card-pad-v: 1rem;
-    --sewa-card-pad-h: 1.125rem;
-    --sewa-page-pad:   0.875rem;
-    --sewa-option-h:   50px;
-  }
-  .emoji-radio-group label {
-    width: 56px; height: 56px; min-width: 56px; min-height: 56px;
-  }
-  .emoji-radio-group label > span.emoji-glyph,
-  .emoji-radio-group label > .text-2xl,
-  .emoji-radio-group label > .text-3xl { font-size: 1.375rem; }
-}
+/* ─── 23. Touch / iOS Fixes ─────────────────────────────────────────────────── */
+input, textarea, button, select { font-size: 16px !important; }
+button { cursor: pointer; }
 
+/* ─── 24. Responsive — landscape iPad 10.9" (1180×820 logical px) ───────────── */
 @media (min-width: 1024px) {
-  :root { --sewa-page-pad: 2rem; }
-  .header-card,
-  #questionContainer,
-  #buttonContainer { max-width: 720px; }
-  .admin-active .header-card { max-width: 100%; }
+  :root {
+    --page-h-pad: 40px;
+    --page-v-pad: 20px;
+    --col-max:    860px;
+  }
+  #surveyContent { padding: 28px 28px 22px !important; }
+  .emoji-radio-group label > span:first-child { font-size: 2.5rem; width: 2.7rem; height: 2.7rem; }
+  .star-rating label.star { font-size: 3rem; }
+  .number-scale-group label { min-width: 52px; min-height: 52px; }
 }
 
-/* ─── 22. Print ─────────────────────────────────────────────────────────────── */
+/* Compact fallback for smaller / portrait */
+@media (max-width: 768px) {
+  :root {
+    --page-h-pad: 16px;
+    --page-v-pad: 12px;
+    --col-max:    100%;
+    --card-gap:   8px;
+  }
+  #surveyContent { padding: 16px 16px 14px !important; }
+  header { padding: 10px 16px 0; }
+  .location-radio-group, .checkbox-group {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+  }
+}
+
+/* ─── 25. Print ─────────────────────────────────────────────────────────────── */
 @media print {
-  #adminControls, #inactivityWarning, #timeoutWarning, #buttonContainer { display: none !important; }
+  #adminControls, #inactivityWarning, #timeoutWarning,
+  #buttonContainer, #progressBarContainer { display: none !important; }
 }

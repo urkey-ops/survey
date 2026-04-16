@@ -3,8 +3,8 @@
 // VERSION: 9.3.0 - FIXED: removed self.navigator.onLine usage, safer fetch/cache logic
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v19';
-const RUNTIME_CACHE = 'kiosk-runtime-v19';
+const CACHE_NAME    = 'kiosk-survey-v20';
+const RUNTIME_CACHE = 'kiosk-runtime-v20';
 const MEDIA_CACHE   = 'kiosk-media-v1'; // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation

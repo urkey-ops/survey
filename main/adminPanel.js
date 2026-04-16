@@ -1,6 +1,6 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel optimized for offline-first iPad kiosk PWA
-// VERSION: 7.3.0 - post-reset unlock resilience
+// VERSION: 7.4.0 - delegated unlock listener for post-reset DOM changes
 // DEPENDENCIES: window.globals, window.dataHandlers, window.CONSTANTS, window.KIOSK_CONFIG
 
 const CLEAR_PASSWORD = '8765';
@@ -28,7 +28,6 @@ let handleTitleClick = null;
 let unlockTapCount = 0;
 let unlockTapTimeout = null;
 let unlockLastTapTime = 0;
-let unlockBoundTitle = null;
 
 function isClearLocalLocked() {
   if (!lockoutUntil) return false;
@@ -523,27 +522,39 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
   console.log('[ADMIN] ✅ Survey type switcher built');
 }
 
+function isAdminTitleTapTarget(target) {
+  if (!target || !(target instanceof Element)) return false;
+
+  const configuredTitle = window.globals?.mainTitle;
+  if (configuredTitle && (target === configuredTitle || configuredTitle.contains(target))) {
+    return true;
+  }
+
+  const idMatch = target.closest('#mainTitle');
+  if (idMatch) return true;
+
+  const dataMatch = target.closest('[data-admin-unlock], [data-main-title], .main-title, .app-title, header h1');
+  if (dataMatch) return true;
+
+  return false;
+}
+
 function bindAdminUnlock() {
-  const mainTitle = window.globals?.mainTitle || document.getElementById('mainTitle');
-  if (!mainTitle) {
-    console.warn('[ADMIN] ⚠️ mainTitle missing for unlock binding');
-    return;
+  if (handleTitleClick) {
+    document.removeEventListener('pointerup', handleTitleClick, true);
+    document.removeEventListener('touchend', handleTitleClick, true);
+    document.removeEventListener('click', handleTitleClick, true);
   }
 
-  if (unlockBoundTitle && handleTitleClick) {
-    unlockBoundTitle.removeEventListener('pointerup', handleTitleClick);
-    unlockBoundTitle.removeEventListener('touchend', handleTitleClick);
-    unlockBoundTitle.removeEventListener('click', handleTitleClick);
-  }
-
-  unlockBoundTitle = mainTitle;
   unlockTapCount = 0;
-  unlockTapTimeout = null;
   unlockLastTapTime = 0;
+  if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
+  unlockTapTimeout = null;
 
   handleTitleClick = (e) => {
-    e.preventDefault?.();
-    e.stopPropagation?.();
+    const target = e.target;
+
+    if (!isAdminTitleTapTarget(target)) return;
 
     const now = Date.now();
     if (now - unlockLastTapTime < 250) return;
@@ -566,17 +577,15 @@ function bindAdminUnlock() {
     }
   };
 
-  mainTitle.style.pointerEvents = 'auto';
-  mainTitle.style.touchAction = 'manipulation';
-  mainTitle.addEventListener('pointerup', handleTitleClick, { passive: false });
-  mainTitle.addEventListener('touchend', handleTitleClick, { passive: false });
-  mainTitle.addEventListener('click', handleTitleClick);
+  document.addEventListener('pointerup', handleTitleClick, true);
+  document.addEventListener('touchend', handleTitleClick, true);
+  document.addEventListener('click', handleTitleClick, true);
 
-  console.log('[ADMIN] ✅ Unlock bound to mainTitle');
+  console.log('[ADMIN] ✅ Delegated unlock listener attached');
 }
 
 window.inspectAdminHitTarget = function() {
-  const x = window.innerWidth / 2;
+  const x = Math.round(window.innerWidth / 2);
   const y = 24;
   const el = document.elementFromPoint(x, y);
   const stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [];
@@ -836,11 +845,15 @@ export function setupAdminPanel() {
         if (syncStatusMessage) syncStatusMessage.textContent = '✅ Update check complete';
       } catch (error) {
         console.error('[ADMIN] ❌ Update check failed:', error);
-        if (syncStatusMessage) syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
+        if (syncStatusMessage) {
+          syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
+        }
         alert(`❌ Update check failed:\n\n${error.message}`);
       }
 
-      setTimeout(() => { if (syncStatusMessage) syncStatusMessage.textContent = ''; }, 4000);
+      setTimeout(() => {
+        if (syncStatusMessage) syncStatusMessage.textContent = '';
+      }, 4000);
     });
     console.log('[ADMIN] ✅ Check Update button handler attached');
   } else {
@@ -968,7 +981,7 @@ export function setupAdminPanel() {
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.3.0 — post-reset unlock resilience)');
+  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.4.0 — delegated unlock)');
   console.log('═══════════════════════════════════════════════════════');
   console.log(` Mode:           Offline-First iPad Kiosk PWA`);
   console.log(` Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
@@ -983,11 +996,13 @@ export function cleanupAdminPanel() {
   if (onlineHandler) window.removeEventListener('online', onlineHandler);
   if (offlineHandler) window.removeEventListener('offline', offlineHandler);
 
-  if (unlockBoundTitle && handleTitleClick) {
-    unlockBoundTitle.removeEventListener('pointerup', handleTitleClick);
-    unlockBoundTitle.removeEventListener('touchend', handleTitleClick);
-    unlockBoundTitle.removeEventListener('click', handleTitleClick);
+  if (handleTitleClick) {
+    document.removeEventListener('pointerup', handleTitleClick, true);
+    document.removeEventListener('touchend', handleTitleClick, true);
+    document.removeEventListener('click', handleTitleClick, true);
   }
+
+  if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
 
   autoHideTimer = null;
   autoHideStartTime = null;
@@ -995,7 +1010,6 @@ export function cleanupAdminPanel() {
   onlineHandler = null;
   offlineHandler = null;
   handleTitleClick = null;
-  unlockBoundTitle = null;
   unlockTapCount = 0;
   unlockTapTimeout = null;
   unlockLastTapTime = 0;
@@ -1067,8 +1081,8 @@ window.systemStatus = function() {
   console.log(`Analytics:      ${analytics.length}/${CONSTANTS.MAX_ANALYTICS_SIZE} events`);
   console.log(`Sync Status:    ${syncInProgress ? '⏳ In Progress' : '✅ Idle'}`);
   console.log(`Analytics Sync: ${analyticsInProgress ? '⏳ In Progress' : '✅ Idle'}`);
-  console.log(`Last Sync:      ${lastSync ? new Date(parseInt(lastSync)).toLocaleString() : 'Never'}`);
-  console.log(`Last Analytics: ${lastAnalytics ? new Date(parseInt(lastAnalytics)).toLocaleString() : 'Never'}`);
+  console.log(`Last Sync:      ${lastSync ? new Date(parseInt(lastSync, 10)).toLocaleString() : 'Never'}`);
+  console.log(`Last Analytics: ${lastAnalytics ? new Date(parseInt(lastAnalytics, 10)).toLocaleString() : 'Never'}`);
   if (isClearLocalLocked()) {
     console.log(`🔒 Clear Local: LOCKED (${getRemainingLockoutTime()} min remaining)`);
   }
@@ -1080,6 +1094,7 @@ console.log('🛠️ DEBUG COMMANDS');
 console.log('═══════════════════════════════════════════════════════');
 console.log('📋 window.inspectQueue()  — View both queues');
 console.log('🖥️ window.systemStatus() — View system status');
+console.log('🎯 window.inspectAdminHitTarget() — Inspect top hit target');
 console.log('═══════════════════════════════════════════════════════');
 
 export default { setupAdminPanel, cleanupAdminPanel };

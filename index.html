@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kiosk Survey</title>
 
-    <!-- PWA Meta Tags -->
     <meta name="description" content="Share your visit experience through our interactive kiosk survey">
     <meta name="theme-color" content="#10b981">
     <meta name="mobile-web-app-capable" content="yes">
@@ -13,35 +12,27 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Kiosk Survey">
 
-    <!-- Favicon Links -->
     <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
-
-    <!-- Apple Touch Icons -->
     <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
     <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
     <link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144x144.png">
-
-    <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
 
     <link rel="stylesheet" href="dist/output.css">
     <link rel="stylesheet" href="custom.css">
 
     <style>
-      /* ── iOS kiosk hard lock: prevent all zoom ── */
       html, body {
         overscroll-behavior: none;
         -webkit-text-size-adjust: 100%;
       }
 
-      /* Disable text-selection & callout everywhere except inputs */
       body, main, section {
         -webkit-user-select: none;
         -webkit-touch-callout: none;
       }
 
-      /* CRITICAL: Allow touch on video and start screen for iOS playback */
       #kioskStartScreen, #kioskVideo, video {
         touch-action: auto !important;
       }
@@ -56,7 +47,6 @@
         font-size: 16px !important;
       }
 
-      /* ── Subtle pulse animation for start screen heading ── */
       @keyframes subtle-pulse {
         0%   { transform: scale(1);     filter: brightness(100%); }
         50%  { transform: scale(1.025); filter: brightness(110%); }
@@ -75,14 +65,12 @@
         animation: none !important;
       }
 
-      /* Video must never animate */
       #kioskVideo {
         transform: none !important;
         animation: none !important;
         margin: 0 !important;
       }
 
-      /* ── ADMIN MODE ── */
       .admin-active #mainTitle {
         display: none !important;
       }
@@ -103,11 +91,7 @@
       window.globals = {};
     </script>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         START SCREEN
-         ═══════════════════════════════════════════════════════════════ -->
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center" aria-hidden="false">
-
         <div class="mb-8 content">
             <h2 class="text-3xl font-bold text-center text-white animate-pulse">
                 Share Your Visit Experience
@@ -132,23 +116,10 @@
                 Tap anywhere to begin
             </p>
         </div>
-
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         MAIN SURVEY
-         ═══════════════════════════════════════════════════════════════ -->
     <main class="w-full flex flex-col">
-
-        <!--
-          Header uses CSS Grid (custom.css):
-            row 1 col 1 = #mainTitle
-            row 1 col 2 = #adminControls
-            row 2 col 1-2 = #progressBarContainer (full bleed)
-          NO flex classes here — custom.css owns the layout entirely.
-        -->
         <header>
-
             <h1 id="mainTitle" data-admin-unlock="true">Share Your Visit Experience</h1>
 
             <div id="adminControls">
@@ -172,31 +143,22 @@
                 </div>
             </div>
 
-            <!-- Progress bar: grid row 2, full-bleed inside header card -->
             <div id="progressBarContainer">
                 <div id="progressBar"></div>
                 <span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
             </div>
-
         </header>
 
-        <!-- Survey section -->
         <section id="surveyContent" class="flex-1 flex flex-col">
-
             <div id="questionContainer" class="flex-1 flex flex-col justify-start"></div>
 
             <div id="buttonContainer" class="flex justify-between items-center">
                 <button id="prevBtn" type="button">Back</button>
                 <button id="nextBtn" type="button">Next</button>
             </div>
-
         </section>
-
     </main>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         GLOBAL ERROR BOUNDARY
-         ═══════════════════════════════════════════════════════════════ -->
     <script>
       window.addEventListener('error', function(e) {
         console.error('🚨 [GLOBAL ERROR]', e.message, e.filename, e.lineno);
@@ -233,7 +195,6 @@
       });
     </script>
 
-    <!-- App scripts -->
     <script src="pwa-update-manager.js"></script>
     <script src="config.js"></script>
     <script src="appState.js"></script>
@@ -243,7 +204,6 @@
     <script type="module" src="main/index.js"></script>
 
     <script>
-      /* ── Checkmark / thank-you display ── */
       window.showCheckmark = function() {
         const container = document.getElementById('questionContainer');
         if (!container) { console.error('[CHECKMARK] questionContainer not found'); return; }
@@ -264,10 +224,10 @@
         svg.appendChild(path);
         circleDiv.appendChild(svg);
 
-        const textDiv  = document.createElement('div');
+        const textDiv = document.createElement('div');
         textDiv.className = 'text-center';
 
-        const heading  = document.createElement('h2');
+        const heading = document.createElement('h2');
         heading.className = 'text-2xl font-bold text-gray-800 mb-2';
         heading.textContent = 'Thank you for your feedback!';
 
@@ -286,12 +246,10 @@
         console.log('[CHECKMARK] Display function executed successfully');
       };
 
-      /* ── Prevent zoom on iPad ── */
       document.addEventListener('gesturestart',  function(e) { e.preventDefault(); });
       document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
       document.addEventListener('gestureend',    function(e) { e.preventDefault(); });
 
-      /* ── Block double-tap zoom ── */
       let lastTouchEnd = 0;
       document.addEventListener('touchend', function(e) {
         const target = e.target;
@@ -311,7 +269,6 @@
         if (e.touches && e.touches.length > 1) e.preventDefault();
       }, { passive: false });
 
-      /* ── Visual Viewport API: keyboard height → CSS variable ── */
       if (window.visualViewport) {
         function updateKeyboardHeight() {
           const keyboardHeight = Math.max(
@@ -332,6 +289,5 @@
         window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
       }
     </script>
-
 </body>
 </html>

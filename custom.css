@@ -47,9 +47,26 @@ body {
   align-items:     center;
   justify-content: center;
   overflow:        hidden;
+  /* WHITE text so headings/paragraphs are visible on black background */
+  color:           #FFFFFF;
 }
 #kioskStartScreen.hidden {
   display: none !important;
+}
+/* Force white on all text descendants of start screen */
+#kioskStartScreen h1,
+#kioskStartScreen h2,
+#kioskStartScreen h3,
+#kioskStartScreen p,
+#kioskStartScreen span {
+  color: #FFFFFF;
+}
+/* "Tap anywhere to begin" — extra visibility */
+#rotatingQuestion {
+  color:       #FFFFFF;
+  font-weight: 600;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+  text-align:  center;
 }
 
 /* ── Main survey: full-screen, hidden until JS shows it ── */
@@ -99,33 +116,38 @@ label {
 }
 
 /* ─── 3. Progress Bar ───────────────────────────────────────────────────────── */
+/* Progress bar now lives between <header> and <section> as a direct main child.
+   It is NO LONGER position:absolute — it's in normal flow, full width flush stripe. */
 #progressBarContainer {
-  position:   relative;
-  width:      100%;
-  height:     8px;
-  background: #E5E7EB; /* gray-200 */
-  border-radius: 99px;
-  overflow:   visible; /* allow step counter to sit above */
+  position:      relative;
+  width:         100%;
+  flex-shrink:   0;           /* don't shrink inside main flex column */
+  height:        6px;
+  background:    #E5E7EB;
+  border-radius: 0;           /* flush edge-to-edge stripe */
+  overflow:      visible;     /* stepCounter sits above */
 }
 
 #progressBar {
-  height:     100%;
-  background: var(--sewa-orange);
-  border-radius: 99px;
-  transition: width 0.4s ease;
-  min-width:  0;
+  height:        100%;
+  background:    var(--sewa-orange);
+  border-radius: 0;
+  transition:    width 0.4s ease;
+  min-width:     0;
 }
 
-/* Step counter badge sitting top-right of progress bar */
+/* Step counter — floats above the right end of the bar, above the survey content */
 #stepCounter {
-  position:   absolute;
-  right:      0;
-  top:        -22px;
-  font-size:  0.7rem;
+  position:    absolute;
+  right:       1rem;
+  top:         -22px;
+  font-size:   0.7rem;
   font-weight: 600;
-  color:      #6B7280; /* gray-500 */
+  color:       #6B7280;
   white-space: nowrap;
   line-height: 1;
+  background:  #F0F2F5;       /* match body bg so it reads cleanly */
+  padding:     0 0.25rem;
 }
 
 /* ─── 4. Survey Card / Question Wrapper ─────────────────────────────────────── */
@@ -133,8 +155,8 @@ label {
 .question-card {
   background:    #FFFFFF;
   border-radius: var(--sewa-radius);
-  box-shadow:    var(--sewa-shadow);
-  padding:       1.5rem;
+  box-shadow:    0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
+  padding:       1.75rem 2rem;
   width:         100%;
 }
 
@@ -210,18 +232,33 @@ label.block.text-gray-700.font-semibold {
 }
 
 /* ─── 8. Location / Radio-with-Other ────────────────────────────────────────── */
-/* Layout (grid grid-cols-2 sm:grid-cols-3) owned by Tailwind */
+/* OVERRIDE Tailwind grid with auto-fill so columns size to content,
+   never too narrow. This prevents long labels from wrapping badly. */
+.location-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+  gap:                   0.625rem !important;
+  width:                 100%;
+}
+
 .location-radio-group label {
-  border:        var(--sewa-border);
-  border-radius: var(--sewa-radius-sm);
-  transition:    var(--sewa-transition);
-  cursor:        pointer;
-  min-height:    56px;
-  display:       flex;
-  align-items:   center;
+  border:          var(--sewa-border);
+  border-radius:   var(--sewa-radius-sm);
+  transition:      var(--sewa-transition);
+  cursor:          pointer;
+  min-height:      60px;
+  display:         flex;
+  align-items:     center;
   justify-content: center;
-  text-align:    center;
-  line-height:   1.25;
+  text-align:      center;
+  line-height:     1.3;
+  padding:         0.625rem 0.875rem;
+  word-break:      break-word;
+  overflow-wrap:   anywhere;
+  hyphens:         auto;
+  font-size:       0.88rem;
+  font-weight:     500;
+  color:           #374151;
 }
 
 .location-radio-group label:active {
@@ -252,16 +289,29 @@ label.block.text-gray-700.font-semibold {
 
 /* ─── 9. Age / Simple Radio ──────────────────────────────────────────────────── */
 /* Layout (grid grid-cols-3) owned by Tailwind */
+.age-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap:                   0.625rem !important;
+  width:                 100%;
+}
+
 .age-radio-group label {
-  border:        var(--sewa-border);
-  border-radius: var(--sewa-radius-sm);
-  transition:    var(--sewa-transition);
-  cursor:        pointer;
-  min-height:    52px;
-  display:       flex;
-  align-items:   center;
+  border:          var(--sewa-border);
+  border-radius:   var(--sewa-radius-sm);
+  transition:      var(--sewa-transition);
+  cursor:          pointer;
+  min-height:      52px;
+  display:         flex;
+  align-items:     center;
   justify-content: center;
-  text-align:    center;
+  text-align:      center;
+  padding:         0.5rem 0.75rem;
+  word-break:      break-word;
+  overflow-wrap:   anywhere;
+  font-size:       0.88rem;
+  font-weight:     500;
+  color:           #374151;
 }
 
 .age-radio-group label:active {
@@ -274,16 +324,29 @@ label.block.text-gray-700.font-semibold {
 
 /* ─── 10. Followup Radio Group ───────────────────────────────────────────────── */
 /* Layout (grid grid-cols-2 sm:grid-cols-3) owned by Tailwind */
+.followup-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap:                   0.625rem !important;
+  width:                 100%;
+}
+
 .followup-radio-group label {
-  border:        var(--sewa-border);
-  border-radius: var(--sewa-radius-sm);
-  transition:    var(--sewa-transition);
-  cursor:        pointer;
-  min-height:    52px;
-  display:       flex;
-  align-items:   center;
+  border:          var(--sewa-border);
+  border-radius:   var(--sewa-radius-sm);
+  transition:      var(--sewa-transition);
+  cursor:          pointer;
+  min-height:      52px;
+  display:         flex;
+  align-items:     center;
   justify-content: center;
-  text-align:    center;
+  text-align:      center;
+  padding:         0.5rem 0.75rem;
+  word-break:      break-word;
+  overflow-wrap:   anywhere;
+  font-size:       0.88rem;
+  font-weight:     500;
+  color:           #374151;
 }
 
 .followup-radio-group label:active {
@@ -334,12 +397,29 @@ label.block.text-gray-700.font-semibold {
 
 /* ─── 11. Checkbox-with-Other ────────────────────────────────────────────────── */
 /* Layout (grid grid-cols-2 sm:grid-cols-3) owned by Tailwind */
+.checkbox-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+  gap:                   0.625rem !important;
+  width:                 100%;
+}
+
 .checkbox-group label {
   border:        var(--sewa-border);
   border-radius: var(--sewa-radius-sm);
   transition:    var(--sewa-transition);
   cursor:        pointer;
   min-height:    52px;
+  padding:       0.5rem 0.75rem;
+  display:       flex;
+  align-items:   center;
+  gap:           0.5rem;
+  word-break:    break-word;
+  overflow-wrap: anywhere;
+  font-size:     0.88rem;
+  font-weight:   500;
+  line-height:   1.3;
+  color:         #374151;
 }
 
 .checkbox-group label:active {
@@ -784,8 +864,12 @@ textarea:focus,
 /* ── FIX 3: Admin header uses FULL viewport width ───────────────────────────── */
 /* Admin controls can overflow 680px column — break out of it */
 main > header {
-  max-width: 100%;       /* header always full width */
+  max-width:      100%;
   padding-inline: 1.5rem;
+  /* FIX B: progress bar is absolute bottom:0 inside header.
+     Add padding-bottom so the bar sits INSIDE header space,
+     not overlapping the section below it. */
+  /* padding-bottom managed by header py-5 class — progress bar now outside header */
 }
 
 /* Keep only the survey section centred */
@@ -835,10 +919,10 @@ main > section {
 
 /* ── FIX 6: Landscape orientation — reduce vertical density ─────────────────── */
 @media (orientation: landscape) and (min-width: 768px) {
-  /* Tighter header */
+  /* Tighter header — keep bottom padding for progress bar clearance */
   main > header {
     padding-top:    0.5rem;
-    padding-bottom: 0.5rem;
+    padding-bottom: 1rem;  /* must keep space for absolute progress bar */
   }
 
   /* Tighter question card */
@@ -896,4 +980,39 @@ main > section {
   #progressBarContainer {
     display: none !important;
   }
+}
+
+/* ─── 24. Layout: fix question card not stretching to fill viewport ────────────
+   The HTML has section { flex-1 flex flex-col justify-center } which means
+   on large screens the card is centred with dead space above it.
+   We override to use justify-start + auto top margin so the card sits
+   near the top with comfortable breathing room, not dead-centre. ────────────── */
+#surveyContent {
+  justify-content: flex-start !important;
+  padding-top: 2rem !important;
+  padding-bottom: calc(1rem + var(--keyboard-height, 0px)) !important;
+}
+
+/* Question container: natural height, don't force vertical centering */
+#questionContainer {
+  flex: 0 0 auto !important;      /* don't grow to fill all space */
+  justify-content: flex-start !important;
+}
+
+/* Button container: natural margin-top, not pushed to bottom of flex */
+#buttonContainer {
+  margin-top: 1.5rem;
+  flex-shrink: 0;
+}
+
+/* Number scale: prevent wrapping at larger sizes */
+.number-scale-group {
+  display:    flex !important;
+  flex-wrap:  nowrap !important;
+  gap:        0.375rem !important;
+  overflow-x: auto;              /* scroll rather than wrap if too tight */
+}
+
+.number-scale-group label {
+  flex-shrink: 0;
 }

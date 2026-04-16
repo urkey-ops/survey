@@ -35,8 +35,8 @@
         -webkit-text-size-adjust: 100%;
       }
 
-      /* Disable text-selection & callout everywhere except inputs/buttons/admin */
-      body, main, section, div:not(#kioskStartScreen):not(#mainTitle):not(header) {
+      /* Disable text-selection & callout everywhere except inputs */
+      body, main, section {
         -webkit-user-select: none;
         -webkit-touch-callout: none;
       }
@@ -44,26 +44,6 @@
       /* CRITICAL: Allow touch on video and start screen for iOS playback */
       #kioskStartScreen, #kioskVideo, video {
         touch-action: auto !important;
-      }
-
-      /* ADMIN PANEL: Make title easier to tap on iPad PWA */
-      #mainTitle {
-        touch-action: manipulation !important;
-        -webkit-user-select: none !important;
-        -webkit-touch-callout: none !important;
-        cursor: pointer;
-        padding: 12px 16px !important;
-        margin: -12px -16px !important;
-        min-height: 44px;
-        display: inline-flex;
-        align-items: center;
-        border-radius: 8px;
-        transition: background-color 0.15s ease;
-      }
-
-      #mainTitle:active {
-        background-color: rgba(16, 185, 129, 0.15);
-        transform: scale(0.98);
       }
 
       header {
@@ -95,34 +75,29 @@
         animation: none !important;
       }
 
-      /* Video must never animate — it has its own loop */
+      /* Video must never animate */
       #kioskVideo {
         transform: none !important;
         animation: none !important;
         margin: 0 !important;
       }
 
-      /* ── ADMIN MODE: Hide title, maximise button space ── */
+      /* ── ADMIN MODE ── */
       .admin-active #mainTitle {
         display: none !important;
       }
-
       .admin-active #adminControls {
         width: 100% !important;
         justify-content: center !important;
         gap: 10px !important;
       }
-
       .admin-active header {
         padding: 16px 24px !important;
-        justify-content: center !important;
       }
-
       .admin-active #adminControls .flex {
         flex-wrap: wrap !important;
         justify-content: center !important;
       }
-
       .admin-active #adminControls button {
         min-width: 110px !important;
         padding: 10px 16px !important;
@@ -130,32 +105,18 @@
     </style>
 </head>
 
-<!--
-  body classes:
-  - Tailwind's flex/items-center/justify-center removed — custom.css sets
-    body { display:block } so main and kioskStartScreen stack as fixed layers.
-  - p-4/sm:p-8 padding removed — both full-screen layers handle their own spacing.
--->
 <body class="min-h-screen">
 
-    <!--
-      window.globals MUST be initialised before any module calls initializeElements().
-      Without this, window.globals.kioskVideo = ... throws TypeError and all globals
-      stay undefined.
-    -->
     <script>
       window.globals = {};
     </script>
 
     <!-- ═══════════════════════════════════════════════════════════════
          START SCREEN
-         Full-screen black overlay with video loop.
-         FIX: text-white on h2 and p — without it text is invisible on #000 bg.
          ═══════════════════════════════════════════════════════════════ -->
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
 
         <div class="mb-8 content">
-            <!-- FIX A: added text-white — was black text on black background -->
             <h2 class="text-3xl font-bold text-center text-white animate-pulse">
                 Share Your Visit Experience
             </h2>
@@ -175,7 +136,6 @@
         </video>
 
         <div class="mt-12 content">
-            <!-- FIX A: added text-white — was invisible on black background -->
             <p id="rotatingQuestion" class="tap-prompt text-xl text-white font-semibold text-center">
                 Tap anywhere to begin
             </p>
@@ -185,26 +145,26 @@
 
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN SURVEY
-         Full-screen flex column: header → progress bar → survey content.
-         FIX B: progressBarContainer moved OUT of header into its own
-                sibling element — was position:absolute inside header,
-                overlapping the question heading below.
          ═══════════════════════════════════════════════════════════════ -->
     <main class="w-full flex flex-col">
 
-        <!-- Header: title + admin controls only (NO progress bar inside) -->
-        <header class="py-5 px-6 flex justify-between items-center">
+        <!--
+          Header uses CSS Grid (custom.css):
+            row 1 col 1 = #mainTitle
+            row 1 col 2 = #adminControls
+            row 2 col 1-2 = #progressBarContainer (full bleed)
+          NO flex classes here — custom.css owns the layout entirely.
+        -->
+        <header>
 
-            <h1 id="mainTitle" class="cursor-pointer">Share Your Visit Experience</h1>
+            <h1 id="mainTitle">Share Your Visit Experience</h1>
 
-            <div id="adminControls" class="flex flex-col items-end space-y-2">
+            <div id="adminControls">
                 <p class="text-xs font-medium text-emerald-600">
                     Unsynced Records: <span id="unsyncedCountDisplay">0</span>
                 </p>
-
                 <div class="flex items-center space-x-2">
                     <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span>
-
                     <button id="syncButton">Sync Data</button>
                     <button id="syncAnalyticsButton">Sync Analytics</button>
                     <button id="adminClearButton">Clear Local</button>
@@ -214,31 +174,22 @@
                 </div>
             </div>
 
-           <!-- ── FIX B: Progress bar is NOW a direct child of <main>, ──
-             between header and section. It is in normal flow — no longer
-             position:absolute inside the header where it overlapped content. -->
-        <div id="progressBarContainer" class="w-full relative" style="height:6px; background:#E5E7EB; flex-shrink:0;">
-            <div id="progressBar"
-                 class="bg-orange-500 transition-all duration-300 will-change-width"
-                 style="height:100%; width:0%; border-radius:0;">
+            <!-- Progress bar: grid row 2, full-bleed inside header card -->
+            <div id="progressBarContainer">
+                <div id="progressBar"></div>
+                <span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
             </div>
-            <span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
-        </div>
 
         </header>
 
-       
+        <!-- Survey section -->
+        <section id="surveyContent" class="flex-1 flex flex-col">
 
-        <!-- Survey section: scrollable, flex column, fills remaining height -->
-        <section id="surveyContent" class="px-6 py-6 flex-1 flex flex-col">
+            <div id="questionContainer" class="flex-1 flex flex-col justify-start"></div>
 
-            <!-- Question container — grows to fill space, content centred vertically -->
-            <div id="questionContainer" class="flex-1 flex flex-col justify-center"></div>
-
-            <!-- Navigation buttons — sticky above keyboard (custom.css handles this) -->
-            <div id="buttonContainer" class="flex justify-between items-center pt-6">
-                <button id="prevBtn" type="button" class="px-6 py-2.5">Back</button>
-                <button id="nextBtn" type="button" class="px-6 py-2.5">Next</button>
+            <div id="buttonContainer" class="flex justify-between items-center">
+                <button id="prevBtn" type="button">Back</button>
+                <button id="nextBtn" type="button">Next</button>
             </div>
 
         </section>
@@ -293,9 +244,6 @@
     <script type="module" src="uiHandlers.js"></script>
     <script type="module" src="main/index.js"></script>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         INLINE UTILITIES
-         ═══════════════════════════════════════════════════════════════ -->
     <script>
       /* ── Checkmark / thank-you display ── */
       window.showCheckmark = function() {
@@ -345,7 +293,7 @@
       document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
       document.addEventListener('gestureend',    function(e) { e.preventDefault(); });
 
-      /* ── Block double-tap zoom, but allow taps on admin/header area ── */
+      /* ── Block double-tap zoom ── */
       let lastTouchEnd = 0;
       document.addEventListener('touchend', function(e) {
         const target = e.target;
@@ -372,17 +320,13 @@
           e.stopPropagation();
           this.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
         }, { passive: false });
-
         mainTitle.addEventListener('touchend', function(e) {
           e.stopPropagation();
           setTimeout(() => { this.style.backgroundColor = ''; }, 100);
         }, { passive: false });
       }
 
-      /* ── Visual Viewport API: keyboard height → CSS variable ──
-         iOS soft keyboard overlays the screen (doesn't resize viewport).
-         This tracks the keyboard height and stores it as --keyboard-height
-         so CSS can push #buttonContainer and #surveyContent above it. */
+      /* ── Visual Viewport API: keyboard height → CSS variable ── */
       if (window.visualViewport) {
         function updateKeyboardHeight() {
           const keyboardHeight = Math.max(
@@ -390,8 +334,6 @@
             window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop
           );
           document.documentElement.style.setProperty('--keyboard-height', keyboardHeight + 'px');
-
-          /* Scroll focused input into view above keyboard */
           const focused = document.activeElement;
           if (keyboardHeight > 0 && focused &&
               (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT')) {

@@ -200,7 +200,7 @@ export function cleanupInputFocusScroll() {
   }
 }
 
-/**
+// FILE: 
 
 export function showQuestion(index) {
   const { globals } = getDependencies();
@@ -323,6 +323,7 @@ function _renderQuestion(index) {
     });
   }
 }
+
 
 /**
  * Navigate to the next question or submit survey

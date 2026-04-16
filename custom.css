@@ -1,79 +1,84 @@
 /* =============================================================================
-   custom.css — Sewa Kiosk v4.1.0
-   Fixes applied:
-   - Single orange token (#E86000) used everywhere — no Tailwind orange-500 conflict
-   - Typography scale with clear hierarchy (question > option > helper)
-   - Emoji labels forced to equal width+height squares (not ovals)
-   - Radio/checkbox grids use fixed column counts to prevent orphan items
-   - Admin buttons use CSS classes, not inline style overrides
-   - Pulse animation defined once (here only, removed from <style> block)
-   - Video constrained with aspect-ratio and width
-   - Progress bar is a clean structural sibling, no position:absolute hacks
-   - body overflow hidden + main overflow-y auto kept but with scroll-lock fallback
+   custom.css — Sewa Kiosk v5.0.0
+   Full audit fix — all conflicts from v4 review resolved.
+
+   FIXES IN THIS VERSION:
+   #1  questionContainer: flex:1 so it fills card space properly
+   #2  Removed conflicting justify-content:center from questionContainer
+   #3  Unified padding rhythm: 1.5rem throughout
+   #4  Type scale: question 1.15rem vs label 0.875rem — clear hierarchy
+   #5  font-size:16px only on <input>/<textarea> (not buttons) — preserves hierarchy
+   #6  Option labels: fixed height 56px + padding:0 so ALL cells align evenly
+   #7  Emoji labels: explicit width=height=72px enforced — true circles
+   #8  Single orange: --sewa-orange:#E86000 everywhere; progressBar uses it too
+   #9  Admin buttons get a proper secondary style (not default white)
+   #10 Admin header layout: uses its own non-conflicting max-width column
+   #11 #fixVideoButton inline style removed from HTML (handled here)
+   #12 animate-pulse defined ONLY here (remove from index.html <style>)
+   #13 Video gets width:100%;max-width:560px;aspect-ratio:16/9
+   #14 Structural: main is the scroll region, body overflow-y:auto fallback
+   #15 progressBar max-width override removed — handled by structural exception
    ============================================================================= */
 
 /* ─── 0. Design Tokens ──────────────────────────────────────────────────────── */
 :root {
-  /* Brand */
-  --brand:          #E86000;
-  --brand-dark:     #C45200;
-  --brand-light:    #FFF3EB;
-  --brand-glow:     rgba(232, 96, 0, 0.22);
+  /* Brand — ONE orange, used everywhere */
+  --sewa-orange:        #E86000;
+  --sewa-orange-dark:   #C45200;
+  --sewa-orange-hover:  rgba(232, 96, 0, 0.08);
+  --sewa-orange-ring:   rgba(232, 96, 0, 0.25);
 
-  /* Neutral surface */
-  --bg-page:        #ECEEF2;
-  --bg-card:        #FFFFFF;
-  --bg-option:      #FAFAFA;
-  --bg-option-hover:#F3F4F6;
+  /* Type scale — clear hierarchy */
+  --sewa-text-question: 1.15rem;  /* question heading */
+  --sewa-text-label:    0.875rem; /* option labels     */
+  --sewa-text-body:     0.95rem;  /* body / helper     */
+  --sewa-text-small:    0.75rem;  /* meta / admin      */
 
-  /* Text */
-  --text-primary:   #111827;
-  --text-secondary: #374151;
-  --text-muted:     #6B7280;
-  --text-danger:    #DC2626;
-
-  /* Borders */
-  --border:         1.5px solid #D1D5DB;
-  --border-sel:     2px solid var(--brand);
-  --border-color:   #D1D5DB;
-  --border-hover:   #9CA3AF;
+  /* Spacing — consistent 1.5rem rhythm */
+  --sewa-space:         1.5rem;
+  --sewa-space-sm:      0.75rem;
+  --sewa-space-xs:      0.375rem;
 
   /* Shape */
-  --radius:         0.875rem;
-  --radius-sm:      0.5rem;
-  --radius-xs:      0.375rem;
+  --sewa-radius:        0.875rem; /* card */
+  --sewa-radius-sm:     0.5rem;   /* option buttons */
+  --sewa-radius-xs:     0.375rem; /* small elements */
 
-  /* Shadow */
-  --shadow-card:    0 2px 16px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
-  --shadow-btn:     0 2px 6px var(--brand-glow);
+  /* Option cells — fixed height so grid rows align */
+  --sewa-option-h:      56px;
+
+  /* Borders */
+  --sewa-border:        1.5px solid #D1D5DB;
+
+  /* Shadows */
+  --sewa-shadow:        0 2px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --sewa-shadow-btn:    0 2px 6px rgba(232,96,0,0.30);
 
   /* Motion */
-  --ease:           all 0.16s ease;
+  --sewa-ease:          cubic-bezier(0.4, 0, 0.2, 1);
+  --sewa-transition:    all 0.16s var(--sewa-ease);
 
-  /* Touch */
-  --tap-min:        52px;
-
-  /* Typography */
-  --font-q:         1.1rem;    /* question text */
-  --font-opt:       0.925rem;  /* option labels  */
-  --font-helper:    0.78rem;   /* helper / step counter */
-  --font-admin:     0.72rem;   /* admin buttons  */
+  /* Secondary (admin) */
+  --sewa-secondary:     #374151;
+  --sewa-secondary-bg:  #F1F3F5;
+  --sewa-secondary-hover: #E5E7EB;
 }
 
-/* ─── 1. Base / Body ────────────────────────────────────────────────────────── */
+/* ─── 1. Base ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* FIX #14: body overflow-y:auto as fallback if main fails to mount */
 body {
-  background:              var(--bg-page);
+  background:              #ECEEF2;
   min-height:              100vh;
   width:                   100%;
-  overflow:                hidden;
   display:                 block !important;
   padding:                 0 !important;
   margin:                  0;
-  font-family:             -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  overflow-y:              auto;        /* fallback — main overrides when mounted */
+  font-family:             -apple-system, 'Inter', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing:  antialiased;
-  color:                   var(--text-primary);
+  color:                   #111827;
 }
 
 label {
@@ -83,15 +88,13 @@ label {
   touch-action:          manipulation;
 }
 
-/* Inputs honour their own font size — no blanket 16px override that destroys hierarchy */
-input, textarea, select {
-  font-size:  1rem !important; /* exactly 1rem prevents iOS auto-zoom, keeps hierarchy */
-  font-family: inherit;
-}
-
-button {
-  cursor:     pointer;
-  font-family: inherit;
+/* FIX #5: only prevent zoom on real inputs — preserve font hierarchy elsewhere */
+input[type="text"],
+input[type="email"],
+input[type="number"],
+textarea,
+select {
+  font-size: 16px !important; /* prevents iOS zoom */
 }
 
 /* ─── 2. Start Screen ───────────────────────────────────────────────────────── */
@@ -106,9 +109,7 @@ button {
   justify-content: center;
   overflow:        hidden;
   color:           #fff;
-  gap:             0;
 }
-
 #kioskStartScreen.hidden { display: none !important; }
 
 #kioskStartScreen h1,
@@ -117,595 +118,508 @@ button {
 #kioskStartScreen p,
 #kioskStartScreen span { color: #fff; }
 
-/* Start heading — pulse defined HERE ONLY (removed from inline <style>) */
-.start-heading {
+/* "Tap anywhere to begin" */
+#rotatingQuestion {
   color:       #fff;
-  font-size:   clamp(1.5rem, 4vw, 2.25rem);
-  font-weight: 700;
+  font-weight: 600;
+  font-size:   var(--sewa-text-body);
+  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
   text-align:  center;
-  letter-spacing: -0.01em;
-  animation:   subtle-pulse 6s infinite ease-in-out;
-  will-change: transform;
+  margin-top:  var(--sewa-space);
 }
 
+/* FIX #13: video constrained — consistent across all iPad models */
+#kioskVideo {
+  width:        100%;
+  max-width:    560px;
+  aspect-ratio: 16 / 9;
+  object-fit:   cover;
+  border-radius: var(--sewa-radius);
+  transform:    none !important;  /* FIX #12: no pulse on video */
+  animation:    none !important;
+}
+
+/* FIX #12: animate-pulse defined ONLY here (delete from index.html <style>) */
 @keyframes subtle-pulse {
   0%, 100% { transform: scale(1);     filter: brightness(100%); }
   50%       { transform: scale(1.025); filter: brightness(110%); }
 }
-
-/* Tap prompt */
-#rotatingQuestion {
-  color:       #fff;
-  font-size:   1.1rem;
-  font-weight: 600;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
-  text-align:  center;
+.animate-pulse {
+  animation:    subtle-pulse 6s infinite ease-in-out !important;
+  will-change:  transform;
 }
-
-/* Video: constrained, never distorted */
-#kioskVideo {
-  width:        min(520px, 88vw);
-  aspect-ratio: 16 / 9;
-  object-fit:   cover;
-  border-radius: 0.75rem;
-  display:      block;
-  transform:    none !important;
-  animation:    none !important;
-  margin:       2rem 0;
-}
-
 .active-press {
-  transform:  scale(0.96) !important;
-  opacity:    0.8 !important;
-  transition: transform 0.05s ease-out !important;
-  animation:  none !important;
+  transform:    scale(0.96) !important;
+  opacity:      0.8 !important;
+  transition:   transform 0.05s ease-out !important;
+  animation:    none !important;
 }
 
 /* ─── 3. Main Survey Shell ──────────────────────────────────────────────────── */
+/* FIX #14: main is the ONE scroll region; body is fallback only */
 main {
-  position:        fixed !important;
-  inset:           0;
-  z-index:         50;
-  display:         none !important;
-  flex-direction:  column;
-  background:      var(--bg-page);
-  overflow:        hidden; /* main itself doesn't scroll — surveyContent does */
+  position:         fixed !important;
+  inset:            0;
+  z-index:          50;
+  display:          none !important;
+  flex-direction:   column;
+  background:       #ECEEF2;
+  overflow-y:       auto;
+  overflow-x:       hidden;
+  -webkit-overflow-scrolling: touch;
+  max-width:        100% !important;
+}
+main:not(.hidden) { display: flex !important; }
+
+/* FIX #15: structural column — header/section centred, progress bar full-width
+   Use a wrapper approach: header + section get margin:auto, bar does not. */
+main > header,
+main > section {
+  width:        100%;
+  max-width:    700px;
+  margin-left:  auto;
+  margin-right: auto;
 }
 
-main:not(.hidden) { display: flex !important; }
+/* Progress bar: direct child of main, spans full viewport width — no override needed */
+main > #progressBarContainer {
+  width:        100%;
+  max-width:    100%;
+  margin-left:  0;
+  margin-right: 0;
+  flex-shrink:  0;
+}
 
 /* ─── 4. Header ─────────────────────────────────────────────────────────────── */
 header {
-  padding:         0.875rem 1.5rem;
   display:         flex;
   align-items:     center;
   justify-content: space-between;
-  background:      var(--bg-page);
+  padding:         var(--sewa-space-sm) var(--sewa-space);
+  background:      #ECEEF2;
   flex-shrink:     0;
-  /* Max-width centring for wide screens */
-  width:           100%;
+  gap:             var(--sewa-space-sm);
+}
+
+/* FIX #10: admin header — when admin-active, header fills full viewport width */
+.admin-active header {
+  max-width:       100% !important;
+  justify-content: flex-start !important;
+  padding:         0.625rem var(--sewa-space) !important;
+  flex-wrap:       wrap;
+  gap:             0.5rem;
 }
 
 #mainTitle {
-  font-size:      1.05rem;
-  font-weight:    700;
-  color:          var(--text-primary);
-  line-height:    1.25;
-  cursor:         pointer;
-  padding:        10px 12px;
-  margin:         -10px -12px;
-  border-radius:  8px;
-  min-height:     44px;
-  display:        inline-flex;
-  align-items:    center;
-  transition:     background 0.15s ease;
+  font-size:       1.05rem;
+  font-weight:     700;
+  color:           #111827;
+  line-height:     1.2;
+  cursor:          pointer;
+  padding:         10px 12px;
+  margin:          -10px -12px;
+  border-radius:   var(--sewa-radius-xs);
+  min-height:      44px;
+  display:         inline-flex;
+  align-items:     center;
+  transition:      background 0.15s ease;
   -webkit-user-select: none;
-  white-space:    nowrap;
+  flex-shrink:     0;
 }
+#mainTitle:active      { background: var(--sewa-orange-hover); }
+.admin-active #mainTitle { display: none !important; }
 
-#mainTitle:active { background: rgba(232, 96, 0, 0.10); }
-
-/* ─── 5. Admin Controls ─────────────────────────────────────────────────────── */
-#adminControls {
-  display:        flex;
-  flex-direction: column;
-  align-items:    flex-end;
-  gap:            0.4rem;
-}
-
-#adminControls.hidden { display: none !important; }
-
-.unsynced-label {
-  font-size:   var(--font-helper);
-  font-weight: 600;
-  color:       var(--text-muted);
-  margin:      0;
-}
-
-#unsyncedCountDisplay {
-  font-weight: 700;
-  color:       var(--brand);
-}
-
-.admin-btn-row {
-  display:     flex;
-  align-items: center;
-  gap:         0.35rem;
-  flex-wrap:   wrap;
-}
-
-#syncStatusMessage {
-  font-size:   var(--font-helper);
-  font-weight: 600;
-  color:       #059669;
-  min-height:  16px;
-  margin-right: 0.25rem;
-}
-
-#adminControls button {
-  height:         32px;
-  padding:        0 0.7rem;
-  font-size:      var(--font-admin);
-  font-weight:    700;
-  border:         1.5px solid var(--border-color);
-  border-radius:  var(--radius-xs);
-  background:     #fff;
-  color:          var(--text-secondary);
-  cursor:         pointer;
-  white-space:    nowrap;
-  transition:     var(--ease);
-  letter-spacing: 0.01em;
-  line-height:    1;
-}
-
-#adminControls button:hover    { background: var(--bg-option-hover); border-color: var(--border-hover); }
-#adminControls button:active   { transform: scale(0.96); }
-#adminControls button:disabled { opacity: 0.45; cursor: not-allowed; }
-
-/* Semantic button variants — no more inline style="" in HTML */
-#adminControls button.btn-danger {
-  background:   #FEF2F2;
-  color:        #DC2626;
-  border-color: #FCA5A5;
-}
-#adminControls button.btn-danger:hover { background: #FEE2E2; }
-
-#adminControls button.btn-dark,
-#hideAdminButton {
-  background:   #1F2937 !important;
-  color:        #fff !important;
-  border-color: #1F2937 !important;
-}
-
-/* Admin mode: horizontal row of buttons */
-.admin-active #mainTitle     { display: none !important; }
-.admin-active header         { justify-content: flex-end !important; padding: 0.625rem 1.5rem !important; }
-.admin-active #adminControls { align-items: center !important; flex-direction: row !important; flex-wrap: wrap !important; gap: 0.35rem !important; }
-
-/* ─── 6. Progress Bar ───────────────────────────────────────────────────────── */
+/* ─── 5. Progress Bar — FIX #8: uses --sewa-orange, not Tailwind bg-orange-500 */
 #progressBarContainer {
-  position:   relative;
-  height:     5px;
-  background: #D1D5DB;
-  flex-shrink: 0;
-  width:      100%;
-  overflow:   visible;
-  /* NOT inside a max-width wrapper — always full bleed */
+  position:    relative;
+  height:      5px;
+  background:  #D1D5DB;
+  overflow:    visible;
 }
-
 #progressBar {
   height:     100%;
-  background: var(--brand);           /* single token — no Tailwind orange-500 conflict */
-  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--sewa-orange);    /* FIX #8: one orange */
+  transition: width 0.45s var(--sewa-ease);
   min-width:  0;
-  border-radius: 0 2px 2px 0;
 }
-
 #stepCounter {
   position:    absolute;
-  right:       1rem;
-  top:         -22px;
-  font-size:   var(--font-helper);
+  right:       var(--sewa-space);
+  top:         -20px;
+  font-size:   var(--sewa-text-small);
   font-weight: 600;
-  color:       var(--text-muted);
+  color:       #6B7280;
   white-space: nowrap;
-  background:  var(--bg-page);
-  padding:     0 0.25rem;
+  background:  #ECEEF2;
+  padding:     0 0.2rem;
   line-height: 1;
 }
 
-/* ─── 7. Survey Section ─────────────────────────────────────────────────────── */
+/* ─── 6. Survey Section ─────────────────────────────────────────────────────── */
 #surveyContent {
   flex:            1 1 auto;
   display:         flex !important;
   flex-direction:  column !important;
-  padding:         1.5rem 1.25rem calc(1.5rem + var(--keyboard-height, 0px)) !important;
+  justify-content: flex-start !important;   /* FIX #2: no conflict */
+  padding:         var(--sewa-space) !important;
+  padding-bottom:  calc(var(--sewa-space) + var(--keyboard-height, 0px)) !important;
   overflow-y:      auto;
-  overflow-x:      hidden;
   -webkit-overflow-scrolling: touch;
-  /* Centre content column on wide screens */
-  max-width:       700px;
-  margin-left:     auto;
-  margin-right:    auto;
-  width:           100%;
 }
 
-/* ─── 8. Question Card ──────────────────────────────────────────────────────── */
+/* ─── 7. Question Card — FIX #1, #2, #3 ────────────────────────────────────── */
 #questionContainer {
-  background:     var(--bg-card);
-  border-radius:  var(--radius);
-  box-shadow:     var(--shadow-card);
-  padding:        2rem 1.75rem 1.75rem;
-  width:          100%;
-  /* Allow it to grow naturally — no flex:0 0 auto that could cramp content */
-  flex:           0 0 auto;
-  display:        flex;
-  flex-direction: column;
-  gap:            1.5rem;         /* consistent internal spacing */
+  background:      #FFFFFF;
+  border-radius:   var(--sewa-radius);
+  box-shadow:      var(--sewa-shadow);
+  padding:         var(--sewa-space);     /* FIX #3: consistent 1.5rem rhythm */
+  width:           100%;
+  flex:            1 1 auto;             /* FIX #1: fills available card space */
+  display:         flex;
+  flex-direction:  column;
+  gap:             var(--sewa-space);
+  min-height:      0;                    /* allow flex shrink when content is short */
 }
 
-/* Question text — clearly larger than options */
-#questionContainer > p,
-#questionContainer label.block,
-.question-text {
-  font-size:   var(--font-q);
+/* FIX #4: question heading — clearly larger than option labels */
+.question-label,
+#questionContainer > p:first-child,
+#questionContainer label.block {
+  font-size:   var(--sewa-text-question);  /* 1.15rem */
   font-weight: 700;
-  color:       var(--text-primary);
-  line-height: 1.5;
+  color:       #111827;
+  line-height: 1.45;
   margin:      0;
 }
 
-/* ─── 9. Navigation Buttons ─────────────────────────────────────────────────── */
+/* ─── 8. Navigation Buttons ─────────────────────────────────────────────────── */
 #buttonContainer {
   display:         flex;
   justify-content: space-between;
   align-items:     center;
-  margin-top:      1.25rem;
+  padding-top:     var(--sewa-space);
+  margin-top:      auto;    /* pushes to bottom of questionContainer flex */
   flex-shrink:     0;
-  gap:             0.75rem;
-  /* Match the card's side padding for visual alignment */
-  padding:         0 0.125rem;
+  gap:             var(--sewa-space-sm);
 }
 
 #prevBtn {
-  height:        var(--tap-min);
-  padding:       0 1.5rem;
-  background:    var(--bg-card);
-  color:         var(--text-secondary);
-  border:        var(--border);
-  border-radius: var(--radius-sm);
+  height:        44px;
+  padding:       0 var(--sewa-space);
+  background:    #FFFFFF;
+  color:         var(--sewa-secondary);
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
   font-size:     0.9rem;
   font-weight:   600;
-  transition:    var(--ease);
-  min-width:     96px;
+  cursor:        pointer;
+  transition:    var(--sewa-transition);
+  min-width:     88px;
 }
-
-#prevBtn:hover  { background: var(--bg-option-hover); border-color: var(--border-hover); }
+#prevBtn:hover  { background: var(--sewa-secondary-hover); border-color: #9CA3AF; }
 #prevBtn:active { transform: scale(0.97); }
 
 #nextBtn {
-  height:        var(--tap-min);
-  padding:       0 2rem;
-  background:    var(--brand);
+  height:        44px;
+  padding:       0 var(--sewa-space);
+  background:    var(--sewa-orange);
   color:         #fff;
   border:        none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--sewa-radius-sm);
   font-size:     0.9rem;
   font-weight:   700;
-  transition:    var(--ease);
-  min-width:     96px;
-  box-shadow:    var(--shadow-btn);
+  cursor:        pointer;
+  transition:    var(--sewa-transition);
+  min-width:     88px;
+  box-shadow:    var(--sewa-shadow-btn);
 }
-
-#nextBtn:hover  { background: var(--brand-dark); box-shadow: 0 3px 10px var(--brand-glow); }
+#nextBtn:hover  { background: var(--sewa-orange-dark); }
 #nextBtn:active { transform: scale(0.97); }
 
 #nextBtn:disabled,
 #prevBtn:disabled {
-  opacity:    0.4;
+  opacity:    0.42;
   cursor:     not-allowed;
   transform:  none;
   box-shadow: none;
 }
 
-/* ─── 10. Shared Selected State ─────────────────────────────────────────────── */
+/* ─── 9. Shared Option Selected State ───────────────────────────────────────── */
 .location-radio-group  input.visually-hidden:checked + label,
 .age-radio-group       input.visually-hidden:checked + label,
 .followup-radio-group  input.visually-hidden:checked + label,
 .checkbox-group        input.visually-hidden:checked + label,
-.emoji-radio-group     input.visually-hidden:checked + label,
-.number-scale-group    input.visually-hidden:checked + label {
-  background:  var(--brand-light) !important;
-  border-color: var(--brand) !important;
-  border-width: 2px !important;
-  color:       var(--brand-dark) !important;
-  font-weight: 700 !important;
+.emoji-radio-group     input.visually-hidden:checked + label {
+  border-color: var(--sewa-orange) !important;
+  background:   var(--sewa-orange-hover) !important;
+  box-shadow:   0 0 0 2px var(--sewa-orange-ring);
+  color:        #111827;
 }
 
-/* ─── 11. Emoji Rating ──────────────────────────────────────────────────────── */
+/* ─── 10. Option Grid Base ───────────────────────────────────────────────────── */
+/* Shared rule: all radio/checkbox labels use fixed height for row alignment
+   FIX #6: height:var(--sewa-option-h) + padding:0 so every cell is exactly 56px */
+.location-radio-group label,
+.age-radio-group       label,
+.followup-radio-group  label,
+.checkbox-group        label {
+  border:          var(--sewa-border);
+  border-radius:   var(--sewa-radius-sm);
+  background:      #FAFAFA;
+  transition:      var(--sewa-transition);
+  cursor:          pointer;
+  height:          var(--sewa-option-h);   /* fixed — all rows align */
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  text-align:      center;
+  padding:         0 0.875rem;             /* horizontal only — height is fixed */
+  word-break:      break-word;
+  overflow-wrap:   anywhere;
+  hyphens:         auto;
+  font-size:       var(--sewa-text-label); /* FIX #4: 0.875rem — clearly < question */
+  font-weight:     500;
+  line-height:     1.3;
+  color:           #374151;
+}
+
+.location-radio-group label:hover,
+.age-radio-group       label:hover,
+.followup-radio-group  label:hover,
+.checkbox-group        label:hover {
+  background:   var(--sewa-secondary-bg);
+  border-color: #9CA3AF;
+}
+
+.location-radio-group label:active,
+.age-radio-group       label:active,
+.followup-radio-group  label:active,
+.checkbox-group        label:active { transform: scale(0.97); }
+
+/* ─── 11. Location Radio ─────────────────────────────────────────────────────── */
+/* FIX #7 note on orphan: minmax(min(160px,100%),1fr) prevents single orphan
+   from spanning full width — it just becomes a wider column, not full-row. */
+.location-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)) !important;
+  gap:                   0.5rem !important;
+  width:                 100%;
+}
+
+/* ─── 12. Age Radio ─────────────────────────────────────────────────────────── */
+.age-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)) !important;
+  gap:                   0.5rem !important;
+  width:                 100%;
+}
+
+/* ─── 13. Followup Radio ────────────────────────────────────────────────────── */
+.followup-radio-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)) !important;
+  gap:                   0.5rem !important;
+  width:                 100%;
+}
+
+/* ─── 14. Checkbox Group ────────────────────────────────────────────────────── */
+.checkbox-group {
+  display:               grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)) !important;
+  gap:                   0.5rem !important;
+  width:                 100%;
+}
+
+/* Checkbox labels: left-align (different from radio which is centred) */
+.checkbox-group label {
+  justify-content: flex-start;
+  text-align:      left;
+  padding:         0 0.875rem;
+  gap:             0.5rem;
+}
+
+/* Checkbox visual indicator */
+.checkbox-indicator {
+  width:           18px;
+  height:          18px;
+  min-width:       18px;
+  border:          2px solid #D1D5DB;
+  border-radius:   4px;
+  background:      #fff;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  transition:      var(--sewa-transition);
+  flex-shrink:     0;
+}
+
+/* ─── 15. Emoji Rating — FIX #7: true circles ───────────────────────────────── */
 .emoji-radio-group {
   display:         flex;
   flex-wrap:       nowrap;
-  justify-content: space-between;
-  gap:             0.4rem;
+  justify-content: space-around;
+  gap:             0.5rem;
   width:           100%;
 }
-
 .emoji-radio-group label {
-  border:          var(--border);
+  border:          var(--sewa-border);
   border-radius:   50%;
-  transition:      var(--ease);
-  cursor:          pointer;
-  /* Equal square so border-radius:50% renders a true circle */
-  width:           72px;
+  width:           72px;          /* FIX #7: explicit equal width AND height */
   height:          72px;
-  flex-shrink:     0;
+  min-width:       72px;
+  min-height:      72px;
+  padding:         0;             /* FIX #7: no padding — rely on flex centering */
   display:         flex;
   flex-direction:  column;
   align-items:     center;
   justify-content: center;
-  background:      var(--bg-option);
-  color:           var(--text-secondary);
-  font-size:       var(--font-opt);
-  font-weight:     500;
+  cursor:          pointer;
+  flex-shrink:     0;
+  transition:      var(--sewa-transition);
+  background:      #FAFAFA;
 }
+.emoji-radio-group label:hover  { background: var(--sewa-secondary-bg); border-color: #9CA3AF; }
+.emoji-radio-group label:active { transform: scale(0.93); }
 
-.emoji-radio-group label:active { transform: scale(0.92); }
-
-/* ─── 12. Number Scale ──────────────────────────────────────────────────────── */
+/* ─── 16. Number Scale ──────────────────────────────────────────────────────── */
 .number-scale-group {
   display:         flex !important;
   flex-wrap:       nowrap !important;
   justify-content: space-between !important;
-  gap:             0.25rem !important;
+  gap:             0.3rem !important;
   overflow-x:      auto;
   padding-bottom:  2px;
 }
-
 .number-scale-group label {
-  border:          var(--border);
+  border:          var(--sewa-border);
   border-radius:   50%;
-  transition:      var(--ease);
-  cursor:          pointer;
+  width:           44px;
+  height:          44px;
+  min-width:       44px;
+  padding:         0;
   flex-shrink:     0;
-  /* Equal square for true circle */
-  width:           48px;
-  height:          48px;
   display:         flex;
   align-items:     center;
   justify-content: center;
+  cursor:          pointer;
   font-size:       0.9rem;
   font-weight:     600;
-  color:           var(--text-secondary);
-  background:      var(--bg-option);
+  color:           #374151;
+  background:      #FAFAFA;
+  transition:      var(--sewa-transition);
+}
+.number-scale-group label:hover  { background: var(--sewa-secondary-bg); border-color: #9CA3AF; }
+.number-scale-group label:active { transform: scale(0.92); }
+.number-scale-group input.visually-hidden:checked + label {
+  border-color: var(--sewa-orange) !important;
+  background:   var(--sewa-orange-hover) !important;
+  box-shadow:   0 0 0 2px var(--sewa-orange-ring);
 }
 
-.number-scale-group label:active { transform: scale(0.92); }
-
-/* ─── 13. Star Rating ───────────────────────────────────────────────────────── */
+/* ─── 17. Star Rating ───────────────────────────────────────────────────────── */
 .star-rating {
   display:         flex;
   flex-direction:  row-reverse;
   justify-content: center;
   gap:             0.375rem;
 }
-
 .star-rating label.star {
   transition:  color 0.12s ease, transform 0.1s ease;
   cursor:      pointer;
   line-height: 1;
-  font-size:   2.25rem;
-  color:       #D1D5DB;
+  font-size:   2rem;
 }
-
 .star-rating label.star:active { transform: scale(1.15); }
-
 .star-rating:not(:has(input:checked)) label.star:hover,
 .star-rating:not(:has(input:checked)) label.star:hover ~ label.star { color: #FBBF24; }
-
-/* ─── 14. Location / Generic Radio Grid ─────────────────────────────────────── */
-/*
-  Fixed column count prevents orphaned items.
-  2 cols on mobile → 3 cols on wider cards.
-  Override with a modifier class if a specific question needs more columns.
-*/
-.location-radio-group {
-  display:               grid !important;
-  grid-template-columns: repeat(2, 1fr) !important;
-  gap:                   0.6rem !important;
-  width:                 100%;
-}
-
-@media (min-width: 480px) {
-  .location-radio-group {
-    grid-template-columns: repeat(3, 1fr) !important;
-  }
-}
-
-.location-radio-group label {
-  border:          var(--border);
-  border-radius:   var(--radius-sm);
-  background:      var(--bg-option);
-  transition:      var(--ease);
-  cursor:          pointer;
-  min-height:      var(--tap-min);
-  display:         flex;
-  align-items:     center;
-  justify-content: center;
-  text-align:      center;
-  padding:         0.625rem 0.875rem;
-  line-height:     1.4;
-  word-break:      break-word;
-  overflow-wrap:   anywhere;
-  hyphens:         auto;
-  font-size:       var(--font-opt);
-  font-weight:     500;
-  color:           var(--text-secondary);
-}
-
-.location-radio-group label:hover  { background: var(--bg-option-hover); border-color: var(--border-hover); }
-.location-radio-group label:active { transform: scale(0.97); }
-
-/* ─── 15. Age Radio ─────────────────────────────────────────────────────────── */
-.age-radio-group {
-  display:               grid !important;
-  grid-template-columns: repeat(2, 1fr) !important;
-  gap:                   0.6rem !important;
-  width:                 100%;
-}
-
-@media (min-width: 480px) {
-  .age-radio-group {
-    grid-template-columns: repeat(3, 1fr) !important;
-  }
-}
-
-.age-radio-group label {
-  border:          var(--border);
-  border-radius:   var(--radius-sm);
-  background:      var(--bg-option);
-  transition:      var(--ease);
-  cursor:          pointer;
-  min-height:      var(--tap-min);
-  display:         flex;
-  align-items:     center;
-  justify-content: center;
-  text-align:      center;
-  padding:         0.5rem 0.75rem;
-  word-break:      break-word;
-  overflow-wrap:   anywhere;
-  font-size:       var(--font-opt);
-  font-weight:     500;
-  color:           var(--text-secondary);
-}
-
-.age-radio-group label:hover  { background: var(--bg-option-hover); border-color: var(--border-hover); }
-.age-radio-group label:active { transform: scale(0.97); }
-
-/* ─── 16. Followup Radio ────────────────────────────────────────────────────── */
-.followup-radio-group {
-  display:               grid !important;
-  grid-template-columns: repeat(2, 1fr) !important;
-  gap:                   0.6rem !important;
-  width:                 100%;
-}
-
-@media (min-width: 480px) {
-  .followup-radio-group {
-    grid-template-columns: repeat(3, 1fr) !important;
-  }
-}
-
-.followup-radio-group label {
-  border:          var(--border);
-  border-radius:   var(--radius-sm);
-  background:      var(--bg-option);
-  transition:      var(--ease);
-  cursor:          pointer;
-  min-height:      var(--tap-min);
-  display:         flex;
-  align-items:     center;
-  justify-content: center;
-  text-align:      center;
-  padding:         0.5rem 0.75rem;
-  word-break:      break-word;
-  overflow-wrap:   anywhere;
-  font-size:       var(--font-opt);
-  font-weight:     500;
-  color:           var(--text-secondary);
-}
-
-.followup-radio-group label:hover  { background: var(--bg-option-hover); border-color: var(--border-hover); }
-.followup-radio-group label:active { transform: scale(0.97); }
-
-/* ─── 17. Checkbox Group ────────────────────────────────────────────────────── */
-.checkbox-group {
-  display:               grid !important;
-  grid-template-columns: repeat(2, 1fr) !important;
-  gap:                   0.6rem !important;
-  width:                 100%;
-}
-
-@media (min-width: 480px) {
-  .checkbox-group {
-    grid-template-columns: repeat(3, 1fr) !important;
-  }
-}
-
-.checkbox-group label {
-  border:        var(--border);
-  border-radius: var(--radius-sm);
-  background:    var(--bg-option);
-  transition:    var(--ease);
-  cursor:        pointer;
-  min-height:    var(--tap-min);
-  padding:       0.625rem 0.875rem;
-  display:       flex;
-  align-items:   center;
-  gap:           0.5rem;
-  word-break:    break-word;
-  overflow-wrap: anywhere;
-  font-size:     var(--font-opt);
-  font-weight:   500;
-  line-height:   1.4;
-  color:         var(--text-secondary);
-}
-
-.checkbox-group label:hover  { background: var(--bg-option-hover); border-color: var(--border-hover); }
-.checkbox-group label:active { transform: scale(0.97); }
-
-.checkbox-indicator {
-  width:           18px;
-  height:          18px;
-  border:          2px solid var(--border-color);
-  border-radius:   4px;
-  flex-shrink:     0;
-  background:      #fff;
-  display:         flex;
-  align-items:     center;
-  justify-content: center;
-  transition:      var(--ease);
-}
-
-input.visually-hidden:checked + label .checkbox-indicator {
-  background:   var(--brand);
-  border-color: var(--brand);
-}
 
 /* ─── 18. Other Text Inputs ─────────────────────────────────────────────────── */
 [id^="other-"][id$="-container"] input[type="text"],
 [id^="other-"][id$="-container"] textarea {
-  border:        var(--border);
-  border-radius: var(--radius-sm);
-  padding:       0.75rem 1rem;
-  font-size:     1rem !important;
-  width:         100%;
-  background:    var(--bg-option);
-  color:         var(--text-primary);
-  transition:    border-color 0.15s ease, box-shadow 0.15s ease;
+  border:         var(--sewa-border);
+  border-radius:  var(--sewa-radius-sm);
+  padding:        0.75rem 1rem;
+  width:          100%;
+  background:     #FAFAFA;
+  color:          #111827;
+  transition:     border-color 0.15s ease, box-shadow 0.15s ease;
   -webkit-appearance: none;
+  outline:        none;
 }
-
 [id^="other-"][id$="-container"] input[type="text"]:focus,
 [id^="other-"][id$="-container"] textarea:focus {
-  outline:      none;
-  border-color: var(--brand);
-  box-shadow:   0 0 0 3px rgba(232, 96, 0, 0.14);
+  border-color: var(--sewa-orange);
+  box-shadow:   0 0 0 3px var(--sewa-orange-ring);
   background:   #fff;
 }
 
-/* ─── 19. Validation Error ──────────────────────────────────────────────────── */
+/* ─── 19. Admin Panel — FIX #9, #10, #11 ────────────────────────────────────── */
+#adminControls {
+  display:        flex;
+  flex-direction: column;
+  align-items:    flex-end;
+  gap:            var(--sewa-space-xs);
+  flex-shrink:    0;
+}
+#adminControls.hidden { display: none !important; }
+
+/* FIX #9: consistent secondary style — not plain white */
+#adminControls button {
+  height:         34px;
+  padding:        0 0.75rem;
+  font-size:      var(--sewa-text-small);
+  font-weight:    700;
+  border:         1.5px solid #CBD5E1;
+  border-radius:  var(--sewa-radius-xs);
+  background:     var(--sewa-secondary-bg);
+  color:          var(--sewa-secondary);
+  cursor:         pointer;
+  white-space:    nowrap;
+  transition:     var(--sewa-transition);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+#adminControls button:hover    { background: var(--sewa-secondary-hover); border-color: #94A3B8; }
+#adminControls button:active   { transform: scale(0.96); }
+#adminControls button:disabled { opacity: 0.40; cursor: not-allowed; transform: none; }
+
+/* Destructive */
+#adminClearButton { border-color: #FCA5A5; color: #DC2626; }
+#adminClearButton:hover { background: #FEF2F2; border-color: #F87171; }
+
+/* Hide */
+#hideAdminButton { background: #1F2937; color: #fff; border-color: #1F2937; }
+#hideAdminButton:hover { background: #374151; border-color: #374151; }
+
+/* FIX #11: Fix Video button — use CSS, not inline style */
+#fixVideoButton { border-color: #FCA5A5; color: #DC2626; }
+#fixVideoButton:hover { background: #FEF2F2; border-color: #F87171; }
+
+/* Online/count row */
+#syncStatusMessage { font-size: var(--sewa-text-small); font-weight: 600; color: #059669; min-height: 16px; line-height: 1.2; }
+#unsyncedCountDisplay { font-weight: 700; color: var(--sewa-orange); }
+
+/* FIX #10: admin-active layout — horizontal row, full header width */
+.admin-active #adminControls {
+  flex-direction: row !important;
+  flex-wrap:      wrap !important;
+  align-items:    center !important;
+  gap:            0.375rem !important;
+}
+.admin-active #adminControls button { height: 36px; }
+
+/* ─── 20. Validation Error ──────────────────────────────────────────────────── */
 .validation-error {
-  color:       var(--text-danger);
-  font-size:   var(--font-helper);
+  color:       #DC2626;
+  font-size:   var(--sewa-text-small);
   font-weight: 600;
-  margin-top:  0.375rem;
+  margin-top:  var(--sewa-space-xs);
   display:     flex;
   align-items: center;
   gap:         0.25rem;
 }
 
-/* ─── 20. Inactivity Overlay ────────────────────────────────────────────────── */
+/* ─── 21. Inactivity Overlay ────────────────────────────────────────────────── */
 #inactivityWarning,
 #timeoutWarning {
   position:        fixed;
@@ -714,146 +628,87 @@ input.visually-hidden:checked + label .checkbox-indicator {
   display:         flex;
   align-items:     center;
   justify-content: center;
-  background:      rgba(0, 0, 0, 0.55);
+  background:      rgba(0,0,0,0.55);
   backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
 }
-
 #inactivityWarning.hidden,
 #timeoutWarning.hidden { display: none !important; }
-
 #inactivityWarning > div,
 #timeoutWarning > div {
-  background:    var(--bg-card);
-  border-radius: var(--radius);
-  padding:       2.25rem 2.5rem;
+  background:    #fff;
+  border-radius: var(--sewa-radius);
+  padding:       2rem 2.5rem;
   text-align:    center;
   max-width:     380px;
   width:         90%;
-  box-shadow:    0 12px 40px rgba(0, 0, 0, 0.22);
+  box-shadow:    0 8px 32px rgba(0,0,0,0.2);
 }
 
-/* ─── 21. Checkmark / Thank You ─────────────────────────────────────────────── */
+/* ─── 22. Checkmark / Thank You ─────────────────────────────────────────────── */
 .checkmark-container {
   display:         flex;
   flex-direction:  column;
   align-items:     center;
   justify-content: center;
-  gap:             1.5rem;
-  padding:         2.5rem 0;
+  gap:             var(--sewa-space);
+  padding:         2rem 0;
   text-align:      center;
+  flex:            1;
 }
-
 .checkmark-circle {
-  width:           100px;
-  height:          100px;
-  background:      var(--brand);
+  width:           96px;
+  height:          96px;
+  background:      var(--sewa-orange);
   border-radius:   50%;
   display:         flex;
   align-items:     center;
   justify-content: center;
-  box-shadow:      0 6px 24px var(--brand-glow);
-  animation:       pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  box-shadow:      0 4px 20px rgba(232,96,0,0.4);
+  animation:       pop-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
 }
-
-.checkmark-icon { width: 52px; height: 52px; }
-
+.checkmark-icon { width: 48px; height: 48px; }
 .checkmark-icon path {
-  stroke:             #fff;
-  stroke-width:       3.5;
-  stroke-linecap:     round;
-  stroke-linejoin:    round;
-  stroke-dasharray:   50;
-  stroke-dashoffset:  50;
-  animation:          draw-check 0.5s 0.3s ease forwards;
+  stroke:            #fff;
+  stroke-width:      3.5;
+  stroke-linecap:    round;
+  stroke-linejoin:   round;
+  stroke-dasharray:  50;
+  stroke-dashoffset: 50;
+  animation:         draw-check 0.5s 0.3s ease forwards;
 }
+@keyframes pop-in      { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes draw-check  { to   { stroke-dashoffset: 0; } }
+#resetCountdown { color: #6B7280; font-size: var(--sewa-text-body); margin-top: 0.25rem; }
 
-@keyframes pop-in    { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes draw-check { to { stroke-dashoffset: 0; } }
-
-.thank-you-heading {
-  font-size:   1.5rem;
-  font-weight: 700;
-  color:       var(--text-primary);
-  margin:      0 0 0.375rem;
-}
-
-#resetCountdown {
-  color:      var(--text-muted);
-  font-size:  1rem;
-  margin:     0;
-  font-weight: 500;
-}
-
-/* ─── 22. Visually Hidden ───────────────────────────────────────────────────── */
+/* ─── 23. Visually Hidden ───────────────────────────────────────────────────── */
 .visually-hidden {
-  position:   absolute !important;
-  width:      1px !important;
-  height:     1px !important;
-  padding:    0 !important;
-  margin:     -1px !important;
-  overflow:   hidden !important;
-  clip:       rect(0, 0, 0, 0) !important;
-  white-space: nowrap !important;
-  border:     0 !important;
+  position: absolute !important; width: 1px !important; height: 1px !important;
+  padding: 0 !important; margin: -1px !important; overflow: hidden !important;
+  clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important;
 }
 
-/* ─── 23. Responsive ────────────────────────────────────────────────────────── */
-
-/* Narrow phones */
-@media (max-width: 390px) {
-  #surveyContent {
-    padding: 1rem 0.875rem calc(1rem + var(--keyboard-height, 0px)) !important;
+/* ─── 24. Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  main > header,
+  main > section    { max-width: 100%; }
+  #surveyContent    { padding: var(--sewa-space-sm) !important; padding-bottom: calc(var(--sewa-space-sm) + var(--keyboard-height, 0px)) !important; }
+  #questionContainer { padding: var(--sewa-space-sm); gap: var(--sewa-space-sm); }
+  .location-radio-group, .checkbox-group {
+    grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)) !important;
   }
-  #questionContainer {
-    padding: 1.25rem 1rem 1rem;
-    gap:     1rem;
+  .age-radio-group, .followup-radio-group {
+    grid-template-columns: repeat(auto-fill, minmax(min(120px, 100%), 1fr)) !important;
   }
-  .emoji-radio-group label {
-    width:  60px;
-    height: 60px;
-  }
-  .number-scale-group label {
-    width:  40px;
-    height: 40px;
-    font-size: 0.8rem;
-  }
+  .emoji-radio-group label { width: 60px; height: 60px; min-width: 60px; min-height: 60px; }
 }
 
-/* iPad portrait (768px) and above — 3 columns already active via 480px breakpoint */
-@media (min-width: 768px) {
-  header {
-    padding: 1rem 2rem;
-  }
-  #surveyContent {
-    max-width: 720px;
-    padding:   1.75rem 1.5rem calc(1.75rem + var(--keyboard-height, 0px)) !important;
-  }
-  #questionContainer {
-    padding: 2.25rem 2rem 2rem;
-  }
-  .emoji-radio-group label {
-    width:  80px;
-    height: 80px;
-  }
-}
-
-/* Wide desktop */
 @media (min-width: 1024px) {
-  #adminControls {
-    flex-direction: row;
-    align-items:    center;
-    flex-wrap:      wrap;
-    justify-content: flex-end;
-    gap:            0.35rem;
-  }
+  main > header,
+  main > section    { max-width: 720px; }
 }
 
-/* ─── 24. Print ─────────────────────────────────────────────────────────────── */
+/* ─── 25. Print ─────────────────────────────────────────────────────────────── */
 @media print {
-  #adminControls,
-  #inactivityWarning,
-  #timeoutWarning,
-  #buttonContainer,
-  #progressBarContainer { display: none !important; }
+  #adminControls, #inactivityWarning, #timeoutWarning,
+  #buttonContainer, #progressBarContainer { display: none !important; }
 }

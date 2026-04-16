@@ -1,6 +1,6 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel optimized for offline-first iPad kiosk PWA
-// VERSION: 7.1.0 - CSS hook alignment only
+// VERSION: 7.2.0 - iPad PWA tap-unlock fix
 //   #7  handleTitleClick stored by ref so removeEventListener works in cleanup
 //   #8  cleanupAdminPanel now resets adminPanelVisible + syncInProgress + analyticsInProgress
 //   #9  window.cleanupAdminPanel re-assigned at END of setupAdminPanel (not before listeners)
@@ -8,7 +8,7 @@
 //   #11 Sleep/wake resets syncInProgress/analyticsInProgress if stuck >60s
 //   #12 Survey type-switch saves partial formData before reload
 //   #13 Sync button syncs BOTH queues (type1 + type2)
-//   CSS HOOks: survey type switcher now uses classes so custom.css controls the card visuals
+//   #14 iPad PWA fix: title unlock uses pointerup + touchend fallback instead of click
 // DEPENDENCIES: window.globals, window.dataHandlers, window.CONSTANTS, window.KIOSK_CONFIG
 
 const CLEAR_PASSWORD            = '8765';
@@ -151,14 +151,14 @@ function resetStuckFlagsIfNeeded() {
   if (syncInProgress && syncStartedAt && (now - syncStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
     console.warn('[ADMIN] ⚠️ syncInProgress was stuck >60s — resetting');
     syncInProgress = false;
-    syncStartedAt  = null;
+    syncStartedAt = null;
     updateSyncButtonState(navigator.onLine);
   }
 
   if (analyticsInProgress && analyticsStartedAt && (now - analyticsStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
     console.warn('[ADMIN] ⚠️ analyticsInProgress was stuck >60s — resetting');
     analyticsInProgress = false;
-    analyticsStartedAt  = null;
+    analyticsStartedAt = null;
     updateAnalyticsButtonState(navigator.onLine);
   }
 }
@@ -167,7 +167,7 @@ function updateCountdown() {
   const countdownEl = document.getElementById('adminCountdown');
   if (!countdownEl || !adminPanelVisible || !autoHideStartTime) return;
 
-  const elapsed   = Date.now() - autoHideStartTime;
+  const elapsed = Date.now() - autoHideStartTime;
   const remaining = Math.max(0, Math.ceil((AUTO_HIDE_DELAY - elapsed) / 1000));
 
   if (remaining > 0) {
@@ -246,7 +246,7 @@ function updateOnlineIndicator() {
   if (!onlineIndicator) return;
   const isOnline = navigator.onLine;
   onlineIndicator.textContent = isOnline ? '🌐 Online' : '📡 Offline Mode';
-  onlineIndicator.style.color  = isOnline ? '#059669' : '#dc2626';
+  onlineIndicator.style.color = isOnline ? '#059669' : '#dc2626';
 }
 
 function updateAllButtonStates() {
@@ -267,6 +267,7 @@ function updateSyncButtonState(isOnline) {
   syncButton.disabled = shouldDisable;
   syncButton.setAttribute('aria-busy', syncInProgress ? 'true' : 'false');
   syncButton.setAttribute('aria-disabled', shouldDisable ? 'true' : 'false');
+
   if (syncInProgress) {
     syncButton.textContent = 'Syncing...';
     syncButton.style.opacity = '0.7';
@@ -280,7 +281,12 @@ function updateSyncButtonState(isOnline) {
     syncButton.style.opacity = '1';
     syncButton.style.cursor = 'pointer';
   }
-  syncButton.title = syncInProgress ? 'Sync in progress...' : !isOnline ? 'Sync disabled — device is offline' : 'Sync queued data to server';
+
+  syncButton.title = syncInProgress
+    ? 'Sync in progress...'
+    : !isOnline
+      ? 'Sync disabled — device is offline'
+      : 'Sync queued data to server';
 }
 
 function updateAnalyticsButtonState(isOnline) {
@@ -290,6 +296,7 @@ function updateAnalyticsButtonState(isOnline) {
   syncAnalyticsButton.disabled = shouldDisable;
   syncAnalyticsButton.setAttribute('aria-busy', analyticsInProgress ? 'true' : 'false');
   syncAnalyticsButton.setAttribute('aria-disabled', shouldDisable ? 'true' : 'false');
+
   if (analyticsInProgress) {
     syncAnalyticsButton.textContent = 'Syncing...';
     syncAnalyticsButton.style.opacity = '0.7';
@@ -303,7 +310,12 @@ function updateAnalyticsButtonState(isOnline) {
     syncAnalyticsButton.style.opacity = '1';
     syncAnalyticsButton.style.cursor = 'pointer';
   }
-  syncAnalyticsButton.title = analyticsInProgress ? 'Sync in progress...' : !isOnline ? 'Sync disabled — device is offline' : 'Sync analytics to server';
+
+  syncAnalyticsButton.title = analyticsInProgress
+    ? 'Sync in progress...'
+    : !isOnline
+      ? 'Sync disabled — device is offline'
+      : 'Sync analytics to server';
 }
 
 function updateCheckUpdateButtonState(isOnline) {
@@ -311,6 +323,7 @@ function updateCheckUpdateButtonState(isOnline) {
   if (!checkUpdateButton) return;
   checkUpdateButton.disabled = !isOnline;
   checkUpdateButton.setAttribute('aria-disabled', !isOnline ? 'true' : 'false');
+
   if (!isOnline) {
     checkUpdateButton.textContent = 'Check Update (Offline)';
     checkUpdateButton.style.opacity = '0.5';
@@ -320,7 +333,10 @@ function updateCheckUpdateButtonState(isOnline) {
     checkUpdateButton.style.opacity = '1';
     checkUpdateButton.style.cursor = 'pointer';
   }
-  checkUpdateButton.title = !isOnline ? 'Update check disabled — device is offline' : 'Check for PWA updates';
+
+  checkUpdateButton.title = !isOnline
+    ? 'Update check disabled — device is offline'
+    : 'Check for PWA updates';
 }
 
 function updateFixVideoButtonState() {
@@ -335,9 +351,11 @@ function updateFixVideoButtonState() {
 function updateClearButtonState() {
   const adminClearButton = window.globals?.adminClearButton;
   if (!adminClearButton) return;
+
   const isLocked = isClearLocalLocked();
   adminClearButton.disabled = isLocked;
   adminClearButton.setAttribute('aria-disabled', isLocked ? 'true' : 'false');
+
   if (isLocked) {
     const remaining = getRemainingLockoutTime();
     adminClearButton.textContent = `Clear Local (Locked ${remaining}m)`;
@@ -356,11 +374,14 @@ function updateSurveyTypeSwitcher() {
   const currentType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
   const btnGroup = document.getElementById('surveyTypeBtnGroup');
   const currentLabel = document.getElementById('surveyTypeCurrentLabel');
+
   if (!btnGroup) return;
+
   btnGroup.querySelectorAll('button').forEach(btn => {
     const active = btn.dataset.surveyType === currentType;
     btn.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
+
   if (currentLabel) {
     const cfg = window.CONSTANTS?.SURVEY_TYPES?.[currentType];
     currentLabel.textContent = `Current: ${cfg?.label || currentType} · Sheet: ${cfg?.sheetName || ''}`;
@@ -383,6 +404,7 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
   const currentLabel = document.createElement('p');
   currentLabel.id = 'surveyTypeCurrentLabel';
   currentLabel.className = 'survey-type-current';
+
   const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
   currentLabel.textContent = `Current: ${surveyTypes[currentType]?.label || currentType} · Sheet: ${surveyTypes[currentType]?.sheetName || ''}`;
 
@@ -414,10 +436,19 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         const hasPartialData = partialData && Object.keys(partialData).length > 1;
 
         if (hasPartialData) {
-          const queueKey = window.CONSTANTS?.SURVEY_TYPES?.[currentSurveyType]?.storageKey || window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
+          const queueKey =
+            window.CONSTANTS?.SURVEY_TYPES?.[currentSurveyType]?.storageKey ||
+            window.CONSTANTS?.STORAGE_KEY_QUEUE ||
+            'submissionQueue';
+
           const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
           let existingQueue = [];
-          try { existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]'); } catch (_) { existingQueue = []; }
+
+          try {
+            existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+          } catch (_) {
+            existingQueue = [];
+          }
 
           if (existingQueue.length < MAX_QUEUE_SIZE) {
             existingQueue.push({
@@ -427,6 +458,7 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
               abandonedReason: 'survey_type_switch',
               sync_status: 'unsynced_partial',
             });
+
             localStorage.setItem(queueKey, JSON.stringify(existingQueue));
             console.log(`[ADMIN] ✅ Partial data saved before type switch (queue: ${queueKey})`);
           } else {
@@ -454,6 +486,7 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
 
       const lbl = document.getElementById('surveyTypeCurrentLabel');
       const config = window.CONSTANTS?.SURVEY_TYPES?.[type];
+
       if (lbl) {
         lbl.textContent = `Current: ${config?.label || type} · Sheet: ${config?.sheetName || ''}`;
       }
@@ -535,14 +568,26 @@ export function setupAdminPanel() {
 
   let tapCount = 0;
   let tapTimeout = null;
+  let lastTapTime = 0;
 
-  handleTitleClick = () => {
+  handleTitleClick = (e) => {
+    e.preventDefault?.();
+    e.stopPropagation?.();
+
+    const now = Date.now();
+
+    // Deduplicate overlapping touch/pointer firing on iPad/PWA
+    if (now - lastTapTime < 250) return;
+    lastTapTime = now;
+
     tapCount++;
     vibrateTap();
     console.log(`[ADMIN] Tap ${tapCount}/5`);
 
     if (tapTimeout) clearTimeout(tapTimeout);
-    tapTimeout = setTimeout(() => { tapCount = 0; }, 2000);
+    tapTimeout = setTimeout(() => {
+      tapCount = 0;
+    }, 2000);
 
     if (tapCount >= 5) {
       console.log('[ADMIN] ✅ Unlocked');
@@ -552,7 +597,8 @@ export function setupAdminPanel() {
     }
   };
 
-  mainTitle.addEventListener('click', handleTitleClick);
+  mainTitle.addEventListener('pointerup', handleTitleClick, { passive: false });
+  mainTitle.addEventListener('touchend', handleTitleClick, { passive: false });
 
   if (hideAdminButton) {
     hideAdminButton.addEventListener('click', (e) => {
@@ -587,7 +633,9 @@ export function setupAdminPanel() {
       }
 
       const queueSize = window.dataHandlers?.countUnsyncedRecords?.() || 0;
-      const confirmMsg = queueSize > 0 ? `⚠️ WARNING: Delete ${queueSize} unsynced survey${queueSize > 1 ? 's' : ''}?\n\nThis CANNOT be undone!` : 'Clear all local data?';
+      const confirmMsg = queueSize > 0
+        ? `⚠️ WARNING: Delete ${queueSize} unsynced survey${queueSize > 1 ? 's' : ''}?\n\nThis CANNOT be undone!`
+        : 'Clear all local data?';
 
       if (confirm(confirmMsg)) {
         console.log('[ADMIN] ✅ User confirmed clear — proceeding...');
@@ -763,11 +811,15 @@ export function setupAdminPanel() {
         if (syncStatusMessage) syncStatusMessage.textContent = '✅ Update check complete';
       } catch (error) {
         console.error('[ADMIN] ❌ Update check failed:', error);
-        if (syncStatusMessage) syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
+        if (syncStatusMessage) {
+          syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
+        }
         alert(`❌ Update check failed:\n\n${error.message}`);
       }
 
-      setTimeout(() => { if (syncStatusMessage) syncStatusMessage.textContent = ''; }, 4000);
+      setTimeout(() => {
+        if (syncStatusMessage) syncStatusMessage.textContent = '';
+      }, 4000);
     });
     console.log('[ADMIN] ✅ Check Update button handler attached');
   } else {
@@ -816,30 +868,41 @@ export function setupAdminPanel() {
         setupVideoEventListeners(repairedVideo);
 
         const waitForReady = () => new Promise((resolve, reject) => {
-          if (repairedVideo.readyState >= 3) { resolve(true); return; }
+          if (repairedVideo.readyState >= 3) {
+            resolve(true);
+            return;
+          }
+
           let timeoutId;
+
           const onReady = () => {
             clearTimeout(timeoutId);
             repairedVideo.removeEventListener('canplaythrough', onReady);
             repairedVideo.removeEventListener('loadeddata', onReady);
             resolve(true);
           };
+
           timeoutId = setTimeout(() => {
             repairedVideo.removeEventListener('canplaythrough', onReady);
             repairedVideo.removeEventListener('loadeddata', onReady);
             reject(new Error('Ready timeout'));
           }, 5000);
+
           repairedVideo.addEventListener('canplaythrough', onReady, { once: true });
           repairedVideo.addEventListener('loadeddata', onReady, { once: true });
         });
 
-        try { await waitForReady(); } catch (err) {
+        try {
+          await waitForReady();
+        } catch (err) {
           console.warn('[ADMIN] Video not ready in time:', err.message);
         }
 
         try {
           const playPromise = repairedVideo.play();
-          if (playPromise && typeof playPromise.then === 'function') await playPromise;
+          if (playPromise && typeof playPromise.then === 'function') {
+            await playPromise;
+          }
         } catch (playErr) {
           console.warn('[ADMIN] Repaired video could not auto-play:', playErr.message);
         }
@@ -884,7 +947,7 @@ export function setupAdminPanel() {
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.1.0 — CSS hooks aligned)');
+  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.2.0 — iPad tap unlock fixed)');
   console.log('═══════════════════════════════════════════════════════');
   console.log(` Mode:           Offline-First iPad Kiosk PWA`);
   console.log(` Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
@@ -901,7 +964,8 @@ export function cleanupAdminPanel() {
 
   const mainTitle = window.globals?.mainTitle;
   if (mainTitle && handleTitleClick) {
-    mainTitle.removeEventListener('click', handleTitleClick);
+    mainTitle.removeEventListener('pointerup', handleTitleClick);
+    mainTitle.removeEventListener('touchend', handleTitleClick);
     handleTitleClick = null;
   }
 
@@ -922,7 +986,10 @@ export function cleanupAdminPanel() {
 
 window.inspectQueue = function() {
   const CONSTANTS = window.CONSTANTS;
-  if (!CONSTANTS) { console.error('[ADMIN] window.CONSTANTS not available'); return; }
+  if (!CONSTANTS) {
+    console.error('[ADMIN] window.CONSTANTS not available');
+    return;
+  }
 
   const queue1 = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_QUEUE) || '[]');
   const queue2 = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_QUEUE_V2) || '[]');
@@ -954,7 +1021,10 @@ window.inspectQueue = function() {
 
 window.systemStatus = function() {
   const CONSTANTS = window.CONSTANTS;
-  if (!CONSTANTS) { console.error('[ADMIN] window.CONSTANTS not available'); return; }
+  if (!CONSTANTS) {
+    console.error('[ADMIN] window.CONSTANTS not available');
+    return;
+  }
 
   const queue1 = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_QUEUE) || '[]');
   const queue2 = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_QUEUE_V2) || '[]');

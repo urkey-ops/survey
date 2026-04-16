@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kiosk Survey</title>
-    
+
     <!-- PWA Meta Tags -->
     <meta name="description" content="Share your visit experience through our interactive kiosk survey">
     <meta name="theme-color" content="#10b981">
@@ -12,152 +12,153 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Kiosk Survey">
-    
+
     <!-- Favicon Links -->
     <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
-    
-    <!-- Apple Touch Icons ---->
+
+    <!-- Apple Touch Icons -->
     <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
     <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
     <link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144x144.png">
-    
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
-    
+
     <link rel="stylesheet" href="dist/output.css">
     <link rel="stylesheet" href="custom.css">
-  
-<style>
-  /* iOS kiosk hard lock - Prevent all zoom */
-  html, body {
-    overscroll-behavior: none;
-    -webkit-text-size-adjust: 100%;
-  }
-  
-  /* Disable zoom and touch manipulation - BUT NOT ON VIDEO OR ADMIN */
-  body, main, section, div:not(#kioskStartScreen):not(#mainTitle):not(header) {
 
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-  }
-  
-  /* CRITICAL: Allow touch on video and start screen for iOS playback */
-  #kioskStartScreen, #kioskVideo, video {
-    touch-action: auto !important;
-  }
-  
-  /* ADMIN PANEL FIX: Make title easier to tap on iPad PWA */
-  #mainTitle {
-    touch-action: manipulation !important;
-    -webkit-user-select: none !important;
-    -webkit-touch-callout: none !important;
-    cursor: pointer;
-    padding: 12px 16px !important;
-    margin: -12px -16px !important;
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-    border-radius: 8px;
-    transition: background-color 0.15s ease;
-  }
-  
-  #mainTitle:active {
-    background-color: rgba(16, 185, 129, 0.15);
-    transform: scale(0.98);
-  }
-  
-  header {
-    touch-action: manipulation !important;
-  }
-  
-  input, textarea, button, select {
-    touch-action: manipulation;
-    -webkit-user-select: text;
-    font-size: 16px !important;
-  }
+    <style>
+      /* ── iOS kiosk hard lock: prevent all zoom ── */
+      html, body {
+        overscroll-behavior: none;
+        -webkit-text-size-adjust: 100%;
+      }
 
-  @keyframes subtle-pulse {
-    0% { 
-      transform: scale(1); 
-      filter: brightness(100%);
-    }
-    50% { 
-      transform: scale(1.025); 
-      filter: brightness(110%); 
-    }
-    100% { 
-      transform: scale(1); 
-      filter: brightness(100%);
-    }
-  }
+      /* Disable text-selection & callout everywhere except inputs/buttons/admin */
+      body, main, section, div:not(#kioskStartScreen):not(#mainTitle):not(header) {
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
 
-  .animate-pulse {
-    animation: subtle-pulse 6s infinite ease-in-out !important;
-    will-change: transform;
-  }
+      /* CRITICAL: Allow touch on video and start screen for iOS playback */
+      #kioskStartScreen, #kioskVideo, video {
+        touch-action: auto !important;
+      }
 
-  .active-press {
-    transform: scale(0.96) !important;
-    opacity: 0.8 !important;
-    transition: transform 0.05s ease-out !important;
-    animation: none !important;
-  }
+      /* ADMIN PANEL: Make title easier to tap on iPad PWA */
+      #mainTitle {
+        touch-action: manipulation !important;
+        -webkit-user-select: none !important;
+        -webkit-touch-callout: none !important;
+        cursor: pointer;
+        padding: 12px 16px !important;
+        margin: -12px -16px !important;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        border-radius: 8px;
+        transition: background-color 0.15s ease;
+      }
 
-  #kioskVideo {
-    transform: none !important;
-    animation: none !important;
-    margin: 0 !important;
-  }
+      #mainTitle:active {
+        background-color: rgba(16, 185, 129, 0.15);
+        transform: scale(0.98);
+      }
 
-  /* ============================================ */
-  /* ADMIN MODE: Hide title, maximize button space */
-  /* ============================================ */
-  .admin-active #mainTitle {
-    display: none !important;
-  }
+      header {
+        touch-action: manipulation !important;
+      }
 
-  .admin-active #adminControls {
-    width: 100% !important;
-    justify-content: center !important;
-    gap: 10px !important;
-  }
+      input, textarea, button, select {
+        touch-action: manipulation;
+        -webkit-user-select: text;
+        font-size: 16px !important;
+      }
 
-  .admin-active header {
-    padding: 16px 24px !important;
-    justify-content: center !important;
-  }
+      /* ── Subtle pulse animation for start screen heading ── */
+      @keyframes subtle-pulse {
+        0%   { transform: scale(1);     filter: brightness(100%); }
+        50%  { transform: scale(1.025); filter: brightness(110%); }
+        100% { transform: scale(1);     filter: brightness(100%); }
+      }
 
-  .admin-active #adminControls .flex {
-    flex-wrap: wrap !important;
-    justify-content: center !important;
-  }
+      .animate-pulse {
+        animation: subtle-pulse 6s infinite ease-in-out !important;
+        will-change: transform;
+      }
 
-  .admin-active #adminControls button {
-    min-width: 110px !important;
-    padding: 10px 16px !important;
-  }
-</style>
+      .active-press {
+        transform: scale(0.96) !important;
+        opacity: 0.8 !important;
+        transition: transform 0.05s ease-out !important;
+        animation: none !important;
+      }
 
+      /* Video must never animate — it has its own loop */
+      #kioskVideo {
+        transform: none !important;
+        animation: none !important;
+        margin: 0 !important;
+      }
+
+      /* ── ADMIN MODE: Hide title, maximise button space ── */
+      .admin-active #mainTitle {
+        display: none !important;
+      }
+
+      .admin-active #adminControls {
+        width: 100% !important;
+        justify-content: center !important;
+        gap: 10px !important;
+      }
+
+      .admin-active header {
+        padding: 16px 24px !important;
+        justify-content: center !important;
+      }
+
+      .admin-active #adminControls .flex {
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+      }
+
+      .admin-active #adminControls button {
+        min-width: 110px !important;
+        padding: 10px 16px !important;
+      }
+    </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
+
+<!--
+  body classes:
+  - Tailwind's flex/items-center/justify-center removed — custom.css sets
+    body { display:block } so main and kioskStartScreen stack as fixed layers.
+  - p-4/sm:p-8 padding removed — both full-screen layers handle their own spacing.
+-->
+<body class="min-h-screen">
 
     <!--
-      ============================================================
-      BUG FIX: window.globals MUST be initialized as an empty
-      object BEFORE any module calls initializeElements().
-      Without this, window.globals.kioskVideo = ... throws a
-      TypeError (cannot set property on undefined), all globals
-      stay undefined, and validateElements() reports 1+ missing.
-      ============================================================
+      window.globals MUST be initialised before any module calls initializeElements().
+      Without this, window.globals.kioskVideo = ... throws TypeError and all globals
+      stay undefined.
     -->
     <script>
       window.globals = {};
     </script>
-    
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         START SCREEN
+         Full-screen black overlay with video loop.
+         FIX: text-white on h2 and p — without it text is invisible on #000 bg.
+         ═══════════════════════════════════════════════════════════════ -->
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
+
         <div class="mb-8 content">
-            <h2 class="text-3xl font-bold text-center animate-pulse">Share Your Visit Experience</h2>
+            <!-- FIX A: added text-white — was black text on black background -->
+            <h2 class="text-3xl font-bold text-center text-white animate-pulse">
+                Share Your Visit Experience
+            </h2>
         </div>
 
         <video id="kioskVideo"
@@ -173,110 +174,115 @@
             Your browser does not support the video tag.
         </video>
 
-        <div class="mt-12 content"> 
-            <p id="rotatingQuestion" class="tap-prompt text-xl">Tap anywhere to begin</p>
+        <div class="mt-12 content">
+            <!-- FIX A: added text-white — was invisible on black background -->
+            <p id="rotatingQuestion" class="tap-prompt text-xl text-white font-semibold text-center">
+                Tap anywhere to begin
+            </p>
         </div>
+
     </div>
-    
-    <main class="w-full max-w-2xl overflow-hidden min-h-[500px] flex flex-col">
-        
-        <header class="py-5 px-6 flex justify-between items-center relative">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN SURVEY
+         Full-screen flex column: header → progress bar → survey content.
+         FIX B: progressBarContainer moved OUT of header into its own
+                sibling element — was position:absolute inside header,
+                overlapping the question heading below.
+         ═══════════════════════════════════════════════════════════════ -->
+    <main class="w-full flex flex-col">
+
+        <!-- Header: title + admin controls only (NO progress bar inside) -->
+        <header class="py-5 px-6 flex justify-between items-center">
+
             <h1 id="mainTitle" class="cursor-pointer">Share Your Visit Experience</h1>
-            
+
             <div id="adminControls" class="flex flex-col items-end space-y-2">
-                <p class="text-xs font-medium text-emerald-600">Unsynced Records: <span id="unsyncedCountDisplay">0</span></p>
-                
+                <p class="text-xs font-medium text-emerald-600">
+                    Unsynced Records: <span id="unsyncedCountDisplay">0</span>
+                </p>
+
                 <div class="flex items-center space-x-2">
-                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span> 
-                    
+                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span>
+
                     <button id="syncButton">Sync Data</button>
                     <button id="syncAnalyticsButton">Sync Analytics</button>
                     <button id="adminClearButton">Clear Local</button>
                     <button id="checkUpdateButton">Check Update</button>
-                    <button id="fixVideoButton" style="background: #ef4444;">Fix Video</button>
+                    <button id="fixVideoButton" style="background:#ef4444;">Fix Video</button>
                     <button id="hideAdminButton">Hide</button>
                 </div>
             </div>
-            
-            <div class="absolute inset-x-0 bottom-0">
 
-                
-             
-
-<div id="progressBarContainer" class="w-full bg-gray-200 rounded-full h-2 mb-6 relative">
-  <div id="progressBar" class="bg-orange-500 h-2 rounded-full transition-all duration-300 will-change-width" style="width: 0%"></div>
-  <span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
-</div>
-                
-            </div>
         </header>
-        
-        <section id="surveyContent" class="p-8 flex-1 flex flex-col justify-center">
+
+        <!-- ── FIX B: Progress bar is NOW a direct child of <main>, ──
+             between header and section. It is in normal flow — no longer
+             position:absolute inside the header where it overlapped content. -->
+        <div id="progressBarContainer" class="w-full relative" style="height:6px; background:#E5E7EB; flex-shrink:0;">
+            <div id="progressBar"
+                 class="bg-orange-500 transition-all duration-300 will-change-width"
+                 style="height:100%; width:0%; border-radius:0;">
+            </div>
+            <span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
+        </div>
+
+        <!-- Survey section: scrollable, flex column, fills remaining height -->
+        <section id="surveyContent" class="px-6 py-6 flex-1 flex flex-col">
+
+            <!-- Question container — grows to fill space, content centred vertically -->
             <div id="questionContainer" class="flex-1 flex flex-col justify-center"></div>
-            
+
+            <!-- Navigation buttons — sticky above keyboard (custom.css handles this) -->
             <div id="buttonContainer" class="flex justify-between items-center pt-6">
                 <button id="prevBtn" type="button" class="px-6 py-2.5">Back</button>
                 <button id="nextBtn" type="button" class="px-6 py-2.5">Next</button>
             </div>
+
         </section>
+
     </main>
-    
-    <!-- SAFETY FIX: Global Error Boundary -->
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GLOBAL ERROR BOUNDARY
+         ═══════════════════════════════════════════════════════════════ -->
     <script>
-      // Catch all uncaught errors
       window.addEventListener('error', function(e) {
         console.error('🚨 [GLOBAL ERROR]', e.message, e.filename, e.lineno);
         try {
           if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
             window.dataHandlers.recordAnalytics('app_error', {
-              message: e.message,
-              file: e.filename,
-              line: e.lineno
+              message: e.message, file: e.filename, line: e.lineno
             });
           }
-        } catch (err) {
-          console.error('Failed to log error:', err);
-        }
+        } catch (err) { console.error('Failed to log error:', err); }
         e.preventDefault();
         return true;
       });
-      
-      // Catch unhandled promise rejections
+
       window.addEventListener('unhandledrejection', function(e) {
         console.error('🚨 [UNHANDLED PROMISE]', e.reason);
         try {
           if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
-            window.dataHandlers.recordAnalytics('promise_error', {
-              reason: String(e.reason)
-            });
+            window.dataHandlers.recordAnalytics('promise_error', { reason: String(e.reason) });
           }
-        } catch (err) {
-          console.error('Failed to log promise error:', err);
-        }
+        } catch (err) { console.error('Failed to log promise error:', err); }
         e.preventDefault();
       });
-      
-      // SAFETY FIX: Cleanup on page unload (iPad restart/close)
+
       window.addEventListener('beforeunload', function() {
         console.log('[CLEANUP] Page unloading - cleaning up...');
         try {
-          if (window.uiHandlers && window.uiHandlers.clearAllTimers) {
-            window.uiHandlers.clearAllTimers();
-          }
-          if (window.videoPlaybackInterval) {
-            clearInterval(window.videoPlaybackInterval);
-          }
+          if (window.uiHandlers && window.uiHandlers.clearAllTimers) window.uiHandlers.clearAllTimers();
+          if (window.videoPlaybackInterval) clearInterval(window.videoPlaybackInterval);
           const video = document.getElementById('kioskVideo');
-          if (video) {
-            video.pause();
-          }
+          if (video) video.pause();
           console.log('[CLEANUP] ✅ Cleanup complete');
-        } catch (err) {
-          console.error('[CLEANUP] Error during cleanup:', err);
-        }
+        } catch (err) { console.error('[CLEANUP] Error during cleanup:', err); }
       });
     </script>
-    
+
+    <!-- App scripts -->
     <script src="pwa-update-manager.js"></script>
     <script src="config.js"></script>
     <script src="appState.js"></script>
@@ -284,62 +290,60 @@
     <script type="module" src="sync/dataSync.js"></script>
     <script type="module" src="uiHandlers.js"></script>
     <script type="module" src="main/index.js"></script>
-    
-    <!-- Sanitized checkmark display + iPad gesture locks -->
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         INLINE UTILITIES
+         ═══════════════════════════════════════════════════════════════ -->
     <script>
+      /* ── Checkmark / thank-you display ── */
       window.showCheckmark = function() {
         const container = document.getElementById('questionContainer');
-        if (container) {
-          const checkmarkDiv = document.createElement('div');
-          checkmarkDiv.className = 'checkmark-container';
-          
-          const circleDiv = document.createElement('div');
-          circleDiv.className = 'checkmark-circle';
-          
-          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          svg.setAttribute('class', 'checkmark-icon');
-          svg.setAttribute('viewBox', '0 0 60 60');
-          
-          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          path.setAttribute('d', 'M15 30 L25 40 L45 20');
-          path.setAttribute('fill', 'none');
-          
-          svg.appendChild(path);
-          circleDiv.appendChild(svg);
-          
-          const textDiv = document.createElement('div');
-          textDiv.className = 'text-center';
-          
-          const heading = document.createElement('h2');
-          heading.className = 'text-2xl font-bold text-gray-800 mb-2';
-          heading.textContent = 'Thank you for your feedback!';
-          
-          const countdown = document.createElement('p');
-          countdown.id = 'resetCountdown';
-          countdown.className = 'text-gray-500 text-lg font-medium';
-          countdown.textContent = 'Kiosk resetting in 5 seconds...';
-          
-          textDiv.appendChild(heading);
-          textDiv.appendChild(countdown);
-          
-          checkmarkDiv.appendChild(circleDiv);
-          checkmarkDiv.appendChild(textDiv);
-          
-          container.innerHTML = '';
-          container.appendChild(checkmarkDiv);
-          
-          console.log('[CHECKMARK] Display function executed successfully');
-        } else {
-          console.error('[CHECKMARK] questionContainer not found');
-        }
+        if (!container) { console.error('[CHECKMARK] questionContainer not found'); return; }
+
+        const checkmarkDiv = document.createElement('div');
+        checkmarkDiv.className = 'checkmark-container';
+
+        const circleDiv = document.createElement('div');
+        circleDiv.className = 'checkmark-circle';
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'checkmark-icon');
+        svg.setAttribute('viewBox', '0 0 60 60');
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M15 30 L25 40 L45 20');
+        path.setAttribute('fill', 'none');
+        svg.appendChild(path);
+        circleDiv.appendChild(svg);
+
+        const textDiv  = document.createElement('div');
+        textDiv.className = 'text-center';
+
+        const heading  = document.createElement('h2');
+        heading.className = 'text-2xl font-bold text-gray-800 mb-2';
+        heading.textContent = 'Thank you for your feedback!';
+
+        const countdown = document.createElement('p');
+        countdown.id = 'resetCountdown';
+        countdown.className = 'text-gray-500 text-lg font-medium';
+        countdown.textContent = 'Kiosk resetting in 5 seconds...';
+
+        textDiv.appendChild(heading);
+        textDiv.appendChild(countdown);
+        checkmarkDiv.appendChild(circleDiv);
+        checkmarkDiv.appendChild(textDiv);
+
+        container.innerHTML = '';
+        container.appendChild(checkmarkDiv);
+        console.log('[CHECKMARK] Display function executed successfully');
       };
-      
-      // Prevent zoom on iPad
+
+      /* ── Prevent zoom on iPad ── */
       document.addEventListener('gesturestart',  function(e) { e.preventDefault(); });
       document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
       document.addEventListener('gestureend',    function(e) { e.preventDefault(); });
-      
-      // iPad PWA: Allow rapid taps on admin title, block double-tap zoom elsewhere
+
+      /* ── Block double-tap zoom, but allow taps on admin/header area ── */
       let lastTouchEnd = 0;
       document.addEventListener('touchend', function(e) {
         const target = e.target;
@@ -347,52 +351,68 @@
           return;
         }
         const now = Date.now();
-        if (now - lastTouchEnd <= 300) {
-          e.preventDefault();
-        }
+        if (now - lastTouchEnd <= 300) e.preventDefault();
         lastTouchEnd = now;
       }, false);
-      
+
       document.addEventListener('touchmove', function(e) {
         const target = e.target;
         if (target && (target.id === 'mainTitle' || target.closest('#mainTitle') || target.closest('header'))) {
           return;
         }
-        if (e.touches && e.touches.length > 1) {
-          e.preventDefault();
-        }
+        if (e.touches && e.touches.length > 1) e.preventDefault();
       }, { passive: false });
-      
-      // Enhanced tap detection for admin title
-      // NOTE: The 5-tap unlock logic lives in adminPanel.js (handleTitleClick).
-      // This block only adds visual feedback — it does NOT duplicate the unlock logic.
+
+      /* ── Visual feedback on admin title tap ── */
       const mainTitle = document.getElementById('mainTitle');
       if (mainTitle) {
         mainTitle.addEventListener('touchstart', function(e) {
           e.stopPropagation();
           this.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
         }, { passive: false });
-        
+
         mainTitle.addEventListener('touchend', function(e) {
           e.stopPropagation();
           setTimeout(() => { this.style.backgroundColor = ''; }, 100);
         }, { passive: false });
       }
+
+      /* ── Visual Viewport API: keyboard height → CSS variable ──
+         iOS soft keyboard overlays the screen (doesn't resize viewport).
+         This tracks the keyboard height and stores it as --keyboard-height
+         so CSS can push #buttonContainer and #surveyContent above it. */
+      if (window.visualViewport) {
+        function updateKeyboardHeight() {
+          const keyboardHeight = Math.max(
+            0,
+            window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop
+          );
+          document.documentElement.style.setProperty('--keyboard-height', keyboardHeight + 'px');
+
+          /* Scroll focused input into view above keyboard */
+          const focused = document.activeElement;
+          if (keyboardHeight > 0 && focused &&
+              (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT')) {
+            setTimeout(() => {
+              focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          }
+        }
+        window.visualViewport.addEventListener('resize', updateKeyboardHeight);
+        window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
+      }
     </script>
-    
+
     <!-- Service Worker Registration -->
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then(registration => {
-                        console.log('ServiceWorker registered:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.log('ServiceWorker registration failed:', error);
-                    });
-            });
-        }
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(reg  => console.log('ServiceWorker registered:', reg.scope))
+            .catch(err => console.log('ServiceWorker registration failed:', err));
+        });
+      }
     </script>
+
 </body>
 </html>

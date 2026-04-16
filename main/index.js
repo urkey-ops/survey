@@ -1,6 +1,12 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.0.0 - BUG FIXES: heartbeat hidden-guard, startPeriodicSync moved here, checkQuota retry-poll
+// VERSION: 5.1.0
+// FIXES:
+//   - prevents duplicate initialize() runs
+//   - stores heartbeat / quota monitor / emergency online listener references
+//   - avoids duplicate periodic timers on re-init
+//   - uses readyState-safe boot in addition to DOMContentLoaded
+//   - keeps storage quota polling and periodic sync behavior
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -10,70 +16,101 @@ import { setupVisibilityHandler } from './visibilityHandler.js';
 import { setupInactivityVisibilityHandler, startPeriodicSync } from '../timers/inactivityHandler.js';
 import { setupTypewriterVisibilityHandler } from '../ui/typewriterEffect.js';
 
+// ── Init guards / timer refs ──────────────────────────────────────────────────
+let initializationStarted = false;
+let initializationCompleted = false;
+let heartbeatIntervalId = null;
+let storageMonitorIntervalId = null;
+let emergencyOnlineHandler = null;
+let pendingDataHandlersPoll = null;
+
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
 
-/**
- * Periodic system-status log.
- *
- * BUG #23 FIX: Added document.hidden guard so the interval callback is a
- * no-op while the iPad screen is off — avoids waking the JS engine every
- * 15 minutes during kiosk idle/sleep.
- */
 function startHeartbeat() {
-  const CONSTANTS    = window.CONSTANTS;
-  const appState     = window.appState;
+  const CONSTANTS = window.CONSTANTS;
+  const appState = window.appState;
   const dataHandlers = window.dataHandlers;
 
-  setInterval(() => {
-    // BUG #23 FIX: Skip entirely when page is hidden
-    if (document.hidden) return;
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  }
 
-    const queue     = dataHandlers.getSubmissionQueue();
-    const analytics = dataHandlers.safeGetLocalStorage(CONSTANTS.STORAGE_KEY_ANALYTICS) || [];
+  heartbeatIntervalId = setInterval(() => {
+    if (document.hidden) return;
+    if (!window.dataHandlers || !window.appState) return;
+
+    const type1Key =
+      window.CONSTANTS?.SURVEY_TYPES?.type1?.storageKey ||
+      window.CONSTANTS?.STORAGE_KEY_QUEUE ||
+      'submissionQueue';
+
+    const type2Key =
+      window.CONSTANTS?.SURVEY_TYPES?.type2?.storageKey ||
+      window.CONSTANTS?.STORAGE_KEY_QUEUE_V2 ||
+      'submissionQueueV2';
+
+    const queue1 = dataHandlers.getSubmissionQueue ? dataHandlers.getSubmissionQueue(type1Key) : [];
+    const queue2 = dataHandlers.getSubmissionQueue ? dataHandlers.getSubmissionQueue(type2Key) : [];
+    const analytics = dataHandlers.safeGetLocalStorage
+      ? (dataHandlers.safeGetLocalStorage(CONSTANTS.STORAGE_KEY_ANALYTICS) || [])
+      : [];
+
     console.log(
-      `[HEARTBEAT] ❤️ Kiosk alive | Queue: ${queue.length} | Analytics: ${analytics.length} | ` +
-      `Question: ${appState.currentQuestionIndex + 1} | Online: ${navigator.onLine ? '✔' : '✗'}`
+      `[HEARTBEAT] ❤️ Kiosk alive | Queue T1: ${queue1.length} | Queue T2: ${queue2.length} | ` +
+      `Analytics: ${analytics.length} | Question: ${appState.currentQuestionIndex + 1} | ` +
+      `Online: ${navigator.onLine ? '✔' : '✗'}`
     );
   }, 15 * 60 * 1000);
 }
 
 // ── Storage quota check ───────────────────────────────────────────────────────
 
-/**
- * BUG #24 FIX: Poll for dataHandlers readiness instead of an arbitrary 1s timeout.
- * Retries up to 10 times at 200ms intervals (~2s total window) before giving up.
- * This handles slow module parse on cold cache without false "not available" warnings.
- */
 function waitForDataHandlersThen(callback, retries = 10, delayMs = 200) {
   if (window.dataHandlers) {
     callback();
     return;
   }
+
   if (retries <= 0) {
     console.warn('[INIT] dataHandlers not available after polling — skipping storage check');
     return;
   }
-  setTimeout(() => {
+
+  pendingDataHandlersPoll = setTimeout(() => {
+    pendingDataHandlersPoll = null;
     waitForDataHandlersThen(callback, retries - 1, delayMs);
   }, delayMs);
+}
+
+function clearPendingDataHandlersPoll() {
+  if (pendingDataHandlersPoll) {
+    clearTimeout(pendingDataHandlersPoll);
+    pendingDataHandlersPoll = null;
+  }
 }
 
 function runStorageQuotaCheck() {
   if (!window.dataHandlers || !window.dataHandlers.checkStorageQuota) return;
 
   const quotaStatus = window.dataHandlers.checkStorageQuota();
+  if (!quotaStatus) return;
 
   if (quotaStatus.status === 'critical') {
     console.error(`[INIT] 🚨 Storage critical (${quotaStatus.percentUsed}%) — triggering emergency sync`);
 
     if (navigator.onLine && window.dataHandlers.syncData) {
       console.log('[INIT] 🔄 Auto-syncing to free storage...');
+
       window.dataHandlers.syncData(true)
         .then(success => {
           if (success) {
             console.log('[INIT] ✅ Emergency sync freed storage');
+
             setTimeout(() => {
-              const newStatus = window.dataHandlers.checkStorageQuota();
+              const newStatus = window.dataHandlers.checkStorageQuota?.();
+              if (!newStatus) return;
+
               console.log(`[INIT] Storage after sync: ${newStatus.status} (${newStatus.percentUsed}%)`);
               if (newStatus.status === 'critical') {
                 console.error('[INIT] ⚠️ Storage still critical — manual intervention may be needed');
@@ -90,12 +127,20 @@ function runStorageQuotaCheck() {
       console.error('[INIT] 🚨 Storage critical but OFFLINE — data loss risk!');
       _showStorageAlert('🚨 Storage full & offline — connect to internet');
 
-      const onlineHandler = () => {
+      if (emergencyOnlineHandler) {
+        window.removeEventListener('online', emergencyOnlineHandler);
+      }
+
+      emergencyOnlineHandler = () => {
         console.log('[INIT] Device online — attempting emergency sync');
-        if (window.dataHandlers.syncData) window.dataHandlers.syncData(true);
-        window.removeEventListener('online', onlineHandler);
+        if (window.dataHandlers?.syncData) {
+          window.dataHandlers.syncData(true);
+        }
+        window.removeEventListener('online', emergencyOnlineHandler);
+        emergencyOnlineHandler = null;
       };
-      window.addEventListener('online', onlineHandler);
+
+      window.addEventListener('online', emergencyOnlineHandler);
 
     } else {
       console.error('[INIT] 🚨 Storage critical but syncData not available!');
@@ -108,13 +153,36 @@ function runStorageQuotaCheck() {
   }
 }
 
+function startStorageMonitoring() {
+  if (storageMonitorIntervalId) {
+    clearInterval(storageMonitorIntervalId);
+    storageMonitorIntervalId = null;
+  }
+
+  storageMonitorIntervalId = setInterval(() => {
+    if (!window.dataHandlers || !window.dataHandlers.checkStorageQuota) return;
+
+    const quotaStatus = window.dataHandlers.checkStorageQuota();
+    if (!quotaStatus) return;
+
+    if (quotaStatus.status === 'critical') {
+      console.error(`[STORAGE CHECK] 🚨 CRITICAL: ${quotaStatus.percentUsed}% — triggering emergency sync`);
+      if (navigator.onLine && window.dataHandlers.syncData) {
+        window.dataHandlers.syncData(true);
+      }
+    } else if (quotaStatus.status === 'warning') {
+      console.warn(`[STORAGE CHECK] ⚠️ WARNING: ${quotaStatus.percentUsed}% used`);
+    }
+  }, 30 * 60 * 1000);
+}
+
 function _showStorageAlert(message) {
   if (window.globals?.syncStatusMessage) {
     window.globals.syncStatusMessage.textContent = message;
     window.globals.syncStatusMessage.style.color = '#dc2626';
     window.globals.syncStatusMessage.style.fontWeight = 'bold';
   }
-  // Auto-surface admin panel so staff can take action
+
   const adminControls = window.globals?.adminControls;
   if (adminControls && adminControls.classList.contains('hidden')) {
     console.log('[INIT] Auto-showing admin panel due to storage crisis');
@@ -125,75 +193,73 @@ function _showStorageAlert(message) {
 // ── Main initialisation ───────────────────────────────────────────────────────
 
 function initialize() {
-  console.log('[INIT] DOM Content Loaded — Initializing kiosk...');
-
-  // Step 1: Initialize DOM element references
-  initializeElements();
-
-  // Step 2: Storage quota check (with retry-poll for dataHandlers readiness)
-  try {
-    waitForDataHandlersThen(runStorageQuotaCheck);
-
-    // Periodic monitor every 30 minutes (only checks — does NOT auto-sync unless critical)
-    setInterval(() => {
-      if (!window.dataHandlers || !window.dataHandlers.checkStorageQuota) return;
-      const quotaStatus = window.dataHandlers.checkStorageQuota();
-      if (quotaStatus.status === 'critical') {
-        console.error(`[STORAGE CHECK] 🚨 CRITICAL: ${quotaStatus.percentUsed}% — triggering emergency sync`);
-        if (navigator.onLine && window.dataHandlers.syncData) {
-          window.dataHandlers.syncData(true);
-        }
-      } else if (quotaStatus.status === 'warning') {
-        console.warn(`[STORAGE CHECK] ⚠️ WARNING: ${quotaStatus.percentUsed}% used`);
-      }
-    }, 30 * 60 * 1000);
-
-  } catch (err) {
-    console.error('[INIT] Storage check failed:', err);
-  }
-
-  // Step 3: Validate all critical elements exist
-  const validation = validateElements();
-  if (!validation.valid) {
-    showCriticalError(validation.missingElements);
+  if (initializationCompleted) {
+    console.log('[INIT] Initialization already completed — skipping duplicate run');
     return;
   }
-  console.log('[INIT] ✅ All essential elements found');
 
-  // Step 4: Setup navigation
-  setupNavigation();
+  if (initializationStarted) {
+    console.log('[INIT] Initialization already in progress — skipping duplicate run');
+    return;
+  }
 
-  // Step 5: Setup activity tracking
-  setupActivityTracking();
+  initializationStarted = true;
 
-  // Step 6: Setup admin panel
-  setupAdminPanel();
+  try {
+    console.log('[INIT] DOM Content Loaded — Initializing kiosk...');
 
-  // Step 7: Initialize survey state (resume or start fresh)
-  initializeSurveyState();
+    // Step 1: Initialize DOM element references
+    initializeElements();
 
-  // Step 8: Setup network monitoring
-  setupNetworkMonitoring();
+    // Step 2: Storage quota check
+    try {
+      clearPendingDataHandlersPoll();
+      waitForDataHandlersThen(runStorageQuotaCheck);
+      startStorageMonitoring();
+    } catch (err) {
+      console.error('[INIT] Storage check failed:', err);
+    }
 
-  // Step 9: Setup visibility change handler
-  setupVisibilityHandler();
+    // Step 3: Validate all critical elements exist
+    const validation = validateElements();
+    if (!validation.valid) {
+      showCriticalError(validation.missingElements);
+      initializationStarted = false;
+      return;
+    }
+    console.log('[INIT] ✅ All essential elements found');
 
-  // Step 10: Setup inactivity visibility handler (battery optimisation)
-  setupInactivityVisibilityHandler();
-  console.log('[INIT] ✅ Inactivity visibility handler active');
+    // Step 4: Setup navigation
+    setupNavigation();
 
-  // Step 11: Setup typewriter visibility handler (battery optimisation)
-  setupTypewriterVisibilityHandler();
-  console.log('[INIT] ✅ Typewriter visibility handler active');
+    // Step 5: Setup activity tracking
+    setupActivityTracking();
 
-  // Step 12: Start periodic sync — called HERE (not inside resetInactivityTimer)
-  // BUG #16 FIX: startPeriodicSync() was called on every user interaction inside
-  // resetInactivityTimer(), resetting the sync countdown each time.
-  // Calling it once here ensures the sync interval fires on a stable schedule.
-  startPeriodicSync();
-  console.log('[INIT] ✅ Periodic sync started (stable interval)');
+    // Step 6: Setup admin panel
+    setupAdminPanel();
 
-  // Step 13: Start heartbeat
+    // Step 7: Initialize survey state (resume or start fresh)
+    initializeSurveyState();
+
+    // Step 8: Setup network monitoring
+    setupNetworkMonitoring();
+
+    // Step 9: Setup visibility change handler
+    setupVisibilityHandler();
+
+    // Step 10: Setup inactivity visibility handler
+    setupInactivityVisibilityHandler();
+    console.log('[INIT] ✅ Inactivity visibility handler active');
+
+    // Step 11: Setup typewriter visibility handler
+    setupTypewriterVisibilityHandler();
+    console.log('[INIT] ✅ Typewriter visibility handler active');
+
+    // Step 12: Start periodic sync
+    startPeriodicSync();
+    console.log('[INIT] ✅ Periodic sync started (stable interval)');
+
+    // Step 13: Start heartbeat
   startHeartbeat();
   console.log('[INIT] ✅ Heartbeat started (15 min, hidden-aware)');
 

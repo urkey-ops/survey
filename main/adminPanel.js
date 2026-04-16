@@ -1,38 +1,34 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel optimized for offline-first iPad kiosk PWA
-// VERSION: 7.2.0 - iPad PWA tap-unlock fix
-//   #7  handleTitleClick stored by ref so removeEventListener works in cleanup
-//   #8  cleanupAdminPanel now resets adminPanelVisible + syncInProgress + analyticsInProgress
-//   #9  window.cleanupAdminPanel re-assigned at END of setupAdminPanel (not before listeners)
-//   #10 CONSTANTS null-guarded in Clear Local handler
-//   #11 Sleep/wake resets syncInProgress/analyticsInProgress if stuck >60s
-//   #12 Survey type-switch saves partial formData before reload
-//   #13 Sync button syncs BOTH queues (type1 + type2)
-//   #14 iPad PWA fix: title unlock uses pointerup + touchend fallback instead of click
+// VERSION: 7.3.0 - post-reset unlock resilience
 // DEPENDENCIES: window.globals, window.dataHandlers, window.CONSTANTS, window.KIOSK_CONFIG
 
-const CLEAR_PASSWORD            = '8765';
-const MAX_ATTEMPTS              = 2;
-const LOCKOUT_DURATION          = 3600000;
-const AUTO_HIDE_DELAY           = 20000;
-const PASSWORD_SESSION_TIMEOUT  = 300000;
+const CLEAR_PASSWORD = '8765';
+const MAX_ATTEMPTS = 2;
+const LOCKOUT_DURATION = 3600000;
+const AUTO_HIDE_DELAY = 20000;
+const PASSWORD_SESSION_TIMEOUT = 300000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
-const STUCK_FLAG_TIMEOUT_MS     = 60000;
+const STUCK_FLAG_TIMEOUT_MS = 60000;
 
-let failedAttempts      = 0;
-let lockoutUntil        = null;
-let autoHideTimer       = null;
-let autoHideStartTime   = null;
-let countdownInterval   = null;
-let adminPanelVisible   = false;
+let failedAttempts = 0;
+let lockoutUntil = null;
+let autoHideTimer = null;
+let autoHideStartTime = null;
+let countdownInterval = null;
+let adminPanelVisible = false;
 let lastPasswordSuccess = null;
-let syncInProgress      = false;
+let syncInProgress = false;
 let analyticsInProgress = false;
-let syncStartedAt       = null;
-let analyticsStartedAt  = null;
-let onlineHandler       = null;
-let offlineHandler      = null;
-let handleTitleClick    = null;
+let syncStartedAt = null;
+let analyticsStartedAt = null;
+let onlineHandler = null;
+let offlineHandler = null;
+let handleTitleClick = null;
+let unlockTapCount = 0;
+let unlockTapTimeout = null;
+let unlockLastTapTime = 0;
+let unlockBoundTitle = null;
 
 function isClearLocalLocked() {
   if (!lockoutUntil) return false;
@@ -58,7 +54,7 @@ function lockClearLocal() {
 function restoreLockoutState() {
   const stored = localStorage.getItem('clearLocalLockout');
   if (stored) {
-    const storedTime = parseInt(stored);
+    const storedTime = parseInt(stored, 10);
     if (Date.now() < storedTime) {
       lockoutUntil = storedTime;
       console.warn('[ADMIN] 🔒 Clear Local locked (restored from storage)');
@@ -527,6 +523,68 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
   console.log('[ADMIN] ✅ Survey type switcher built');
 }
 
+function bindAdminUnlock() {
+  const mainTitle = window.globals?.mainTitle || document.getElementById('mainTitle');
+  if (!mainTitle) {
+    console.warn('[ADMIN] ⚠️ mainTitle missing for unlock binding');
+    return;
+  }
+
+  if (unlockBoundTitle && handleTitleClick) {
+    unlockBoundTitle.removeEventListener('pointerup', handleTitleClick);
+    unlockBoundTitle.removeEventListener('touchend', handleTitleClick);
+    unlockBoundTitle.removeEventListener('click', handleTitleClick);
+  }
+
+  unlockBoundTitle = mainTitle;
+  unlockTapCount = 0;
+  unlockTapTimeout = null;
+  unlockLastTapTime = 0;
+
+  handleTitleClick = (e) => {
+    e.preventDefault?.();
+    e.stopPropagation?.();
+
+    const now = Date.now();
+    if (now - unlockLastTapTime < 250) return;
+    unlockLastTapTime = now;
+
+    unlockTapCount++;
+    vibrateTap();
+    console.log(`[ADMIN] Tap ${unlockTapCount}/5`);
+
+    if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
+    unlockTapTimeout = setTimeout(() => {
+      unlockTapCount = 0;
+    }, 2000);
+
+    if (unlockTapCount >= 5) {
+      console.log('[ADMIN] ✅ Unlocked');
+      showAdminPanel();
+      unlockTapCount = 0;
+      if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
+    }
+  };
+
+  mainTitle.style.pointerEvents = 'auto';
+  mainTitle.style.touchAction = 'manipulation';
+  mainTitle.addEventListener('pointerup', handleTitleClick, { passive: false });
+  mainTitle.addEventListener('touchend', handleTitleClick, { passive: false });
+  mainTitle.addEventListener('click', handleTitleClick);
+
+  console.log('[ADMIN] ✅ Unlock bound to mainTitle');
+}
+
+window.inspectAdminHitTarget = function() {
+  const x = window.innerWidth / 2;
+  const y = 24;
+  const el = document.elementFromPoint(x, y);
+  const stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [];
+  console.log('[ADMIN DEBUG] elementFromPoint:', el);
+  console.log('[ADMIN DEBUG] elementsFromPoint:', stack);
+  return { el, stack };
+};
+
 export function setupAdminPanel() {
   const mainTitle = window.globals?.mainTitle;
   const adminControls = window.globals?.adminControls;
@@ -565,40 +623,7 @@ export function setupAdminPanel() {
 
   const resetTimer = () => resetAutoHideTimer();
   buildSurveyTypeSwitcher(adminControls, resetTimer);
-
-  let tapCount = 0;
-  let tapTimeout = null;
-  let lastTapTime = 0;
-
-  handleTitleClick = (e) => {
-    e.preventDefault?.();
-    e.stopPropagation?.();
-
-    const now = Date.now();
-
-    // Deduplicate overlapping touch/pointer firing on iPad/PWA
-    if (now - lastTapTime < 250) return;
-    lastTapTime = now;
-
-    tapCount++;
-    vibrateTap();
-    console.log(`[ADMIN] Tap ${tapCount}/5`);
-
-    if (tapTimeout) clearTimeout(tapTimeout);
-    tapTimeout = setTimeout(() => {
-      tapCount = 0;
-    }, 2000);
-
-    if (tapCount >= 5) {
-      console.log('[ADMIN] ✅ Unlocked');
-      showAdminPanel();
-      tapCount = 0;
-      if (tapTimeout) clearTimeout(tapTimeout);
-    }
-  };
-
-  mainTitle.addEventListener('pointerup', handleTitleClick, { passive: false });
-  mainTitle.addEventListener('touchend', handleTitleClick, { passive: false });
+  bindAdminUnlock();
 
   if (hideAdminButton) {
     hideAdminButton.addEventListener('click', (e) => {
@@ -811,15 +836,11 @@ export function setupAdminPanel() {
         if (syncStatusMessage) syncStatusMessage.textContent = '✅ Update check complete';
       } catch (error) {
         console.error('[ADMIN] ❌ Update check failed:', error);
-        if (syncStatusMessage) {
-          syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
-        }
+        if (syncStatusMessage) syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
         alert(`❌ Update check failed:\n\n${error.message}`);
       }
 
-      setTimeout(() => {
-        if (syncStatusMessage) syncStatusMessage.textContent = '';
-      }, 4000);
+      setTimeout(() => { if (syncStatusMessage) syncStatusMessage.textContent = ''; }, 4000);
     });
     console.log('[ADMIN] ✅ Check Update button handler attached');
   } else {
@@ -947,7 +968,7 @@ export function setupAdminPanel() {
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.2.0 — iPad tap unlock fixed)');
+  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.3.0 — post-reset unlock resilience)');
   console.log('═══════════════════════════════════════════════════════');
   console.log(` Mode:           Offline-First iPad Kiosk PWA`);
   console.log(` Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
@@ -962,11 +983,10 @@ export function cleanupAdminPanel() {
   if (onlineHandler) window.removeEventListener('online', onlineHandler);
   if (offlineHandler) window.removeEventListener('offline', offlineHandler);
 
-  const mainTitle = window.globals?.mainTitle;
-  if (mainTitle && handleTitleClick) {
-    mainTitle.removeEventListener('pointerup', handleTitleClick);
-    mainTitle.removeEventListener('touchend', handleTitleClick);
-    handleTitleClick = null;
+  if (unlockBoundTitle && handleTitleClick) {
+    unlockBoundTitle.removeEventListener('pointerup', handleTitleClick);
+    unlockBoundTitle.removeEventListener('touchend', handleTitleClick);
+    unlockBoundTitle.removeEventListener('click', handleTitleClick);
   }
 
   autoHideTimer = null;
@@ -974,6 +994,11 @@ export function cleanupAdminPanel() {
   countdownInterval = null;
   onlineHandler = null;
   offlineHandler = null;
+  handleTitleClick = null;
+  unlockBoundTitle = null;
+  unlockTapCount = 0;
+  unlockTapTimeout = null;
+  unlockLastTapTime = 0;
 
   adminPanelVisible = false;
   syncInProgress = false;

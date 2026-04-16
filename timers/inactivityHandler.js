@@ -1,59 +1,69 @@
 // FILE: timers/inactivityHandler.js
 // PURPOSE: Handle user inactivity detection and auto-reset
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 3.2.0
-// CHANGES FROM 3.1.0:
-//   - resetInactivityTimer: replaced mixed `window.isKioskVisible` flag with
-//     `document.hidden` as the single source of truth for page visibility.
-//     `window.isKioskVisible` was set externally and could drift out of sync
-//     after iPad PWA backgrounding/resuming; `document.hidden` is always
-//     accurate and requires no external setter.
-//   - handleInactivityVisibilityChange: on visible, now calls
-//     resetInactivityTimer() directly (grants a fresh window) rather than
-//     just re-adding listeners without restarting the timer.  Previously the
-//     timer was never restarted after a resume, so the kiosk could time out
-//     immediately on the first interaction after coming back into view.
-//   - addInactivityListeners: mirrors the same `document.hidden` guard that
-//     resetInactivityTimer uses — no listeners are added if the page is
-//     hidden at call time (was already present, kept unchanged).
-//   - performKioskReset: storage key resolution moved to _getStorageKey()
-//     helper (same pattern as core.js v5.3.0) so it stays in sync.
-//   - stopQuestionTimer (private): same _getStorageKey() helper applied.
-//   - All other behaviour (throttle, partial-data save, analytics, admin
-//     panel re-init, periodic sync) is unchanged.
+// VERSION: 3.3.0
+// CHANGES FROM 3.2.0:
+//   - adds window.focus listener alongside visibilitychange
+//     because some iPad PWA resumptions do not reliably fire visibilitychange
+//   - guards setupInactivityVisibilityHandler against duplicate binds
+//   - getQuestions() now reads active survey type consistently
+//   - performKioskReset() uses safeRemoveLocalStorage
+//   - clears throttleTimeout in removeInactivityListeners and on reset
+//   - periodic sync timer cleanup added to full teardown path
 
 let boundResetInactivityTimer = null;
-let throttleTimeout            = null;
-const THROTTLE_DELAY           = 2000;
+let throttleTimeout = null;
+const THROTTLE_DELAY = 2000;
+
+let visibilityHandlerBound = false;
+let focusHandlerBound = false;
 
 // ── Dependency accessor ───────────────────────────────────────────────────────
 
 function getDependencies() {
   return {
     INACTIVITY_TIMEOUT_MS: window.CONSTANTS?.INACTIVITY_TIMEOUT_MS ?? 30000,
-    SYNC_INTERVAL_MS:      window.CONSTANTS?.SYNC_INTERVAL_MS      ?? 900000,
-    STORAGE_KEY_QUEUE:     window.CONSTANTS?.STORAGE_KEY_QUEUE     ?? 'submissionQueue',
-    MAX_QUEUE_SIZE:        window.CONSTANTS?.MAX_QUEUE_SIZE         ?? 250,
-    appState:              window.appState,
-    dataHandlers:          window.dataHandlers,
-    dataUtils:             window.dataUtils,
-    timerManager:          window.timerManager,
+    SYNC_INTERVAL_MS: window.CONSTANTS?.SYNC_INTERVAL_MS ?? 900000,
+    MAX_QUEUE_SIZE: window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250,
+    appState: window.appState,
+    dataHandlers: window.dataHandlers,
+    dataUtils: window.dataUtils,
+    timerManager: window.timerManager,
   };
 }
 
 // ── Storage key helper ────────────────────────────────────────────────────────
 
-/**
- * Single resolver for the persisted kiosk-state storage key.
- * Mirrors the same helper in core.js so both files always use the same key.
- * Priority: CONSTANTS → appState.storageKey → legacy fallback string.
- */
 function _getStorageKey() {
   return (
     window.CONSTANTS?.STORAGE_KEY_STATE ||
-    window.appState?.storageKey         ||
+    window.appState?.storageKey ||
     'kioskAppState'
   );
+}
+
+function _safeRemoveStorageKey() {
+  try {
+    localStorage.removeItem(_getStorageKey());
+  } catch (e) {
+    console.warn('[INACTIVITY] Failed to remove state key:', e.message);
+  }
+}
+
+// ── Active survey question helper ─────────────────────────────────────────────
+
+function getQuestions() {
+  const { dataUtils } = getDependencies();
+
+  if (typeof dataUtils?.getSurveyQuestions === 'function') {
+    return dataUtils.getSurveyQuestions();
+  }
+
+  if (Array.isArray(dataUtils?.surveyQuestions)) {
+    return dataUtils.surveyQuestions;
+  }
+
+  return [];
 }
 
 // ── Throttled interaction handler ─────────────────────────────────────────────
@@ -61,49 +71,60 @@ function _getStorageKey() {
 function throttledResetInactivityTimer() {
   if (throttleTimeout) return;
   throttleTimeout = setTimeout(() => {
-    resetInactivityTimer();
     throttleTimeout = null;
+    resetInactivityTimer();
   }, THROTTLE_DELAY);
 }
 
 // ── Periodic sync ─────────────────────────────────────────────────────────────
 
 export function startPeriodicSync() {
-  const { SYNC_INTERVAL_MS, dataHandlers, timerManager } = getDependencies();
+  const { SYNC_INTERVAL_MS, dataHandlers, timerManager, appState } = getDependencies();
+
+  if (!dataHandlers?.autoSync) {
+    console.warn('[INACTIVITY] autoSync not available — skipping periodic sync setup');
+    return;
+  }
 
   if (timerManager) {
     timerManager.setSync(dataHandlers.autoSync, SYNC_INTERVAL_MS);
   } else {
-    window.appState.syncTimer = setInterval(dataHandlers.autoSync, SYNC_INTERVAL_MS);
+    if (appState.syncTimer) {
+      clearInterval(appState.syncTimer);
+    }
+    appState.syncTimer = setInterval(dataHandlers.autoSync, SYNC_INTERVAL_MS);
   }
 
   console.log(`[INACTIVITY] Periodic sync started (every ${SYNC_INTERVAL_MS / 1000}s)`);
 }
 
+export function stopPeriodicSync() {
+  const { appState, timerManager } = getDependencies();
+
+  if (timerManager) {
+    timerManager.clearSync?.();
+  } else if (appState?.syncTimer) {
+    clearInterval(appState.syncTimer);
+    appState.syncTimer = null;
+  }
+
+  console.log('[INACTIVITY] Periodic sync stopped');
+}
+
 // ── Inactivity timer ──────────────────────────────────────────────────────────
 
-/**
- * (Re)start the inactivity countdown.
- *
- * Visibility source-of-truth change (v3.2.0):
- *   Uses `document.hidden` instead of `window.isKioskVisible`.
- *   `document.hidden` is a browser-native, always-accurate property that
- *   updates immediately when an iPad PWA is backgrounded or the screen
- *   locks.  `window.isKioskVisible` required an external setter to stay
- *   in sync and could silently drift, causing either missed resets (timer
- *   runs while page is hidden) or false resets (timer skipped when visible).
- */
 export function resetInactivityTimer() {
   const { INACTIVITY_TIMEOUT_MS, appState, dataUtils, timerManager } = getDependencies();
 
-  // Clear any existing inactivity countdown first.
   if (timerManager) {
     timerManager.clearInactivity();
   } else {
-    if (appState.inactivityTimer) clearTimeout(appState.inactivityTimer);
+    if (appState.inactivityTimer) {
+      clearTimeout(appState.inactivityTimer);
+      appState.inactivityTimer = null;
+    }
   }
 
-  // Do not start a new timer while the page is not visible.
   if (document.hidden) {
     console.log('[INACTIVITY] Page hidden — timer not started');
     return;
@@ -121,8 +142,9 @@ export function resetInactivityTimer() {
 // ── Inactivity timeout handler ────────────────────────────────────────────────
 
 function handleInactivityTimeout(dataUtils, appState) {
-  const idx             = appState.currentQuestionIndex;
-  const currentQuestion = dataUtils.surveyQuestions[idx];
+  const idx = appState.currentQuestionIndex;
+  const questions = getQuestions();
+  const currentQuestion = questions[idx];
 
   console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion?.id})`);
 
@@ -130,11 +152,11 @@ function handleInactivityTimeout(dataUtils, appState) {
     console.log('[INACTIVITY] Q1 abandonment — recording analytics');
     try {
       getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
-        questionId:       currentQuestion?.id,
-        questionIndex:    idx,
+        questionId: currentQuestion?.id,
+        questionIndex: idx,
         totalTimeSeconds: getTotalSurveyTime(),
-        reason:           'inactivity_q1',
-        partialData:      { satisfaction: appState.formData.satisfaction ?? null },
+        reason: 'inactivity_q1',
+        partialData: { satisfaction: appState.formData?.satisfaction ?? null },
       });
     } catch (analyticsErr) {
       console.warn('[INACTIVITY] Q1 abandonment analytics failed:', analyticsErr);
@@ -149,47 +171,55 @@ function handleInactivityTimeout(dataUtils, appState) {
   stopQuestionTimer(currentQuestion?.id);
 
   const totalTimeSeconds = getTotalSurveyTime();
-  const surveyType       =
-    window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
 
   const queueKey =
     window.CONSTANTS?.SURVEY_TYPES?.[surveyType]?.storageKey ||
-    window.CONSTANTS?.STORAGE_KEY_QUEUE                      ||
+    window.CONSTANTS?.STORAGE_KEY_QUEUE ||
     'submissionQueue';
 
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
 
-  let submissionQueue = getDependencies().dataHandlers.getSubmissionQueue(queueKey);
+  const { dataHandlers } = getDependencies();
+  let submissionQueue = dataHandlers.getSubmissionQueue(queueKey);
+
+  if (!Array.isArray(submissionQueue)) {
+    submissionQueue = [];
+  }
+
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
     console.warn(`[INACTIVITY] Queue full (${MAX_QUEUE_SIZE}) — trimming oldest`);
     submissionQueue = submissionQueue.slice(-(MAX_QUEUE_SIZE - 1));
   }
 
-  const timestamp   = new Date().toISOString();
+  const timestamp = new Date().toISOString();
   const partialData = {
     ...appState.formData,
+    id: appState.formData?.id || dataHandlers.generateUUID(),
     surveyType,
-    completionTimeSeconds:    totalTimeSeconds,
-    questionTimeSpent:        { ...appState.questionTimeSpent },
-    abandonedAt:              timestamp,
-    abandonedAtQuestion:      currentQuestion?.id,
+    completionTimeSeconds: totalTimeSeconds,
+    questionTimeSpent: { ...appState.questionTimeSpent },
+    abandonedAt: timestamp,
+    abandonedAtQuestion: currentQuestion?.id,
     abandonedAtQuestionIndex: idx,
-    sync_status:              'unsynced_inactivity',
+    sync_status: 'unsynced_inactivity',
   };
 
   submissionQueue.push(partialData);
-  getDependencies().dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
+  dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
+
   console.log(
     `[INACTIVITY] Partial abandonment saved ` +
     `(queue ${surveyType}: ${submissionQueue.length}/${MAX_QUEUE_SIZE})`
   );
 
   try {
-    getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
-      questionId:       currentQuestion?.id,
-      questionIndex:    idx,
+    dataHandlers.recordAnalytics('survey_abandoned', {
+      questionId: currentQuestion?.id,
+      questionIndex: idx,
       totalTimeSeconds,
-      reason:           'inactivity',
+      reason: 'inactivity',
+      surveyType,
     });
   } catch (analyticsErr) {
     console.warn('[INACTIVITY] Abandonment analytics failed:', analyticsErr);
@@ -211,20 +241,23 @@ export function addInactivityListeners() {
 
   boundResetInactivityTimer = throttledResetInactivityTimer;
 
-  document.addEventListener('mousemove',  boundResetInactivityTimer, { passive: true });
-  document.addEventListener('keydown',    boundResetInactivityTimer, { passive: true });
+  document.addEventListener('mousemove', boundResetInactivityTimer, { passive: true });
+  document.addEventListener('keydown', boundResetInactivityTimer, { passive: true });
   document.addEventListener('touchstart', boundResetInactivityTimer, { passive: true });
+  document.addEventListener('click', boundResetInactivityTimer, { passive: true });
 
   console.log('[INACTIVITY] Listeners active (throttled, passive)');
 }
 
 export function removeInactivityListeners() {
   if (boundResetInactivityTimer) {
-    document.removeEventListener('mousemove',  boundResetInactivityTimer);
-    document.removeEventListener('keydown',    boundResetInactivityTimer);
+    document.removeEventListener('mousemove', boundResetInactivityTimer);
+    document.removeEventListener('keydown', boundResetInactivityTimer);
     document.removeEventListener('touchstart', boundResetInactivityTimer);
+    document.removeEventListener('click', boundResetInactivityTimer);
     boundResetInactivityTimer = null;
   }
+
   if (throttleTimeout) {
     clearTimeout(throttleTimeout);
     throttleTimeout = null;
@@ -255,21 +288,6 @@ export function resumeInactivityTimer() {
 
 // ── Visibility handler ────────────────────────────────────────────────────────
 
-/**
- * Respond to Page Visibility API changes.
- *
- * Behaviour change (v3.2.0):
- *   On becoming visible the handler now calls resetInactivityTimer() rather
- *   than only addInactivityListeners().  In the original code, listeners
- *   were re-attached but no timer was started, so the countdown only began
- *   on the user's *next* interaction — which could be never if the screen
- *   woke to an idle state.  Calling resetInactivityTimer() grants a fresh
- *   full-length window immediately on resume AND re-checks document.hidden
- *   internally, so it is safe to call unconditionally here.
- *
- *   addInactivityListeners() is still called first so user interactions
- *   also reset the countdown as expected.
- */
 function handleInactivityVisibilityChange() {
   if (document.hidden) {
     console.log('[INACTIVITY] Hidden — pausing timer and removing listeners');
@@ -278,17 +296,48 @@ function handleInactivityVisibilityChange() {
   } else {
     console.log('[INACTIVITY] Visible — restoring listeners and restarting timer');
     addInactivityListeners();
-    resetInactivityTimer(); // grants a fresh window on every resume
+    resetInactivityTimer();
+  }
+}
+
+// Some iPad PWA resumptions do not reliably fire visibilitychange.
+// window.focus provides a secondary coverage path for these cases.
+function handleWindowFocus() {
+  if (!document.hidden) {
+    console.log('[INACTIVITY] window.focus — restoring listeners and restarting timer');
+    addInactivityListeners();
+    resetInactivityTimer();
   }
 }
 
 export function setupInactivityVisibilityHandler() {
-  document.addEventListener('visibilitychange', handleInactivityVisibilityChange);
-  console.log('[INACTIVITY] Visibility handler active');
+  if (visibilityHandlerBound) {
+    console.log('[INACTIVITY] Visibility handler already registered — skipping');
+  } else {
+    document.addEventListener('visibilitychange', handleInactivityVisibilityChange);
+    visibilityHandlerBound = true;
+    console.log('[INACTIVITY] Visibility handler active');
+  }
+
+  if (focusHandlerBound) {
+    console.log('[INACTIVITY] Focus handler already registered — skipping');
+  } else {
+    window.addEventListener('focus', handleWindowFocus);
+    focusHandlerBound = true;
+    console.log('[INACTIVITY] Window focus handler active (iPad PWA resume coverage)');
+  }
 }
 
 export function cleanupInactivityVisibilityHandler() {
-  document.removeEventListener('visibilitychange', handleInactivityVisibilityChange);
+  if (visibilityHandlerBound) {
+    document.removeEventListener('visibilitychange', handleInactivityVisibilityChange);
+    visibilityHandlerBound = false;
+  }
+
+  if (focusHandlerBound) {
+    window.removeEventListener('focus', handleWindowFocus);
+    focusHandlerBound = false;
+  }
 }
 
 // ── Kiosk reset ───────────────────────────────────────────────────────────────
@@ -298,20 +347,31 @@ export function performKioskReset() {
 
   const { appState, dataHandlers } = getDependencies();
 
-  if (window.uiHandlers?.cleanupStartScreenListeners) window.uiHandlers.cleanupStartScreenListeners();
-  if (window.uiHandlers?.cleanupInputFocusScroll)      window.uiHandlers.cleanupInputFocusScroll();
-  if (window.uiHandlers?.cleanupIntervals)             window.uiHandlers.cleanupIntervals();
+  if (window.uiHandlers?.cleanupStartScreenListeners) {
+    window.uiHandlers.cleanupStartScreenListeners();
+  }
+  if (window.uiHandlers?.cleanupInputFocusScroll) {
+    window.uiHandlers.cleanupInputFocusScroll();
+  }
+  if (window.uiHandlers?.cleanupIntervals) {
+    window.uiHandlers.cleanupIntervals();
+  }
 
-  localStorage.removeItem(_getStorageKey());
+  _safeRemoveStorageKey();
 
   appState.formData = {
-    id:        dataHandlers.generateUUID(),
+    id: dataHandlers.generateUUID(),
     timestamp: new Date().toISOString(),
   };
   appState.currentQuestionIndex = 0;
-  appState.surveyStartTime      = null;
-  appState.questionStartTimes   = {};
-  appState.questionTimeSpent    = {};
+  appState.surveyStartTime = null;
+  appState.questionStartTimes = {};
+  appState.questionTimeSpent = {};
+
+  if (appState.countdownInterval) {
+    clearInterval(appState.countdownInterval);
+    appState.countdownInterval = null;
+  }
 
   console.log('[INACTIVITY] New session ID:', appState.formData.id);
 
@@ -336,6 +396,16 @@ export function performKioskReset() {
   }, 150);
 }
 
+// ── Full cleanup ──────────────────────────────────────────────────────────────
+
+export function cleanupInactivityHandler() {
+  removeInactivityListeners();
+  cleanupInactivityVisibilityHandler();
+  pauseInactivityTimer();
+  stopPeriodicSync();
+  console.log('[INACTIVITY] Full cleanup done');
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getTotalSurveyTime() {
@@ -348,28 +418,28 @@ function stopQuestionTimer(questionId) {
   if (!questionId) return;
   const { appState, dataHandlers } = getDependencies();
 
-  if (appState.questionStartTimes[questionId]) {
-    const timeSpent = Date.now() - appState.questionStartTimes[questionId];
-    appState.questionTimeSpent[questionId] = timeSpent;
-    delete appState.questionStartTimes[questionId];
+  if (!appState.questionStartTimes[questionId]) return;
 
-    if (dataHandlers) {
-      dataHandlers.safeSetLocalStorage(_getStorageKey(), {
-        currentQuestionIndex: appState.currentQuestionIndex,
-        formData:             appState.formData,
-        surveyStartTime:      appState.surveyStartTime,
-        questionStartTimes:   appState.questionStartTimes,
-        questionTimeSpent:    appState.questionTimeSpent,
-      });
-    }
+  const timeSpent = Date.now() - appState.questionStartTimes[questionId];
+  appState.questionTimeSpent[questionId] = timeSpent;
+  delete appState.questionStartTimes[questionId];
+
+  if (dataHandlers) {
+    dataHandlers.safeSetLocalStorage(_getStorageKey(), {
+      currentQuestionIndex: appState.currentQuestionIndex,
+      formData: { ...appState.formData },
+      surveyStartTime: appState.surveyStartTime,
+      questionStartTimes: { ...appState.questionStartTimes },
+      questionTimeSpent: { ...appState.questionTimeSpent },
+    });
   }
 }
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
 export function isInactivityTimerActive() {
-  const { appState } = getDependencies();
-  return appState.inactivityTimer !== null;
+  const { appState, timerManager } = getDependencies();
+  return timerManager ? timerManager.hasInactivityTimer?.() : appState.inactivityTimer !== null;
 }
 
 export function getInactivityTimeRemaining() {
@@ -385,7 +455,9 @@ export default {
   removeInactivityListeners,
   setupInactivityVisibilityHandler,
   cleanupInactivityVisibilityHandler,
+  cleanupInactivityHandler,
   startPeriodicSync,
+  stopPeriodicSync,
   performKioskReset,
   isInactivityTimerActive,
   pauseInactivityTimer,

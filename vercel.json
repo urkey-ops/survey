@@ -2,14 +2,12 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "outputDirectory": ".",
-
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     }
   ],
-
   "headers": [
     {
       "source": "/service-worker.js",
@@ -24,7 +22,6 @@
         }
       ]
     },
-
     {
       "source": "/manifest.json",
       "headers": [
@@ -38,7 +35,6 @@
         }
       ]
     },
-
     {
       "source": "/icons/(.*)",
       "headers": [
@@ -48,27 +44,42 @@
         }
       ]
     },
-
     {
       "source": "/dist/(.*)",
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
+          "value": "public, max-age=0, must-revalidate"
         }
       ]
     },
-
-  
     {
-  "source": "/asset/video/1.mp4",
-  "headers": [
+      "source": "/custom.css",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
     {
-      "key": "Cache-Control",
-      "value": "public, max-age=86400"
-    }
-  ]
-},
+      "source": "/input.css",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/asset/video/1.mp4",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
+      ]
+    },
     {
       "source": "/asset/(.*)",
       "headers": [

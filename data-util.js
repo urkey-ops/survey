@@ -168,15 +168,15 @@ window.dataUtils = (function () {
 
     // Q1 — Emotional Hook (same emoji-radio layout as Type 1)
     {
-      id: 'visit_feeling',
-      name: 'visit_feeling',
+      id: 'satisfaction',
+      name: 'satisfaction',
       type: 'emoji-radio',
-      question: 'How was your visit today?',
+      question: 'Overall, how satisfied were you with your visit today?',
       options: [
-        { value: 'Peaceful',        label: 'Peaceful',        emoji: '😊' },
-        { value: 'Good',            label: 'Good',            emoji: '🙂' },
-        { value: 'Okay',            label: 'Okay',            emoji: '😐' },
-        { value: 'Not as expected', label: 'Not as expected', emoji: '🙁' },
+        { value: 'Sad',         label: 'Sad',         emoji: '😢' },
+        { value: 'Neutral',     label: 'Neutral',     emoji: '😐' },
+        { value: 'Happy',       label: 'Happy',       emoji: '😊' },
+        { value: 'Super Happy', label: 'Super Happy', emoji: '🤩' },
       ],
       required: true,
     },

@@ -1,3 +1,18 @@
+/* FILE: custom.css
+   VERSION: 5.2.0
+   FIXES:
+   - Header CSS Grid: row1 = title+admin, row2 = progress bar (no more side-by-side)
+   - Emoji row always 4 columns, single line
+   - Location/age grids capped at 3 cols max for text options
+   - Two-line labels stack vertically inside box
+   - Followup drawer centered, consistent padding
+   - surveyContent max-height accounts for keyboard
+   - buttonContainer always visible, never pushed off screen
+   - stepCounter repositioned (no overlap)
+   - Checkbox indicator tops out on text wrap
+   - followup-sub-grid separate from main grid class
+*/
+
 :root {
   --orange:          #E86000;
   --orange-dark:     #C45200;
@@ -20,10 +35,11 @@
   --gap-grid:        8px;
   --transition:      background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
   --card-gap:        10px;
-  --page-h-pad:      28px;
-  --page-v-pad:      18px;
+  --page-h-pad:      20px;
+  --page-v-pad:      16px;
   --col-max:         820px;
   --keyboard-height: 0px;
+  --header-height:   0px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -48,7 +64,7 @@ label {
   touch-action: manipulation;
 }
 
-/* ── Start Screen ── */
+/* ── Start Screen ─────────────────────────────────────────── */
 #kioskStartScreen {
   position: fixed !important;
   inset: 0;
@@ -77,7 +93,7 @@ label {
   text-align: center;
 }
 
-/* ── Main Survey Shell ── */
+/* ── Main Survey Shell ────────────────────────────────────── */
 main {
   position: fixed !important;
   inset: 0;
@@ -86,17 +102,18 @@ main {
   flex-direction: column;
   align-items: center;
   background: var(--bg);
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  padding: var(--page-v-pad) var(--page-h-pad)
-           calc(var(--page-v-pad) + var(--keyboard-height, 0px));
+  overflow: hidden;
+  padding: var(--page-v-pad) var(--page-h-pad);
   gap: var(--card-gap);
-  max-width: 100% !important;
 }
 main:not(.hidden) { display: flex !important; }
 
-/* ── Header — TOP CARD ── */
+/* ── Header Card — CSS Grid Layout ───────────────────────── */
+/*
+  Row 1: [title] [admin controls]
+  Row 2: [progress bar — full width]
+  The HTML <header> has NO flex/grid classes — custom.css owns layout.
+*/
 header {
   width: 100%;
   max-width: var(--col-max);
@@ -106,7 +123,7 @@ header {
   box-shadow: var(--card-shadow);
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto 8px;
   align-items: center;
   column-gap: 16px;
   padding: 14px 20px 0;
@@ -114,6 +131,7 @@ header {
   overflow: hidden;
 }
 
+/* Row 1, Col 1 */
 #mainTitle {
   grid-column: 1;
   grid-row: 1;
@@ -122,17 +140,17 @@ header {
   color: var(--text-primary);
   line-height: 1.2;
   cursor: pointer;
-  padding: 6px 8px;
-  margin: -6px -8px;
   border-radius: 6px;
   min-height: 36px;
   display: inline-flex;
   align-items: center;
   transition: background 0.15s ease;
   -webkit-user-select: none;
+  /* No padding/margin overrides — grid handles placement */
 }
 #mainTitle:active { background: rgba(232,96,0,0.10); }
 
+/* Row 1, Col 2 */
 #adminControls {
   grid-column: 2;
   grid-row: 1;
@@ -142,20 +160,32 @@ header {
   gap: 4px;
 }
 #adminControls.hidden { display: none !important; }
+#adminControls button {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid #D1D5DB;
+  background: #F9FAFB;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+#adminControls button:active { background: #E5E7EB; }
 
-/* Progress bar — grid row 2, full-bleed inside header card */
+/* Row 2: Progress bar — full-bleed, no side padding */
 #progressBarContainer {
   grid-column: 1 / -1;
   grid-row: 2;
+  /* Extend to header edges, cancelling the 20px side padding */
   width: calc(100% + 40px);
   margin-left: -20px;
   margin-right: -20px;
-  margin-top: 12px;
-  position: relative;
   height: 8px;
   background: #D1D5DB;
-  flex-shrink: 0;
+  position: relative;
   overflow: hidden;
+  align-self: end;
 }
 #progressBar {
   height: 100%;
@@ -163,50 +193,21 @@ header {
   transition: width 0.45s cubic-bezier(0.4,0,0.2,1);
   min-width: 0;
 }
+
+/* Step counter sits ABOVE the bar, right-aligned, inside header padding */
 #stepCounter {
   position: absolute;
-  right: 20px;
-  top: -24px;
+  right: 0;
+  top: -22px;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
   line-height: 1;
+  pointer-events: none;
 }
 
-/* ── Survey Section — BOTTOM CARD ── */
-#surveyContent {
-  width: 100%;
-  max-width: var(--col-max);
-  background: var(--card-bg);
-  border: var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  flex: 1 1 auto;
-  display: flex !important;
-  flex-direction: column !important;
-  padding: 24px 24px 20px !important;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  min-height: 0;
-}
-
-/* ── Question Container — top-aligned ── */
-#questionContainer {
-  width: 100%;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-/* Question fade transition */
+/* Fade transitions */
 #questionContainer.question-fade-out {
   opacity: 0;
   transition: opacity 0.12s ease;
@@ -216,6 +217,46 @@ header {
   transition: opacity 0.15s ease;
 }
 
+/* ── Survey Section Card ──────────────────────────────────── */
+#surveyContent {
+  width: 100%;
+  max-width: var(--col-max);
+  background: var(--card-bg);
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  /* Fill remaining height minus keyboard */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 20px 20px 16px !important;
+  /* Scroll inside card when content overflows */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Account for soft keyboard */
+  max-height: calc(100vh
+    - var(--page-v-pad) * 2
+    - var(--card-gap)
+    - 80px          /* approximate header card height */
+    - var(--keyboard-height, 0px)
+  );
+}
+
+/* ── Question Container ───────────────────────────────────── */
+#questionContainer {
+  width: 100%;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 14px;
+  padding-bottom: 8px;
+  background: transparent;
+}
+
+/* Question label */
 #questionContainer > label,
 #questionContainer label.block,
 .question-text,
@@ -224,27 +265,33 @@ label[id$="Label"] {
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.4;
-  margin: 0 0 2px;
+  margin: 0 0 4px;
   text-align: left;
   width: 100%;
 }
-#questionContainer p.text-sm {
+#questionContainer p.text-sm,
+#questionContainer p.italic {
   font-size: 0.85rem;
   color: var(--text-secondary);
   margin: -8px 0 0;
   font-style: italic;
 }
 
-/* ── Navigation Buttons ── */
+/* ── Navigation Buttons ───────────────────────────────────── */
 #buttonContainer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 16px;
+  padding-top: 14px;
   margin-top: auto;
   flex-shrink: 0;
   gap: 12px;
   border-top: 1px solid #F0EEE8;
+  /* Ensure it never disappears */
+  position: sticky;
+  bottom: 0;
+  background: var(--card-bg);
+  padding-bottom: 4px;
 }
 #prevBtn {
   height: var(--min-tap);
@@ -262,6 +309,7 @@ label[id$="Label"] {
 }
 #prevBtn:hover  { background: #F9F8F6; border-color: #9CA3AF; }
 #prevBtn:active { transform: scale(0.97); }
+
 #nextBtn {
   height: var(--min-tap);
   padding: 0 2.25rem;
@@ -282,66 +330,59 @@ label[id$="Label"] {
 #nextBtn:disabled,
 #prevBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
-/* ── Option Label — press feedback ── */
+/* ── Option press feedback ────────────────────────────────── */
 .option-label { -webkit-tap-highlight-color: transparent; }
 .option-label:active {
   transform: scale(0.96) !important;
   transition: transform 0.05s ease-out !important;
 }
 
-/* ── Selected state (all option types) ── */
-.location-radio-group  input.visually-hidden:checked + label,
-.age-radio-group       input.visually-hidden:checked + label,
-.followup-radio-group  input.visually-hidden:checked + label,
-.checkbox-group        input.visually-hidden:checked + label {
+/* ── Selected state — radio & checkbox ───────────────────── */
+input.visually-hidden:checked + label {
   background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
   color:        var(--orange-dark) !important;
 }
 
-/* ── Grid orphan centering ── */
-.location-radio-group,
-.age-radio-group,
-.followup-radio-group,
-.checkbox-group,
+/* ── visually-hidden inputs ──────────────────────────────── */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── EMOJI RADIO — always single row of 4 ────────────────── */
 .emoji-radio-group {
-  justify-content: center;
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 10px;
+  width: 100%;
 }
-
-/* Multi-line label spans stack cleanly */
-.location-radio-group label span,
-.age-radio-group label span,
-.followup-radio-group label span {
-  display: block;
-  text-align: center;
-}
-
-/* ── Emoji Rating ── */
 .emoji-radio-group label {
-  border: 1.5px solid #D1D5DB;
-  border-radius: var(--radius-md);
-  background: #FAFAFA;
-  padding: 14px 10px 10px;
-  transition: var(--transition);
-  cursor: pointer;
-  min-width: 72px;
-  min-height: var(--min-tap);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 14px 8px 10px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: var(--radius-md);
+  background: #FAFAFA;
+  cursor: pointer;
+  min-height: var(--min-tap);
   gap: 6px;
+  transition: var(--transition);
 }
 .emoji-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 .emoji-radio-group label > span:first-child {
   font-size: 2.2rem;
   line-height: 1;
-  width: 2.4rem;
-  height: 2.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
 }
 .emoji-radio-group label > span:last-child {
   font-size: 0.9rem;
@@ -360,7 +401,7 @@ label[id$="Label"] {
   color: var(--orange-dark) !important;
 }
 
-/* ── Number Scale ── */
+/* ── NUMBER SCALE ─────────────────────────────────────────── */
 .number-scale-group {
   display: flex !important;
   flex-wrap: nowrap !important;
@@ -380,352 +421,262 @@ label[id$="Label"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-option);
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: var(--text-secondary);
 }
 .number-scale-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
-.number-scale-group + div {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin-top: 4px;
+.number-scale-group input.visually-hidden:checked + label {
+  background: var(--orange-light) !important;
+  border-color: var(--orange) !important;
+  color: var(--orange-dark) !important;
 }
 
-/* ── Star Rating ── */
+/* ── STAR RATING ──────────────────────────────────────────── */
 .star-rating {
   display: flex;
   flex-direction: row-reverse;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 4px;
+  margin-top: 8px;
 }
-.star-rating label.star {
-  transition: color 0.10s ease, transform 0.08s ease;
-  cursor: pointer;
-  line-height: 1;
-  font-size: 2.8rem;
-}
-.star-rating label.star:active { transform: scale(1.18); }
 
-/* ── Location / Generic Radio Grid ── */
-.location-radio-group {
-  display: grid !important;
-  gap: var(--gap-grid) !important;
-  width: 100%;
-}
-.location-radio-group label {
-  border: 1.5px solid #D1D5DB;
-  border-radius: var(--radius-sm);
-  background: #FAFAFA;
-  transition: var(--transition);
-  cursor: pointer;
-  min-height: var(--min-tap);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 10px 12px;
-  line-height: 1.35;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  hyphens: auto;
-  font-size: var(--font-option);
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-.location-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
-
-/* ── Age Radio ── */
+/* ── LOCATION / AGE RADIO — max 3 cols, two-line labels ─── */
+/*
+  Both use .location-radio-group or .age-radio-group.
+  grid-template-columns set inline by JS (getGridCols),
+  capped at 3 for text options.
+  Two-line labels: <span class="block"> stacks lines centered.
+*/
+.location-radio-group,
 .age-radio-group {
-  display: grid !important;
-  gap: var(--gap-grid) !important;
+  display: grid;
+  gap: var(--gap-grid);
   width: 100%;
+  justify-items: stretch;
 }
+.location-radio-group label,
 .age-radio-group label {
-  border: 1.5px solid #D1D5DB;
-  border-radius: var(--radius-sm);
-  background: #FAFAFA;
-  transition: var(--transition);
-  cursor: pointer;
-  min-height: var(--min-tap);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 10px 12px;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  font-size: var(--font-option);
+  padding: 12px 10px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: var(--radius-sm);
+  background: #FAFAFA;
+  cursor: pointer;
+  min-height: var(--min-tap);
+  font-size: 0.9rem;
   font-weight: 500;
+  line-height: 1.3;
   color: var(--text-secondary);
+  transition: var(--transition);
 }
+.location-radio-group label:hover,
 .age-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
-/* ── Followup Radio ── */
+/* Two-line label spans — each on own line, centered */
+.location-radio-group label span,
+.age-radio-group label span {
+  display: block;
+  text-align: center;
+  width: 100%;
+}
+
+/* ── FOLLOWUP RADIO (main options grid) ───────────────────── */
 .followup-radio-group {
-  display: grid !important;
-  gap: var(--gap-grid) !important;
+  display: grid;
+  gap: var(--gap-grid);
   width: 100%;
 }
 .followup-radio-group label {
-  border: 1.5px solid #D1D5DB;
-  border-radius: var(--radius-sm);
-  background: #FAFAFA;
-  transition: var(--transition);
-  cursor: pointer;
-  min-height: var(--min-tap);
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 10px 12px;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  font-size: var(--font-option);
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-.followup-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
-
-[id$="_followup_"] {
-  background: #F9F8F6;
-  border: 1px solid #E5E3DE;
-  border-radius: var(--radius-sm);
-  padding: 14px 16px;
-}
-.followup-panel-label {
-  font-size: 0.95rem !important;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 10px;
-}
-.followup-option-label { font-size: 0.9rem !important; }
-
-/* ── Checkbox Group ── */
-.checkbox-group {
-  display: grid !important;
-  gap: var(--gap-grid) !important;
-  width: 100%;
-}
-.checkbox-tab-wrapper { display: contents; }
-.checkbox-group label {
+  padding: 12px 10px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
   background: #FAFAFA;
-  transition: var(--transition);
   cursor: pointer;
   min-height: var(--min-tap);
-  padding: 10px 14px;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  font-size: var(--font-option);
+  font-size: 0.9rem;
   font-weight: 500;
-  line-height: 1.35;
   color: var(--text-secondary);
+  transition: var(--transition);
+}
+.followup-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+
+/* ── FOLLOWUP DRAWER (dependent panel) ───────────────────── */
+.followup-drawer {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: #F9F8F6;
+  border: 1px solid #E5E3DF;
+  border-radius: var(--radius-md);
+  width: 100%;
+}
+.followup-panel-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 10px;
+}
+
+/* ── FOLLOWUP SUB-GRID (the 4 chip options inside drawer) ── */
+/*
+  Separate class from .followup-radio-group to avoid collision.
+  Always uses flex-wrap so chips flow naturally.
+*/
+.followup-sub-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+.followup-sub-grid .checkbox-tab-wrapper {
+  flex: 0 0 auto;
+}
+.followup-option-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 16px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border: 1.5px solid #D1D5DB;
+  border-radius: 999px;
+  background: #FFFFFF;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.followup-option-label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+input.visually-hidden:checked + .followup-option-label {
+  background: var(--orange-light) !important;
+  border-color: var(--orange) !important;
+  color: var(--orange-dark) !important;
+  border-width: 2px !important;
+}
+
+/* ── CHECKBOX WITH OTHER ──────────────────────────────────── */
+.checkbox-group {
+  display: grid;
+  gap: var(--gap-grid);
+  width: 100%;
+}
+.checkbox-group label {
+  display: flex;
+  align-items: flex-start;  /* indicator tops out on wrap */
+  padding: 12px 10px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: var(--radius-sm);
+  background: #FAFAFA;
+  cursor: pointer;
+  min-height: var(--min-tap);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: var(--transition);
+  gap: 8px;
 }
 .checkbox-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+
+/* Checkbox tick indicator */
 .checkbox-indicator {
   width: 20px;
   height: 20px;
   border: 2px solid #D1D5DB;
-  border-radius: 5px;
-  flex-shrink: 0;
+  border-radius: 4px;
   background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  align-self: flex-start;   /* stays at top even when label text wraps */
+  margin-top: 1px;
   transition: var(--transition);
-  align-self: flex-start;
-  margin-top: 2px;
 }
 
-/* ── Text Inputs ── */
-[id^="other-"][id$="-container"] input[type="text"],
-[id^="other-"][id$="-container"] textarea {
+/* ── Other text input ─────────────────────────────────────── */
+.other-text-input {
+  width: 100%;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
-  padding: 12px 16px;
+  padding: 12px 14px;
   font-size: 1rem;
-  width: 100%;
-  background: #FAFAFA;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  -webkit-appearance: none;
   color: var(--text-primary);
+  background: #FAFAFA;
+  margin-top: 10px;
+  transition: border-color 0.15s ease;
 }
-[id^="other-"][id$="-container"] input[type="text"]:focus,
-[id^="other-"][id$="-container"] textarea:focus {
+.other-text-input:focus {
   outline: none;
   border-color: var(--orange);
-  box-shadow: 0 0 0 3px rgba(232,96,0,0.12);
   background: #fff;
 }
+
+/* ── Textarea ─────────────────────────────────────────────── */
 textarea {
+  resize: none;
+  width: 100%;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
-  padding: 12px 16px;
+  padding: 14px;
   font-size: 1rem;
-  width: 100%;
-  background: #FAFAFA;
   color: var(--text-primary);
-  resize: none;
-  -webkit-appearance: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  background: #FAFAFA;
+  line-height: 1.5;
+  min-height: 120px;
+  transition: border-color 0.15s ease;
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 textarea:focus {
   outline: none;
   border-color: var(--orange);
-  box-shadow: 0 0 0 3px rgba(232,96,0,0.12);
   background: #fff;
 }
 
-/* ── Admin Panel ── */
-#adminControls button {
-  height: 30px;
-  padding: 0 10px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  border: 1.5px solid #D1D5DB;
-  border-radius: 5px;
-  background: #F9F8F6;
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: var(--transition);
-  letter-spacing: 0.01em;
-}
-#adminControls button:hover  { background: #EDEBE7; border-color: #9CA3AF; }
-#adminControls button:active { transform: scale(0.96); }
-#adminControls button:disabled { opacity: 0.4; cursor: not-allowed; }
-#hideAdminButton { background: #1F2937 !important; color: #fff !important; border-color: #1F2937 !important; }
-#syncStatusMessage { font-size: 0.7rem; font-weight: 600; color: #059669; min-height: 14px; }
-#unsyncedCountDisplay { font-weight: 700; color: var(--orange); }
-
-.admin-active #mainTitle { display: none !important; }
-.admin-active header {
-  grid-template-columns: 1fr;
-  padding: 10px 20px 0;
-  justify-items: center;
-}
-.admin-active #adminControls {
-  grid-column: 1;
-  flex-direction: row !important;
-  flex-wrap: wrap !important;
-  justify-content: center !important;
-  align-items: center !important;
-  gap: 6px !important;
-  padding-bottom: 4px;
-}
-
-/* ── Validation Error ── */
-.validation-error,
-.error-message:not(.hidden) {
-  color: #DC2626;
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* ── Inactivity Overlay ── */
-#inactivityWarning,
-#timeoutWarning {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.50);
-  backdrop-filter: blur(2px);
-}
-#inactivityWarning.hidden,
-#timeoutWarning.hidden { display: none !important; }
-#inactivityWarning > div,
-#timeoutWarning > div {
-  background: var(--card-bg);
-  border-radius: var(--card-radius);
-  padding: 2rem 2.5rem;
-  text-align: center;
-  max-width: 380px;
-  width: 90%;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-}
-
-/* ── Checkmark / Thank You ── */
+/* ── Checkmark / thank-you screen ────────────────────────── */
 .checkmark-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.5rem;
-  padding: 2rem 0;
-  text-align: center;
-  width: 100%;
+  gap: 20px;
+  flex: 1;
+  padding: 20px;
 }
 .checkmark-circle {
-  width: 96px;
-  height: 96px;
-  background: var(--orange);
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
+  background: var(--orange-light);
+  border: 3px solid var(--orange);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 20px rgba(232,96,0,0.35);
-  animation: pop-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
 }
-.checkmark-icon { width: 48px; height: 48px; }
-.checkmark-icon path {
-  stroke: #fff;
-  stroke-width: 3.5;
+.checkmark-icon {
+  width: 44px;
+  height: 44px;
+  stroke: var(--orange);
+  stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 50;
-  stroke-dashoffset: 50;
-  animation: draw-check 0.5s 0.3s ease forwards;
-}
-@keyframes pop-in    { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes draw-check { to { stroke-dashoffset: 0; } }
-#resetCountdown { color: var(--text-muted); font-size: 1rem; margin-top: 0.25rem; }
-
-/* ── Visually Hidden ── */
-.visually-hidden {
-  position: absolute !important; width: 1px !important; height: 1px !important;
-  padding: 0 !important; margin: -1px !important; overflow: hidden !important;
-  clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important;
+  fill: none;
 }
 
-/* ── Start Screen Animations ── */
-@keyframes subtle-pulse {
-  0%, 100% { transform: scale(1);     filter: brightness(100%); }
-  50%       { transform: scale(1.025); filter: brightness(110%); }
-}
-.animate-pulse { animation: subtle-pulse 6s infinite ease-in-out !important; will-change: transform; }
-.active-press  { transform: scale(0.96) !important; opacity: 0.8 !important; transition: transform 0.05s ease-out !important; animation: none !important; }
-#kioskVideo    { transform: none !important; animation: none !important; }
+/* ── Error messages ───────────────────────────────────────── */
+.error-message { display: none; }
+.error-message.visible { display: block; }
 
-input, textarea, button, select { font-size: 16px !important; }
-button { cursor: pointer; }
-
-/* ── Responsive ── */
-@media (min-width: 1024px) {
-  :root { --page-h-pad: 40px; --page-v-pad: 20px; --col-max: 860px; }
-  #surveyContent { padding: 28px 28px 22px !important; }
-  .emoji-radio-group label > span:first-child { font-size: 2.5rem; width: 2.7rem; height: 2.7rem; }
-  .star-rating label.star { font-size: 3rem; }
-  .number-scale-group label { min-width: 52px; min-height: 52px; }
-}
-@media (max-width: 768px) {
-  :root { --page-h-pad: 16px; --page-v-pad: 12px; --col-max: 100%; --card-gap: 8px; }
-  #surveyContent { padding: 16px 16px 14px !important; }
-  header { padding: 10px 16px 0; }
-}
-@media print {
-  #adminControls, #inactivityWarning, #timeoutWarning,
-  #buttonContainer, #progressBarContainer { display: none !important; }
-}
+/* ── Admin controls button styling ──────────────────────── */
+#syncButton        { background: #10b981 !important; color: #fff !important; border-color: #10b981 !important; }
+#syncAnalyticsButton { background: #3b82f6 !important; color: #fff !important; border-color: #3b82f6 !important; }
+#adminClearButton  { background: #f59e0b !important; color: #fff !important; border-color: #f59e0b !important; }
+#checkUpdateButton { background: #8b5cf6 !important; color: #fff !important; border-color: #8b5cf6 !important; }
+#hideAdminButton   { background: #6b7280 !important; color: #fff !important; border-color: #6b7280 !important; }

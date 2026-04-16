@@ -1,5 +1,8 @@
 // FILE: api/submit-survey.js
-// VERSION: 4.0.0 - Bug fixes: PROCESSING_ERROR filter, reject missing IDs, location field fix
+// VERSION: 4.1.0 - FIXES:
+//   1. hear_about Other text now appended inline: "Instagram, Other: typed text"
+//   2. COLUMN_ORDER_TYPE2 'future_wish' column removed (question no longer exists)
+//   3. processSingleSubmissionType2 future_wish references removed
 
 import { google } from 'googleapis';
 import { isDuplicate, markAsProcessed, getCacheStats } from './deduplication-check.js';
@@ -14,7 +17,7 @@ const COLUMN_ORDER_TYPE1 = [
   'staff_friendliness',
   'location',
   'age',
-  'hear_about',
+  'hear_about',       // "Instagram, Friend, Other: typed text" — Other inline
   'gift_shop_visit',
   'sync_status',
   'comments',
@@ -22,15 +25,15 @@ const COLUMN_ORDER_TYPE1 = [
   'id',
 ];
 
+// TYPE 2: future_wish removed — question no longer in survey
 const COLUMN_ORDER_TYPE2 = [
   'visit_feeling',
   'experiences',
-  'standout',
-  'shayona_intent',
-  'shayona_reason',
-  'expectation_met',
-  'expectation_diff',
-  'future_wish',
+  'standout',         // "Something Else: typed text" when Other selected
+  'shayona_intent',   // main selection only
+  'shayona_reason',   // followup checkboxes joined
+  'expectation_met',  // main selection only
+  'expectation_diff', // followup checkboxes joined
   'final_thoughts',
   'sync_status',
   'timestamp',
@@ -43,14 +46,13 @@ const COLUMN_ORDER_TYPE2 = [
 
 /**
  * Process a Type 1 submission into a flat row array.
- * Throws on unrecoverable error so the caller can filter it out.
  */
 function processSingleSubmissionType1(submission) {
   const source = submission;
   const questionTimeSpentString = source.questionTimeSpent
     ? JSON.stringify(source.questionTimeSpent) : '{}';
 
-  // BUG #6 FIX: location field — guard against empty-string main producing "[object Object]"
+  // location: saved as { main, other } object from data-util.js radio-with-other
   let locationValue = '';
   if (source.location) {
     if (typeof source.location === 'string') {
@@ -62,46 +64,62 @@ function processSingleSubmissionType1(submission) {
     } else if (source.location.other) {
       locationValue = source.location.other.trim();
     }
-    // If both main and other are empty, locationValue stays ''
+  }
+
+  // hear_about: saved as plain array from data-util.js checkbox-with-other
+  // otherhearabout: saved separately as formData['otherhearabout']
+  // FIX: append Other typed text inline — "Instagram, Friend, Other: typed text"
+  let hearAboutValue = '';
+  try {
+    const hear = source.hear_about;
+    if (Array.isArray(hear)) {
+      const items = hear.filter(item => item && typeof item === 'string');
+      const otherText = (source.otherhearabout || '').trim();
+      if (items.includes('Other') && otherText) {
+        // Replace bare 'Other' with 'Other: typed text'
+        hearAboutValue = items
+          .map(v => v === 'Other' ? `Other: ${otherText}` : v)
+          .join(', ');
+      } else {
+        hearAboutValue = items.join(', ');
+      }
+    } else if (hear && typeof hear === 'object' && hear.selected && Array.isArray(hear.selected)) {
+      // Legacy object format fallback
+      const selected = hear.selected.filter(item => item && typeof item === 'string');
+      if (hear.other && selected.includes('Other')) {
+        hearAboutValue = selected
+          .map(v => v === 'Other' ? `Other: ${String(hear.other).trim()}` : v)
+          .join(', ');
+      } else {
+        hearAboutValue = selected.join(', ');
+      }
+    } else {
+      hearAboutValue = String(hear || '');
+    }
+  } catch (e) {
+    console.error('[SUBMIT] hear_about processing error:', e, source.hear_about);
+    throw new Error('hear_about processing failed');
   }
 
   const processedData = {
-    id:                     source.id, // ID guaranteed present — validated before this call
-    timestamp:              source.timestamp || new Date().toISOString(),
-    sync_status:            source.sync_status || 'unsynced',
-    sessionId:              source.sessionId || 'N/A',
-    kioskId:                source.kioskId || 'N/A',
-    startTime:              source.startTime || '',
-    completedAt:            source.completedAt || '',
-    abandonedAt:            source.abandonedAt || '',
-    completionTimeSeconds:  source.completionTimeSeconds || '',
-    questionTimeSpent:      questionTimeSpentString,
-    satisfaction:           source.satisfaction || '',
-    cleanliness:            source.cleanliness || '',
-    staff_friendliness:     source.staff_friendliness || '',
-    comments:               (source.comments || '').trim(),
-    gift_shop_visit:        source.gift_shop_visit || '',
-    location:               locationValue,
-    age:                    source.age || '',
-    hear_about: (() => {
-      const hear = source.hear_about;
-      try {
-        if (Array.isArray(hear)) {
-          return hear.filter(item => item && typeof item === 'string').join(', ');
-        }
-        if (hear && typeof hear === 'object' && hear.selected && Array.isArray(hear.selected)) {
-          const selected = hear.selected.filter(item => item && typeof item === 'string');
-          if (hear.other && selected.includes('Other')) {
-            return [...selected.filter(v => v !== 'Other'), `Other: ${String(hear.other).trim()}`].join(', ');
-          }
-          return selected.join(', ');
-        }
-        return String(hear || '');
-      } catch (e) {
-        console.error('[SUBMIT] hear_about processing error:', e, hear);
-        return 'DATA_PROCESSING_ERROR';
-      }
-    })(),
+    id:                    source.id,
+    timestamp:             source.timestamp || new Date().toISOString(),
+    sync_status:           source.sync_status || 'unsynced',
+    sessionId:             source.sessionId || 'N/A',
+    kioskId:               source.kioskId || 'N/A',
+    startTime:             source.startTime || '',
+    completedAt:           source.completedAt || '',
+    abandonedAt:           source.abandonedAt || '',
+    completionTimeSeconds: source.completionTimeSeconds || '',
+    questionTimeSpent:     questionTimeSpentString,
+    satisfaction:          source.satisfaction || '',
+    cleanliness:           source.cleanliness || '',
+    staff_friendliness:    source.staff_friendliness || '',
+    comments:              (source.comments || '').trim(),
+    gift_shop_visit:       source.gift_shop_visit || '',
+    location:              locationValue,
+    age:                   source.age || '',
+    hear_about:            hearAboutValue,
   };
 
   return COLUMN_ORDER_TYPE1.map(key => String(processedData[key] ?? ''));
@@ -109,11 +127,12 @@ function processSingleSubmissionType1(submission) {
 
 /**
  * Process a Type 2 submission into a flat row array.
- * Throws on unrecoverable error so the caller can filter it out.
  */
 function processSingleSubmissionType2(submission) {
   const source = submission;
 
+  // radio-with-other: saved as { main, other }
+  // Returns "Other: typed text" when Other selected, else main value
   const flattenRadioWithOther = (val) => {
     if (!val) return '';
     if (typeof val === 'string') return val;
@@ -121,12 +140,15 @@ function processSingleSubmissionType2(submission) {
     return val.main || '';
   };
 
+  // radio-with-followup: saved as { main, followup: [] }
+  // Returns main selection only
   const flattenRadioWithFollowup = (val) => {
     if (!val) return '';
     if (typeof val === 'string') return val;
     return val.main || '';
   };
 
+  // radio-with-followup: returns followup array joined as string
   const flattenFollowup = (val) => {
     if (!val) return '';
     if (typeof val === 'object' && Array.isArray(val.followup)) {
@@ -135,6 +157,7 @@ function processSingleSubmissionType2(submission) {
     return '';
   };
 
+  // checkbox-with-other: saved as plain array
   const flattenCheckbox = (val) => {
     if (!val) return '';
     if (Array.isArray(val)) return val.join(', ');
@@ -143,7 +166,7 @@ function processSingleSubmissionType2(submission) {
   };
 
   const processedData = {
-    id:               source.id, // ID guaranteed present — validated before this call
+    id:               source.id,
     timestamp:        source.timestamp || new Date().toISOString(),
     sync_status:      source.sync_status || 'unsynced',
     visit_feeling:    source.visit_feeling || '',
@@ -153,7 +176,7 @@ function processSingleSubmissionType2(submission) {
     shayona_reason:   flattenFollowup(source.shayona_intent),
     expectation_met:  flattenRadioWithFollowup(source.expectation_met),
     expectation_diff: flattenFollowup(source.expectation_met),
-    future_wish:      flattenRadioWithOther(source.future_wish),
+    // future_wish removed — no longer in Type 2 survey
     final_thoughts:   (source.final_thoughts || '').trim(),
   };
 
@@ -187,7 +210,7 @@ export default async function handler(request, response) {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key:  GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      private_key:  GOOGLE_PRIVATE_KEY.replace(/\\\\n/g, '\\n'),
     },
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
@@ -203,29 +226,25 @@ export default async function handler(request, response) {
       });
     }
 
-    // ── BUG #5 FIX: Reject submissions missing an ID ──────────────────────────
-    // The client assigns a stable UUID at survey-creation time via generateUUID().
-    // A missing ID means a broken client payload — reject with 400 so the record
-    // stays in the local queue and is not silently lost.
+    // Reject submissions missing an ID — client retains them for retry
     const missingIdCount = submissions.filter(s => !s.id).length;
     if (missingIdCount > 0) {
       console.error(`[SUBMIT] ❌ ${missingIdCount} submission(s) missing ID — rejecting batch`);
       return response.status(400).json({
         success: false,
-        message: `${missingIdCount} submission(s) are missing a required 'id' field. Assign a stable UUID on the client before queuing.`,
+        message: `${missingIdCount} submission(s) are missing a required 'id' field.`,
         successfulIds: [],
       });
     }
 
-    // ── Determine sheet tab and processor ─────────────────────────────────────
+    // Determine sheet tab and processor
     const isType2         = surveyType === 'type2';
     const activeSheetName = isType2 ? SHEET_NAME_V2 : SHEET_NAME;
-    const columnOrder     = isType2 ? COLUMN_ORDER_TYPE2 : COLUMN_ORDER_TYPE1;
     const processor       = isType2 ? processSingleSubmissionType2 : processSingleSubmissionType1;
 
     console.log(`[SUBMIT] Processing ${submissions.length} submissions (${surveyType || 'type1'} → ${activeSheetName})`);
 
-    // ── Deduplication ─────────────────────────────────────────────────────────
+    // Deduplication
     const uniqueSubmissions = [];
     const duplicateIds      = [];
 
@@ -245,32 +264,26 @@ export default async function handler(request, response) {
 
     if (uniqueSubmissions.length === 0) {
       return response.status(200).json({
-        success:      true,
-        message:      `${duplicateIds.length} duplicate submission(s) skipped.`,
+        success:       true,
+        message:       `${duplicateIds.length} duplicate submission(s) skipped.`,
         successfulIds: duplicateIds,
-        duplicates:   duplicateIds.length,
+        duplicates:    duplicateIds.length,
       });
     }
 
-    // ── Build rows ────────────────────────────────────────────────────────────
-    // BUG #4 FIX: Process each submission individually and track which ones fail.
-    // NEVER append PROCESSING_ERROR rows to the sheet.
-    // Only successfully processed submissions are appended and marked as done.
-    const rowsToAppend    = [];
-    const processedSubs   = [];  // parallel to rowsToAppend
-    const failedSubs      = [];
+    // Build rows — track failures individually, never write PROCESSING_ERROR to sheet
+    const rowsToAppend  = [];
+    const processedSubs = [];
+    const failedSubs    = [];
 
     for (const submission of uniqueSubmissions) {
       try {
         const row = processor(submission);
-
-        // Extra guard: if any cell contains PROCESSING_ERROR, treat as failed
         if (row.some(cell => cell === 'PROCESSING_ERROR')) {
           console.error(`[SUBMIT] ❌ Row for ${submission.id} contains PROCESSING_ERROR — skipping`);
           failedSubs.push(submission);
           continue;
         }
-
         rowsToAppend.push(row);
         processedSubs.push(submission);
       } catch (e) {
@@ -284,38 +297,36 @@ export default async function handler(request, response) {
     }
 
     if (rowsToAppend.length === 0) {
-      // All unique submissions failed processing — return failure so client retains them
       return response.status(200).json({
-        success:       false,
-        message:       'All submissions failed processing. Data retained locally.',
-        successfulIds: duplicateIds, // duplicates are still "done"
-        newSubmissions: 0,
-        duplicates:    duplicateIds.length,
+        success:          false,
+        message:          'All submissions failed processing. Data retained locally.',
+        successfulIds:    duplicateIds,
+        newSubmissions:   0,
+        duplicates:       duplicateIds.length,
         processingErrors: failedSubs.length,
-        sheetName:     activeSheetName,
+        sheetName:        activeSheetName,
       });
     }
 
     console.log(`[SUBMIT] Sample row (${activeSheetName}):`, rowsToAppend[0]?.slice(0, 5), '...');
 
-    // ── Append to Google Sheet ────────────────────────────────────────────────
+    // Append to Google Sheet
     const appendResult = await sheets.spreadsheets.values.append({
-      spreadsheetId:   SPREADSHEET_ID,
-      range:           `${activeSheetName}!A1`,
+      spreadsheetId:    SPREADSHEET_ID,
+      range:            `${activeSheetName}!A1`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: rowsToAppend },
     });
 
     console.log(`[SUBMIT] ✅ Appended ${rowsToAppend.length} rows to "${activeSheetName}":`, appendResult.data);
 
-    // BUG #1 FIX: markAsProcessed() called ONLY after confirmed sheet append
+    // markAsProcessed ONLY after confirmed sheet append
     processedSubs.forEach(sub => markAsProcessed(sub.id));
 
     const successfulIds = [
       ...processedSubs.map(sub => sub.id),
       ...duplicateIds,
-      // Note: failedSubs IDs are intentionally NOT in successfulIds
-      // so the client retains them in the queue for retry
+      // failedSubs IDs intentionally excluded — client retains for retry
     ];
 
     return response.status(200).json({

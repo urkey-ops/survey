@@ -86,21 +86,13 @@
       .admin-active #mainTitle {
         display: none !important;
       }
+
+      .admin-active header {
+        padding: 16px 20px !important;
+      }
+
       .admin-active #adminControls {
         width: 100% !important;
-        justify-content: center !important;
-        gap: 10px !important;
-      }
-      .admin-active header {
-        padding: 16px 24px !important;
-      }
-      .admin-active #adminControls .flex {
-        flex-wrap: wrap !important;
-        justify-content: center !important;
-      }
-      .admin-active #adminControls button {
-        min-width: 110px !important;
-        padding: 10px 16px !important;
       }
     </style>
 </head>
@@ -160,16 +152,22 @@
             <h1 id="mainTitle">Share Your Visit Experience</h1>
 
             <div id="adminControls">
-                <p class="text-xs font-medium text-emerald-600">
-                    Unsynced Records: <span id="unsyncedCountDisplay">0</span>
-                </p>
-                <div class="flex items-center space-x-2">
-                    <span id="syncStatusMessage" class="text-xs font-medium text-neutral-600"></span>
+                <div class="admin-status-row">
+                    <div class="admin-status-group">
+                        <p class="admin-status-pill">
+                            <span class="admin-status-dot"></span>
+                            Unsynced Records: <span id="unsyncedCountDisplay">0</span>
+                        </p>
+                        <span id="syncStatusMessage" class="admin-status-text"></span>
+                    </div>
+                </div>
+
+                <div class="admin-actions-grid">
                     <button id="syncButton">Sync Data</button>
                     <button id="syncAnalyticsButton">Sync Analytics</button>
-                    <button id="adminClearButton">Clear Local</button>
                     <button id="checkUpdateButton">Check Update</button>
-                    <button id="fixVideoButton" style="background:#ef4444;">Fix Video</button>
+                    <button id="fixVideoButton">Fix Video</button>
+                    <button id="adminClearButton">Clear Local</button>
                     <button id="hideAdminButton">Hide</button>
                 </div>
             </div>
@@ -334,6 +332,7 @@
             window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop
           );
           document.documentElement.style.setProperty('--keyboard-height', keyboardHeight + 'px');
+
           const focused = document.activeElement;
           if (keyboardHeight > 0 && focused &&
               (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT')) {

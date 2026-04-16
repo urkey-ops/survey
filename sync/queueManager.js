@@ -1,144 +1,134 @@
 // FILE: sync/queueManager.js
-// PURPOSE: Queue management for survey submissions
+// UPDATED: VERSION 3.0.0 - All functions accept optional queueKey parameter
+// for Survey Type 2 support (separate localStorage queue per survey type)
 // DEPENDENCIES: storageUtils.js
-// VERSION: 2.0.0 - Added safety checks
 
 import { safeGetLocalStorage, safeSetLocalStorage } from './storageUtils.js';
 
-/**
- * SAFETY FIX: Check queue health and warn if approaching limit
- */
+function getQueueKey(overrideKey) {
+  // If a key is passed explicitly, use it.
+  // Otherwise resolve from active survey type config.
+  if (overrideKey) return overrideKey;
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
+                     window.CONSTANTS?.ACTIVE_SURVEY_TYPE || 'type1';
+  const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
+  return surveyConfig?.storageKey || window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
+}
+
 function checkQueueHealth(queueSize) {
-    const MAX = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
-    const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 200;
-    
-    if (queueSize >= WARNING) {
-        console.warn(`⚠️ [QUEUE WARNING] Queue at ${queueSize}/${MAX} records (${Math.round(queueSize/MAX*100)}% full)`);
-        
-        if (queueSize >= MAX - 50) {
-            console.error(`🚨 [QUEUE CRITICAL] Queue nearly full: ${queueSize}/${MAX} - Sync immediately!`);
-        }
-    }
+  const MAX = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
+  const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 200;
+  if (queueSize >= WARNING) {
+    console.warn(`⚠️ [QUEUE WARNING] Queue at ${queueSize}/${MAX} records`);
+  }
+  if (queueSize >= MAX - 50) {
+    console.error(`🚨 [QUEUE CRITICAL] Queue nearly full: ${queueSize}/${MAX}`);
+  }
 }
 
 /**
  * Get submission queue from localStorage
- * @returns {Array} Array of survey submissions
+ * @param {string} [overrideKey] - Optional explicit storage key
  */
-export function getSubmissionQueue() {
-    const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-    const queue = safeGetLocalStorage(STORAGE_KEY_QUEUE);
-    return Array.isArray(queue) ? queue : [];
+export function getSubmissionQueue(overrideKey) {
+  const key = getQueueKey(overrideKey);
+  const queue = safeGetLocalStorage(key);
+  return Array.isArray(queue) ? queue : [];
 }
 
-/**
- * Count unsynced records in queue
- * @returns {number} Number of unsynced records
- */
-export function countUnsyncedRecords() {
-    const queue = getSubmissionQueue();
-    return queue.length;
+export function countUnsyncedRecords(overrideKey) {
+  return getSubmissionQueue(overrideKey).length;
 }
 
-/**
- * Update admin panel count display
- */
 export function updateAdminCount() {
-    const count = countUnsyncedRecords();
-    const display = document.getElementById('unsyncedCountDisplay');
-    
-    if (display) {
-        display.textContent = count;
+  // Show combined count across both queues in admin
+  const type1Key = window.CONSTANTS?.SURVEY_TYPES?.type1?.storageKey || 'submissionQueue';
+  const type2Key = window.CONSTANTS?.SURVEY_TYPES?.type2?.storageKey || 'submissionQueueV2';
+  const count1 = (safeGetLocalStorage(type1Key) || []).length;
+  const count2 = (safeGetLocalStorage(type2Key) || []).length;
+  const total = count1 + count2;
+
+  const display = document.getElementById('unsyncedCountDisplay');
+  if (display) {
+    display.textContent = total;
+    // Show breakdown if both have data
+    if (count1 > 0 && count2 > 0) {
+      display.title = `Type 1: ${count1} | Type 2: ${count2}`;
     }
+  }
 }
 
 /**
- * Add submission to queue
- * SAFETY FIX: Added health check and improved logging
- * @param {Object} submission - Survey submission object
+ * Add submission to queue (uses active survey type's queue key)
+ * @param {Object} submission
+ * @param {string} [overrideKey]
  */
-export function addToQueue(submission) {
-    const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-    const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
-    
-    const submissionQueue = getSubmissionQueue();
-    
-    // SAFETY FIX: Check health before adding
-    checkQueueHealth(submissionQueue.length);
-    
-    if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-        console.error(`🚨 [QUEUE] Full at ${MAX_QUEUE_SIZE} records - removing oldest submission`);
-        submissionQueue.shift();
-    }
-    
-    submissionQueue.push(submission);
-    safeSetLocalStorage(STORAGE_KEY_QUEUE, submissionQueue);
-    
-    console.log(`[QUEUE] Added submission. Queue size: ${submissionQueue.length}/${MAX_QUEUE_SIZE}`);
+export function addToQueue(submission, overrideKey) {
+  const key = getQueueKey(overrideKey);
+  const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
+  let submissionQueue = getSubmissionQueue(key);
+
+  checkQueueHealth(submissionQueue.length);
+
+  if (submissionQueue.length >= MAX_QUEUE_SIZE) {
+    console.error(`🚨 [QUEUE] Full at ${MAX_QUEUE_SIZE} - removing oldest`);
+    submissionQueue.shift();
+  }
+
+  submissionQueue.push(submission);
+  safeSetLocalStorage(key, submissionQueue);
+  console.log(`[QUEUE] Added to "${key}". Size: ${submissionQueue.length}/${MAX_QUEUE_SIZE}`);
 }
 
 /**
- * Remove submissions from queue by IDs
- * @param {Array<string>} ids - Array of submission IDs to remove
+ * Remove submissions by IDs
+ * @param {Array} ids
+ * @param {string} [overrideKey]
  */
-export function removeFromQueue(ids) {
-    const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-    const submissionQueue = getSubmissionQueue();
-    
-    const idsToRemove = new Set(ids);
-    const filteredQueue = submissionQueue.filter(sub => !idsToRemove.has(sub.id));
-    
-    const removedCount = submissionQueue.length - filteredQueue.length;
-    console.log(`[QUEUE] Removed ${removedCount} synced records. Remaining: ${filteredQueue.length}`);
-    
-    safeSetLocalStorage(STORAGE_KEY_QUEUE, filteredQueue);
-    updateAdminCount();
+export function removeFromQueue(ids, overrideKey) {
+  const key = getQueueKey(overrideKey);
+  const submissionQueue = getSubmissionQueue(key);
+  const idsToRemove = new Set(ids);
+  const filteredQueue = submissionQueue.filter(sub => !idsToRemove.has(sub.id));
+  const removedCount = submissionQueue.length - filteredQueue.length;
+  console.log(`[QUEUE] Removed ${removedCount} from "${key}". Remaining: ${filteredQueue.length}`);
+  safeSetLocalStorage(key, filteredQueue);
+  updateAdminCount();
 }
 
 /**
  * Clear entire queue
+ * @param {string} [overrideKey]
  */
-export function clearQueue() {
-    const STORAGE_KEY_QUEUE = window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue';
-    const queueSize = getSubmissionQueue().length;
-    
-    localStorage.removeItem(STORAGE_KEY_QUEUE);
-    console.log(`[QUEUE] Cleared ${queueSize} records`);
-    
-    updateAdminCount();
+export function clearQueue(overrideKey) {
+  const key = getQueueKey(overrideKey);
+  const queueSize = getSubmissionQueue(key).length;
+  localStorage.removeItem(key);
+  console.log(`[QUEUE] Cleared ${queueSize} records from "${key}"`);
+  updateAdminCount();
 }
 
 /**
- * Validate queue submissions (check for required fields)
- * @returns {Object} { valid, invalid } arrays
+ * Validate queue submissions
+ * @param {string} [overrideKey]
  */
-export function validateQueue() {
-    const queue = getSubmissionQueue();
-    const valid = [];
-    const invalid = [];
-    
-    queue.forEach(submission => {
-        if (submission.id && submission.timestamp) {
-            valid.push(submission);
-        } else {
-            console.warn('[QUEUE] Invalid submission found:', submission);
-            invalid.push(submission);
-        }
-    });
-    
-    if (invalid.length > 0) {
-        console.warn(`[QUEUE] Found ${invalid.length} invalid submissions`);
+export function validateQueue(overrideKey) {
+  const queue = getSubmissionQueue(overrideKey);
+  const valid = [];
+  const invalid = [];
+  queue.forEach(submission => {
+    if (submission.id && submission.timestamp) {
+      valid.push(submission);
+    } else {
+      console.warn('[QUEUE] Invalid submission found:', submission);
+      invalid.push(submission);
     }
-    
-    return { valid, invalid };
+  });
+  if (invalid.length > 0) console.warn(`[QUEUE] Found ${invalid.length} invalid submissions`);
+  return { valid, invalid };
 }
 
 export default {
-    getSubmissionQueue,
-    countUnsyncedRecords,
-    updateAdminCount,
-    addToQueue,
-    removeFromQueue,
-    clearQueue,
-    validateQueue
+  getSubmissionQueue, countUnsyncedRecords, updateAdminCount,
+  addToQueue, removeFromQueue, clearQueue, validateQueue
 };

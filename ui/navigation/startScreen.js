@@ -215,51 +215,60 @@ export function cleanupStartScreenListeners() {
 function startSurvey(e) {
   const { globals, appState, dataHandlers } = getDependencies();
   const kioskStartScreen = globals?.kioskStartScreen;
-  
+
   if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
     return;
   }
-  
+
   if (e) {
     e.preventDefault();
     e.stopPropagation();
     const targetElement = e.target.closest('.content') || kioskStartScreen.querySelector('.content');
     triggerTouchFeedback(targetElement);
   }
-  
+
   console.log('[START] User interaction detected...');
 
+  // Step 1: begin CSS fade-out immediately on tap
+  kioskStartScreen.classList.add('start-screen-fade-out');
+
+  // Step 2: after 250ms fade completes, hide and transition to survey
   setTimeout(() => {
     console.log('[START] Transitioning to survey...');
     cleanupStartScreenListeners();
+
     kioskStartScreen.classList.add('hidden');
+    kioskStartScreen.classList.remove('start-screen-fade-out');
     pauseVideo();
-    
+
     if (!appState.formData.id) {
       appState.formData.id = dataHandlers.generateUUID();
     }
     if (!appState.formData.timestamp) {
       appState.formData.timestamp = new Date().toISOString();
     }
-    
+
     if (!appState.surveyStartTime) {
       appState.surveyStartTime = Date.now();
       saveState();
     }
-    
+
     showQuestion(appState.currentQuestionIndex);
-    
+
     if (window.uiHandlers && window.uiHandlers.resetInactivityTimer) {
       window.uiHandlers.resetInactivityTimer();
     }
 
+    // Remove from DOM after transition fully settles (unchanged from original)
     setTimeout(() => {
       if (kioskStartScreen && document.body.contains(kioskStartScreen)) {
         kioskStartScreen.remove();
       }
     }, 400);
-  }, 200);
+
+  }, 250); // 250ms matches .start-screen-fade-out transition in custom.css
 }
+
 
 /**
  * Show the start screen

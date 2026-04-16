@@ -1,256 +1,137 @@
 // FILE: config.js
-// PURPOSE: Centralized configuration for kiosk survey application
-// DEPENDENCIES: None (loaded first)
+// PURPOSE: Central configuration for offline-first iPad kiosk PWA
+// UPDATED: VERSION 3.0.0 - Added Survey Type 2 config, dual-queue support,
+//          getActiveSurveyType() / setActiveSurveyType() helpers
+// LOADED: First (before all other scripts)
 
-/**
- * Main Configuration Object
- * All timing values in milliseconds unless otherwise specified
- */
-const CONFIG = {
-    // ═══════════════════════════════════════════════════════════
-    // KIOSK IDENTITY
-    // ═══════════════════════════════════════════════════════════
-    KIOSK_ID: 'KIOSK-GWINNETT-001',
-    
-    // ═══════════════════════════════════════════════════════════
-    // TIMING SETTINGS
-    // ═══════════════════════════════════════════════════════════
-    INACTIVITY_TIMEOUT_MS: 30000,        // 30 seconds
-    SYNC_INTERVAL_MS: 86400000,          // 24 hours (1440 minutes)
-    ANALYTICS_SYNC_INTERVAL_MS: 86400000, // 24 hours
-    VISIBILITY_CHANGE_DELAY_MS: 5000,    // 5 seconds
-    STATUS_MESSAGE_AUTO_CLEAR_MS: 3000,  // 3 seconds
-    
-    // Network retry settings
-    MAX_RETRIES: 3,
-    RETRY_DELAY_MS: 2000,
-    
-    // Typewriter effect timing
-    TYPEWRITER_DURATION_MS: 2000,        // 2 seconds
-    TEXT_ROTATION_INTERVAL_MS: 4000,     // 4 seconds
-    
-    // ═══════════════════════════════════════════════════════════
-    // QUEUE AND STORAGE LIMITS
-    // ═══════════════════════════════════════════════════════════
-    MAX_QUEUE_SIZE: 250,                // UPDATED: Increased from 100 to 1000
-    QUEUE_WARNING_THRESHOLD: 200,        // ADDED: Warn at 80% capacity
-    MAX_ANALYTICS_SIZE: 1000,
-    
-    // ═══════════════════════════════════════════════════════════
-    // LOCALSTORAGE KEYS
-    // ═══════════════════════════════════════════════════════════
-    STORAGE_KEY_QUEUE: 'submissionQueue',
-    STORAGE_KEY_ANALYTICS: 'surveyAnalytics',
-    STORAGE_KEY_STATE: 'kioskAppState',
-    STORAGE_KEY_LAST_SYNC: 'lastSync',
-    STORAGE_KEY_LAST_ANALYTICS_SYNC: 'lastAnalyticsSync',
-    
-    // ═══════════════════════════════════════════════════════════
-    // API ENDPOINTS
-    // ═══════════════════════════════════════════════════════════
-    SYNC_ENDPOINT: '/api/submit-survey',
-    ANALYTICS_ENDPOINT: '/api/sync-analytics',
-    
-    // ═══════════════════════════════════════════════════════════
-    // FEATURE FLAGS
-    // ═══════════════════════════════════════════════════════════
-    enableTypewriterEffect: true,
-    enableAnalytics: true,
-    enableOfflineQueue: true,
-    enableAdminPanel: true,
-    enableErrorLogging: true,
-    enableDebugCommands: true,
-    
-    // ═══════════════════════════════════════════════════════════
-    // DEBUG MODE
-    // ═══════════════════════════════════════════════════════════
-    DEBUG_MODE: true
+// ═══════════════════════════════════════════════════════════
+// STORAGE KEYS
+// ═══════════════════════════════════════════════════════════
+const STORAGE_KEY_QUEUE            = 'submissionQueue';      // Survey Type 1 queue
+const STORAGE_KEY_QUEUE_V2         = 'submissionQueueV2';    // Survey Type 2 queue
+const STORAGE_KEY_ANALYTICS        = 'analyticsQueue';
+const STORAGE_KEY_STATE            = 'kioskState';
+const STORAGE_KEY_LAST_SYNC        = 'lastSync';
+const STORAGE_KEY_LAST_ANALYTICS_SYNC = 'lastAnalyticsSync';
+const STORAGE_KEY_ACTIVE_SURVEY    = 'activeSurveyType';     // Persists selected survey type
+
+// ═══════════════════════════════════════════════════════════
+// SURVEY TYPE DEFINITIONS
+// Add new survey types here — each needs:
+//   label       - displayed in admin panel
+//   sheetName   - Google Sheet tab name (must match Vercel env var)
+//   storageKey  - localStorage queue key (must be unique per type)
+// ═══════════════════════════════════════════════════════════
+const SURVEY_TYPES = {
+  type1: {
+    label:      'Original Survey (V1)',
+    sheetName:  'Sheet1',              // Matches SHEET_NAME env var in Vercel
+    storageKey: STORAGE_KEY_QUEUE,
+  },
+  type2: {
+    label:      'Visitor Feedback V2',
+    sheetName:  'VisitorFeedbackV2',   // Matches SHEET_NAME_V2 env var in Vercel
+    storageKey: STORAGE_KEY_QUEUE_V2,
+  },
 };
 
-/**
- * Validate configuration
- * Checks for common misconfigurations
- */
-function validateConfig() {
-    const errors = [];
-    const warnings = [];
+// ═══════════════════════════════════════════════════════════
+// QUEUE & SYNC LIMITS
+// ═══════════════════════════════════════════════════════════
+const MAX_QUEUE_SIZE             = 250;
+const QUEUE_WARNING_THRESHOLD    = 200;
+const MAX_ANALYTICS_SIZE         = 500;
+const AUTO_ADVANCE_DELAY_MS      = 50;
+const INACTIVITY_TIMEOUT_MS      = 60000;  // 1 minute
+const SYNC_INTERVAL_MS           = 300000; // 5 minutes
+const ANALYTICS_SYNC_INTERVAL_MS = 600000; // 10 minutes
 
-    // Validate required fields
-    if (!CONFIG.KIOSK_ID) {
-        errors.push('❌ KIOSK_ID is required');
-    }
+// ═══════════════════════════════════════════════════════════
+// ENDPOINTS
+// ═══════════════════════════════════════════════════════════
+const SYNC_ENDPOINT      = '/api/submit-survey';
+const ANALYTICS_ENDPOINT = '/api/sync-analytics';
 
-    // Validate numeric values
-    if (CONFIG.INACTIVITY_TIMEOUT_MS < 10000) {
-        warnings.push('⚠️  INACTIVITY_TIMEOUT_MS should be at least 10 seconds');
-    }
+// ═══════════════════════════════════════════════════════════
+// EXPOSE AS window.CONSTANTS (read-only)
+// ═══════════════════════════════════════════════════════════
+window.CONSTANTS = Object.freeze({
+  // Storage keys
+  STORAGE_KEY_QUEUE,
+  STORAGE_KEY_QUEUE_V2,
+  STORAGE_KEY_ANALYTICS,
+  STORAGE_KEY_STATE,
+  STORAGE_KEY_LAST_SYNC,
+  STORAGE_KEY_LAST_ANALYTICS_SYNC,
+  STORAGE_KEY_ACTIVE_SURVEY,
 
-    // UPDATED: Accept 1000 queue size, only warn above 1500
-    if (CONFIG.MAX_QUEUE_SIZE > 1500) {
-        warnings.push('⚠️  MAX_QUEUE_SIZE > 1500 may cause localStorage quota issues on some devices');
-    }
+  // Survey type definitions
+  SURVEY_TYPES,
 
-    // Validate sync interval
-    if (CONFIG.SYNC_INTERVAL_MS < 60000) {
-        warnings.push('⚠️  SYNC_INTERVAL_MS < 1 minute may cause excessive network usage');
-    }
+  // Limits
+  MAX_QUEUE_SIZE,
+  QUEUE_WARNING_THRESHOLD,
+  MAX_ANALYTICS_SIZE,
+  AUTO_ADVANCE_DELAY_MS,
+  INACTIVITY_TIMEOUT_MS,
+  SYNC_INTERVAL_MS,
+  ANALYTICS_SYNC_INTERVAL_MS,
 
-    // Display results
-    if (errors.length > 0 || warnings.length > 0) {
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('⚙️  CONFIGURATION VALIDATION');
-        console.log('═══════════════════════════════════════════════════════');
-    }
+  // Endpoints
+  SYNC_ENDPOINT,
+  ANALYTICS_ENDPOINT,
+});
 
-    if (errors.length > 0) {
-        console.error('❌ CRITICAL ERRORS:');
-        errors.forEach(err => console.error(`   ${err}`));
-    }
-
-    if (warnings.length > 0) {
-        console.warn('⚠️  WARNINGS:');
-        warnings.forEach(warn => console.warn(`   ${warn}`));
-    }
-
-    // UPDATED: Only throw error for critical errors, not warnings
-    if (errors.length > 0) {
-        throw new Error('Configuration validation failed - see console for details');
-    }
-
-    if (errors.length === 0 && warnings.length === 0) {
-        console.log('✅ Configuration is valid');
-    }
-
-    // Display active configuration
-    console.log('\n📋 Active Configuration:');
-    console.log(`   Kiosk ID: ${CONFIG.KIOSK_ID}`);
-    console.log(`   Inactivity: ${CONFIG.INACTIVITY_TIMEOUT_MS / 1000}s`);
-    console.log(`   Sync Interval: ${CONFIG.SYNC_INTERVAL_MS / 60000} min`);
-    console.log(`   Queue Limit: ${CONFIG.MAX_QUEUE_SIZE} records`);
-    console.log(`   Debug Mode: ${CONFIG.DEBUG_MODE ? 'ON' : 'OFF'}`);
-    console.log('═══════════════════════════════════════════════════════');
-}
-
-/**
- * Helper function to convert time strings to milliseconds
- * Examples: "30s" -> 30000, "5m" -> 300000, "1h" -> 3600000
- */
-function timeToMs(timeString) {
-    const units = {
-        's': 1000,
-        'm': 60000,
-        'h': 3600000,
-        'd': 86400000
-    };
-    
-    const match = timeString.match(/^(\d+)([smhd])$/);
-    if (!match) {
-        throw new Error(`Invalid time format: ${timeString}. Use format like "30s", "5m", "1h", "1d"`);
-    }
-    
-    const value = parseInt(match[1]);
-    const unit = match[2];
-    
-    return value * units[unit];
-}
-
-/**
- * Get storage information
- * Useful for debugging storage issues
- */
-function getStorageInfo() {
-    const info = {};
-    
-    try {
-        for (let key in localStorage) {
-            if (localStorage.hasOwnProperty(key)) {
-                const value = localStorage.getItem(key);
-                const size = new Blob([value]).size;
-                info[key] = {
-                    size: size,
-                    sizeKB: (size / 1024).toFixed(2),
-                    sizeMB: (size / 1024 / 1024).toFixed(4)
-                };
-            }
-        }
-        
-        // Calculate totals
-        const totalBytes = Object.values(info).reduce((sum, item) => sum + item.size, 0);
-        info._TOTAL = {
-            size: totalBytes,
-            sizeKB: (totalBytes / 1024).toFixed(2),
-            sizeMB: (totalBytes / 1024 / 1024).toFixed(4)
-        };
-        
-    } catch (e) {
-        console.error('Error getting storage info:', e);
-    }
-    
-    return info;
-}
-
-/**
- * Suggest optimal settings based on current usage
- */
-function suggestOptimalSettings() {
-    const queue = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY_QUEUE) || '[]');
-    const analytics = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY_ANALYTICS) || '[]');
-    
-    const suggestions = [];
-    
-    // Check queue size
-    if (queue.length > CONFIG.MAX_QUEUE_SIZE * 0.8) {
-        suggestions.push('⚠️  Queue at 80%+ capacity - consider increasing sync frequency');
-    }
-    
-    // Check analytics size
-    if (analytics.length > CONFIG.MAX_ANALYTICS_SIZE * 0.8) {
-        suggestions.push('⚠️  Analytics at 80%+ capacity - sync analytics soon');
-    }
-    
-    // Check sync interval
-    const lastSync = localStorage.getItem(CONFIG.STORAGE_KEY_LAST_SYNC);
-    if (lastSync) {
-        const hoursSinceSync = (Date.now() - parseInt(lastSync)) / 3600000;
-        if (hoursSinceSync > 24) {
-            suggestions.push(`⚠️  Last sync was ${hoursSinceSync.toFixed(1)} hours ago`);
-        }
-    }
-    
-    if (suggestions.length === 0) {
-        console.log('✅ All systems optimal');
-    } else {
-        console.log('💡 Optimization Suggestions:');
-        suggestions.forEach(s => console.log(`   ${s}`));
-    }
-    
-    return suggestions;
-}
-
-// Run validation on load
-try {
-    validateConfig();
-} catch (error) {
-    console.error('Configuration validation failed:', error.message);
-    // Don't throw - let app continue with warnings
-}
-
-// Expose configuration globally
-window.CONSTANTS = CONFIG;
-
-// ✅ Initialize globals object early
-window.globals = window.globals || {};
-
-// Expose helper functions
+// ═══════════════════════════════════════════════════════════
+// KIOSK CONFIGURATION
+// Central place for kiosk identity + survey type switching
+// ═══════════════════════════════════════════════════════════
 window.KIOSK_CONFIG = {
-    ...CONFIG,
-    timeToMs,
-    getStorageInfo,
-    suggestOptimalSettings
+  KIOSK_ID: 'KIOSK-GWINNETT-001',
+
+  /**
+   * Get the currently active survey type.
+   * Reads from localStorage so it persists across reloads.
+   * Falls back to 'type1' if not set.
+   * @returns {'type1'|'type2'|string}
+   */
+  getActiveSurveyType() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_ACTIVE_SURVEY);
+      if (stored && SURVEY_TYPES[stored]) return stored;
+    } catch (e) {
+      console.warn('[CONFIG] Could not read activeSurveyType from localStorage:', e.message);
+    }
+    return 'type1';
+  },
+
+  /**
+   * Set the active survey type and persist to localStorage.
+   * @param {'type1'|'type2'|string} type
+   */
+  setActiveSurveyType(type) {
+    if (!SURVEY_TYPES[type]) {
+      console.error(`[CONFIG] Unknown survey type: "${type}". Valid: ${Object.keys(SURVEY_TYPES).join(', ')}`);
+      return;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_SURVEY, type);
+      console.log(`[CONFIG] ✅ Active survey type set to: "${type}" (${SURVEY_TYPES[type].label})`);
+    } catch (e) {
+      console.warn('[CONFIG] Could not persist activeSurveyType:', e.message);
+    }
+  },
 };
 
-// Log helper availability
-console.log('💡 Configuration helpers available:');
-console.log('   - window.KIOSK_CONFIG.timeToMs("30s")');
-console.log('   - window.KIOSK_CONFIG.getStorageInfo()');
-console.log('   - window.KIOSK_CONFIG.suggestOptimalSettings()');
+// ═══════════════════════════════════════════════════════════
+// BOOT LOG
+// ═══════════════════════════════════════════════════════════
+console.log('═══════════════════════════════════════════════════════');
+console.log('⚙️  CONFIG LOADED (v3.0.0)');
+console.log('═══════════════════════════════════════════════════════');
+console.log(`  Kiosk ID      : ${window.KIOSK_CONFIG.KIOSK_ID}`);
+console.log(`  Active Survey : ${window.KIOSK_CONFIG.getActiveSurveyType()} (${SURVEY_TYPES[window.KIOSK_CONFIG.getActiveSurveyType()]?.label})`);
+console.log(`  Queue (T1)    : ${STORAGE_KEY_QUEUE}`);
+console.log(`  Queue (T2)    : ${STORAGE_KEY_QUEUE_V2}`);
+console.log(`  Sync Endpoint : ${SYNC_ENDPOINT}`);
+console.log('═══════════════════════════════════════════════════════');

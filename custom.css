@@ -1,1090 +1,687 @@
-/* FILE: custom.css */
-/* VERSION: 11 — BUG 2 FIX: label touch-action override added */
-/* ===== iPAD LANDSCAPE PWA KIOSK SURVEY - OPTIMIZED FOR LOW BRIGHTNESS ===== */
-/* Target Device: iPad (all models) in landscape mode, PWA fullscreen */
-/* Brightness: 25-50% optimized */
-/* Resolution: 1024x768 (iPad Mini) to 2732x2048 (iPad Pro 12.9") */
+/* =============================================================================
+   custom.css — Sewa Kiosk v3.3.0
+   Scope: overrides on top of output.css (Tailwind build)
+   Orange brand token: #E86000 (Tailwind bg-orange-500 = #f97316 — used by JS)
+   Layout (grid/flex) is owned by Tailwind classes injected by data-util.js.
+   This file owns: borders, radii, selected state, focus rings, spacing tweaks,
+   touch targets, animations, and all non-Tailwind structural rules.
+   ============================================================================= */
 
+/* ─── 0. CSS Custom Properties ─────────────────────────────────────────────── */
 :root {
-    /* Brand oranges */
-    --sewa-orange: #E86000;
-    --sewa-orange-strong: #C85400;
-    --sewa-orange-deep: #A04600;
-    --sewa-orange-glow: rgba(232, 96, 0, 0.3);
-
-    /* Neutrals - optimized for iPad LCD at low brightness */
-    --bg-page: #ececec;
-    --bg-surface: #fafafa;
-    --bg-surface-pure: #ffffff;
-    --bg-subtle: #d6d8dc;
-    --bg-hover: #f0f1f3;
-
-    /* Text - maximum contrast for low brightness */
-    --text-primary: #000000;
-    --text-secondary: #1f2937;
-    --text-muted: #4b5563;
-    --text-on-accent: #ffffff;
-
-    /* Borders - strong visibility */
-    --border-subtle: #9ca3af;
-    --border-strong: #4b5563;
-    --border-input: #6b7280;
-
-    /* States */
-    --error-red: #991b1b;
-    --error-bg: rgba(153, 27, 27, 0.05);
-    --focus-blue: #1d4ed8;
-    --focus-blue-strong: #1e40af;
-    --success-green: #047857;
-
-    /* Disabled - solid colors only */
-    --disabled-bg: #d1d5db;
-    --disabled-text: #6b7280;
-    --disabled-border: #9ca3af;
-
-    /* iPad-specific spacing */
-    --touch-target-min: 44px;
-    --spacing-comfortable: 16px;
+  --sewa-orange:       #E86000;
+  --sewa-orange-dark:  #C45200;
+  --sewa-orange-light: #FFF0E6;
+  --sewa-radius:       0.75rem;   /* 12px — card / option radius */
+  --sewa-radius-sm:    0.5rem;    /* 8px  — inner elements */
+  --sewa-border:       2px solid #D1D5DB; /* gray-300 */
+  --sewa-transition:   all 0.18s ease;
+  --sewa-shadow:       0 1px 3px rgba(0,0,0,0.08);
 }
 
-/* ===== BASE STYLES ===== */
-* {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    box-sizing: border-box;
+/* ─── 1. Base Reset / Touch Optimisation ───────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
-/* PWA specific - remove all scroll bounce */
-html, body {
-    overscroll-behavior: none;
-    -webkit-overflow-scrolling: touch;
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+/* Prevent long-press callout & text-selection on interactive labels */
+label {
+  -webkit-touch-callout: none;
+  -webkit-user-select:   none;
+  user-select:           none;
+  touch-action:          manipulation; /* replaces inline touch-action:none on <style> */
 }
 
-body {
-    background: var(--bg-page);
-    -webkit-text-size-adjust: 100%;
-    overscroll-behavior-y: contain;
+/* ─── 2. Visually Hidden (screen-reader accessible) ────────────────────────── */
+.visually-hidden {
+  position:   absolute !important;
+  width:      1px !important;
+  height:     1px !important;
+  padding:    0 !important;
+  margin:     -1px !important;
+  overflow:   hidden !important;
+  clip:       rect(0,0,0,0) !important;
+  white-space: nowrap !important;
+  border:     0 !important;
 }
 
-/* ===== REDUCED MOTION SUPPORT ===== */
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-    }
-}
-
-/* ===== PWA VIEWPORT FIX ===== */
-#app,
-.app-container {
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-/* ===== KIOSK START SCREEN ===== */
-#kioskStartScreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1000;
-    cursor: pointer;
-    transition: opacity 0.4s ease;
-    background: var(--bg-surface);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-#kioskStartScreen.hidden {
-    opacity: 0;
-    pointer-events: none;
-}
-
-#kioskVideo {
-    max-width: 80vw;
-    max-height: 60vh;
-    box-shadow:
-        0 0 0 1px rgba(0,0,0,0.12),
-        0 20px 40px -10px rgba(0,0,0,0.25);
-    border-radius: 12px;
-}
-
-.tap-prompt {
-    color: var(--text-primary);
-    font-weight: 600;
-    font-size: 20px;
-    letter-spacing: -0.01em;
-    margin-top: 32px;
-    animation: gentlePulseText 2s ease-in-out infinite;
-}
-
-@keyframes gentlePulseText {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-}
-
-/* ===== MAIN CONTAINER - LANDSCAPE OPTIMIZED ===== */
-main {
-    background: var(--bg-surface);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-    border-radius: 12px;
-    max-width: 1200px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-/* ===== HEADER ===== */
-header {
-    background: var(--bg-surface);
-    border-bottom: 2px solid var(--border-subtle);
-    min-height: 64px;
-    display: flex;
-    align-items: center;
-    padding: 0 24px;
-}
-
-#mainTitle {
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    color: var(--text-primary);
-}
-
-/* ===== PROGRESS BAR ===== */
+/* ─── 3. Progress Bar ───────────────────────────────────────────────────────── */
 #progressBarContainer {
-    height: 6px;
-    background: var(--bg-subtle);
-    border-radius: 3px;
-    overflow: hidden;
+  position:   relative;
+  width:      100%;
+  height:     8px;
+  background: #E5E7EB; /* gray-200 */
+  border-radius: 99px;
+  overflow:   visible; /* allow step counter to sit above */
 }
 
 #progressBar {
-    background: var(--sewa-orange);
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
-    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 3px;
-    height: 100%;
+  height:     100%;
+  background: var(--sewa-orange);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+  min-width:  0;
 }
 
-/* ===== BUTTONS - iPAD TOUCH OPTIMIZED ===== */
-button {
-    min-height: var(--touch-target-min);
-    min-width: 120px;
-    padding: 12px 32px;
-    transition: all 0.2s ease;
-    font-weight: 600;
-    font-size: 17px;
-    letter-spacing: -0.01em;
-    border-radius: 10px;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    cursor: pointer;
+/* Step counter badge sitting top-right of progress bar */
+#stepCounter {
+  position:   absolute;
+  right:      0;
+  top:        -22px;
+  font-size:  0.7rem;
+  font-weight: 600;
+  color:      #6B7280; /* gray-500 */
+  white-space: nowrap;
+  line-height: 1;
 }
 
-button:active:not(:disabled) {
-    transform: scale(0.97);
-    transition: transform 0.1s ease;
+/* ─── 4. Survey Card / Question Wrapper ─────────────────────────────────────── */
+#questionContainer,
+.question-card {
+  background:    #FFFFFF;
+  border-radius: var(--sewa-radius);
+  box-shadow:    var(--sewa-shadow);
+  padding:       1.5rem;
+  width:         100%;
 }
 
-#prevBtn {
-    background: var(--bg-surface-pure);
-    border: 2px solid var(--border-strong);
-    color: var(--text-secondary);
+/* Question label */
+#rotatingQuestion,
+label.block.text-gray-700.font-semibold {
+  font-size:   1.05rem;
+  line-height: 1.4;
+  color:       #111827;
+  margin-bottom: 0.75rem;
 }
 
-#prevBtn:hover:not(:disabled),
-#prevBtn:active:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--text-secondary);
-}
-
-#nextBtn {
-    background: var(--sewa-orange);
-    color: var(--text-on-accent);
-    border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    position: relative;
-}
-
-#nextBtn:not(:disabled) {
-    animation: gentlePulse 3s ease-in-out infinite;
-}
-
-@keyframes gentlePulse {
-    0%, 100% {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    }
-    50% {
-        box-shadow: 0 4px 16px var(--sewa-orange-glow),
-                    0 2px 8px rgba(0,0,0,0.15);
-    }
-}
-
-#nextBtn:active:not(:disabled) {
-    background: var(--sewa-orange-strong);
-}
-
-button.button-loading {
-    position: relative;
-    color: transparent !important;
-    pointer-events: none;
-}
-
-button.button-loading::after {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    top: 50%;
-    left: 50%;
-    margin: -10px 0 0 -10px;
-    border: 3px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-button:disabled,
-#nextBtn:disabled {
-    background-color: var(--disabled-bg) !important;
-    color: var(--disabled-text) !important;
-    cursor: not-allowed;
-    border: 2px solid var(--disabled-border) !important;
-    box-shadow: none !important;
-    transform: none !important;
-    animation: none !important;
-}
-
-/* ===== ADMIN CONTROLS ===== */
-#adminControls {
-    border-top: 2px solid var(--border-subtle);
-    padding: 16px;
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-#adminControls button {
-    font-size: 15px;
-    padding: 10px 20px;
-    min-width: auto;
-    border-radius: 8px;
-    font-weight: 600;
-    border: 2px solid;
-}
-
-#syncButton {
-    background: var(--bg-surface-pure);
-    color: var(--focus-blue);
-    border-color: var(--focus-blue);
-}
-
-#syncButton:active {
-    background: #dbeafe;
-}
-
-#syncButton.button-loading::after {
-    border-top-color: var(--focus-blue);
-}
-
-#syncAnalyticsButton {
-    background: var(--bg-surface-pure);
-    color: var(--success-green);
-    border-color: var(--success-green);
-}
-
-#syncAnalyticsButton:active {
-    background: #d1fae5;
-}
-
-#syncAnalyticsButton.button-loading::after {
-    border-top-color: var(--success-green);
-}
-
-#adminClearButton {
-    background: var(--bg-surface-pure);
-    color: var(--error-red);
-    border-color: var(--error-red);
-}
-
-#adminClearButton:active {
-    background: #fee2e2;
-}
-
-#hideAdminButton {
-    background: var(--bg-surface-pure);
-    color: var(--text-secondary);
-    border-color: var(--border-strong);
-}
-
-#hideAdminButton:active {
-    background: var(--bg-hover);
-}
-
-/* ===== REQUIRED FIELD INDICATOR ===== */
-label.required::after,
-.required-label::after {
-    content: ' *';
-    color: var(--error-red);
-    font-weight: 700;
-    font-size: 1.2em;
-}
-
-/* ===== BUG 2 FIX: label touch-action override ===========================
- *
- * index.html sets `touch-action: none` on all <div> elements (with a few
- * ID-based exceptions) to prevent scroll/zoom gestures inside the kiosk.
- * #questionContainer is a <div> → it inherits touch-action: none.
- * Every <label> inside it also inherits touch-action: none because
- * touch-action IS inherited through the CSS cascade.
- *
- * <label> is the ONLY visible tap target for radio and checkbox questions
- * (the actual <input> elements are visually hidden). On iPadOS, when
- * touch-action: none is present on the label, the browser's pointer-event
- * pipeline suppresses or delays the synthesised click that follows a
- * touchend — making radio/checkbox taps silently drop 20-80% of the time
- * depending on tap speed and iPadOS version.
- *
- * Fix: set touch-action: manipulation on ALL labels globally so any label
- * that is a tap target works reliably, while still disabling pinch-zoom
- * and double-tap-zoom (manipulation = pan + single-tap, no extras).
- * This is narrower than touch-action: auto and safe for a locked-down kiosk.
- *
- * WHY HERE and not index.html:
- *   The root cause is in index.html's inline style / JS-applied rule.
- *   Until that is refactored, this CSS rule is the correct surgical fix
- *   because CSS specificity (element selector `label`) beats the inherited
- *   value but does not fight any explicit rule on a parent ID.
- * ======================================================================= */
-label {
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-}
-
-/* ===== RADIO SELECTIONS - iPAD LANDSCAPE GRID ===== */
-.emoji-radio-group,
-.location-radio-group,
-.age-radio-group {
-    display: grid;
-    gap: var(--spacing-comfortable);
-    justify-content: center;
-}
-
-.emoji-radio-group {
-    grid-template-columns: repeat(4, minmax(160px, 1fr));
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-.location-radio-group,
-.age-radio-group {
-    grid-template-columns: repeat(3, minmax(200px, 1fr));
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-.emoji-radio-group label,
-.number-scale-group label,
-.location-radio-group label,
-.age-radio-group label {
-    transition: all 0.2s ease;
-    cursor: pointer;
-    border: 2px solid var(--border-strong);
-    background: var(--bg-surface-pure);
-    color: var(--text-secondary);
-    touch-action: manipulation;      /* redundant with global rule above — kept for explicitness */
-    -webkit-tap-highlight-color: transparent;
-    min-height: var(--touch-target-min);
-}
-
-.emoji-radio-group label:active,
-.number-scale-group label:active,
-.location-radio-group label:active,
-.age-radio-group label:active {
-    transform: scale(0.97);
-    transition: transform 0.1s ease;
-}
-
+/* ─── 5. Emoji Radio Group ──────────────────────────────────────────────────── */
+/* Layout (flex justify-around) owned by Tailwind — we only style the labels */
 .emoji-radio-group label {
-    min-height: 160px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 20px;
-    border-radius: 12px;
+  border:        var(--sewa-border);
+  border-radius: 50%;           /* circular */
+  padding:       1rem;
+  transition:    var(--sewa-transition);
+  cursor:        pointer;
+  min-width:     80px;
+  min-height:    80px;
+  display:       flex;
+  flex-direction: column;
+  align-items:   center;
+  justify-content: center;
 }
 
-.emoji-radio-group label span:first-of-type {
-    display: block;
-    line-height: 1;
-    font-size: 56px;
-    margin-bottom: 12px;
+.emoji-radio-group label:active {
+  transform: scale(0.94);
 }
 
-.emoji-radio-group label span:last-of-type {
-    display: block;
-    text-align: center;
-    line-height: 1.3;
-    font-weight: 600;
-    font-size: 16px;
+/* Selected state — JS adds bg-orange-500 text-white border-orange-500 via Tailwind */
+/* We reinforce with a ring for accessibility */
+.emoji-radio-group input.visually-hidden:checked + label {
+  box-shadow: 0 0 0 3px rgba(232, 96, 0, 0.25);
 }
 
-.location-radio-group label,
-.age-radio-group label {
-    padding: 16px 24px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 17px;
-    font-weight: 600;
-}
-
-.emoji-radio-group input:checked + label,
-.number-scale-group input:checked + label {
-    border-color: var(--text-primary);
-    border-width: 3px;
-    background: var(--bg-surface-pure);
-    color: var(--text-primary);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    animation: successShake 0.4s ease;
-}
-
-@keyframes successShake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-4px); }
-    75% { transform: translateX(4px); }
-}
-
-.location-radio-group input:checked + label,
-.age-radio-group input:checked + label {
-    background: var(--sewa-orange);
-    color: var(--text-on-accent);
-    border-color: var(--sewa-orange-deep);
-    border-width: 3px;
-    box-shadow: 0 4px 12px var(--sewa-orange-glow);
-    animation: successShake 0.4s ease;
-}
-
-/* ===== NUMBER SCALE - HORIZONTAL FOR LANDSCAPE ===== */
-.number-scale-group {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    margin: 0 auto 12px auto;
-    max-width: fit-content;
-}
-
+/* ─── 6. Number Scale Group ─────────────────────────────────────────────────── */
+/* Layout (flex justify-around) owned by Tailwind */
 .number-scale-group label {
-    width: 56px;
-    height: 56px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    font-size: 22px;
-    font-weight: 700;
-    flex-shrink: 0;
+  border:        var(--sewa-border);
+  border-radius: 50%;
+  transition:    var(--sewa-transition);
+  cursor:        pointer;
+  /* w-12 h-12 sm:w-14 sm:h-14 set by Tailwind */
 }
 
-.number-scale-group + div {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-    max-width: calc(56px * 5 + 12px * 4);
-    margin: 0 auto;
+.number-scale-group label:active {
+  transform: scale(0.92);
 }
 
-.number-scale-group + div span {
-    font-size: 15px;
-    color: var(--text-muted);
-    font-weight: 500;
+.number-scale-group input.visually-hidden:checked + label {
+  box-shadow: 0 0 0 3px rgba(232, 96, 0, 0.25);
 }
 
-.number-scale-group + div span:first-child { text-align: left; }
-.number-scale-group + div span:last-child  { text-align: right; }
-
-/* ===== STAR RATING - iPAD SIZED ===== */
-.star-rating {
-    display: flex;
-    gap: 16px;
-    justify-content: center;
-    align-items: center;
-}
-
-.star-rating input {
-    display: none;
-}
-
+/* ─── 7. Star Rating ────────────────────────────────────────────────────────── */
+/* Layout (flex flex-row-reverse justify-center) owned by Tailwind */
 .star-rating label.star {
-    color: #c7c7c7;
-    transition: all 0.2s ease;
-    cursor: pointer;
-    font-size: 64px;
-    padding: 12px;
-    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.1));
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    min-width: var(--touch-target-min);
-    min-height: var(--touch-target-min);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  transition:    color 0.12s ease, transform 0.1s ease;
+  cursor:        pointer;
+  line-height:   1;
 }
 
-.star-rating input:checked ~ label.star,
 .star-rating label.star:active {
-    color: #f59e0b;
-    transform: scale(1.1);
+  transform: scale(1.15);
 }
 
-/* ===== INPUT FIELDS - iPAD OPTIMIZED ===== */
-input,
-textarea {
-    border: 2px solid var(--border-input);
-    transition: all 0.2s ease;
-    background: var(--bg-surface-pure);
-    color: var(--text-primary);
-    font-size: 17px;
-    border-radius: 10px;
-    padding: 14px 18px;
-    min-height: var(--touch-target-min);
-    width: 100%;
+/* CSS-only hover cascade (works in addition to JS gold-fill) */
+.star-rating:not(:has(input:checked)) label.star:hover,
+.star-rating:not(:has(input:checked)) label.star:hover ~ label.star {
+  color: #FBBF24; /* yellow-400 */
 }
 
-input::placeholder,
-textarea::placeholder {
-    color: var(--text-muted);
-    opacity: 1;
+/* ─── 8. Location / Radio-with-Other ────────────────────────────────────────── */
+/* Layout (grid grid-cols-2 sm:grid-cols-3) owned by Tailwind */
+.location-radio-group label {
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
+  transition:    var(--sewa-transition);
+  cursor:        pointer;
+  min-height:    56px;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  text-align:    center;
+  line-height:   1.25;
 }
 
-input:focus,
-textarea:focus {
-    outline: none;
-    border-color: var(--focus-blue-strong);
-    box-shadow:
-        0 0 0 3px rgba(29, 78, 216, 0.25),
-        0 4px 12px rgba(0,0,0,0.1);
-    transform: scale(1.005);
-    transition: all 0.2s ease;
+.location-radio-group label:active {
+  transform: scale(0.97);
 }
 
-/* ===== VALIDATION ===== */
-.has-error {
-    border-color: var(--error-red) !important;
-    border-width: 2px !important;
-    background: var(--error-bg) !important;
+.location-radio-group input.visually-hidden:checked + label {
+  box-shadow: 0 0 0 3px rgba(232, 96, 0, 0.20);
 }
 
-.error-message {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--error-red);
-    font-size: 15px;
-    margin-top: 8px;
-    font-weight: 600;
-    padding: 12px 16px;
-    border-left: 4px solid var(--error-red);
-    background: var(--error-bg);
-    border-radius: 6px;
+/* Other text input */
+#other-location-container input,
+#other-standout-container input,
+[id^="other-"][id$="-container"] input[type="text"] {
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
+  padding:       0.75rem 1rem;
+  font-size:     0.95rem;
+  width:         100%;
+  transition:    border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.error-message::before {
-    content: '⚠️';
-    font-size: 20px;
-    flex-shrink: 0;
+[id^="other-"][id$="-container"] input[type="text"]:focus {
+  outline:    none;
+  border-color: var(--sewa-orange);
+  box-shadow: 0 0 0 3px rgba(232, 96, 0, 0.18);
 }
 
-/* ===== HIDDEN/VISIBLE FIELDS ===== */
-.hidden-fields {
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
-    pointer-events: none;
-    transition: all 0.3s ease;
+/* ─── 9. Age / Simple Radio ──────────────────────────────────────────────────── */
+/* Layout (grid grid-cols-3) owned by Tailwind */
+.age-radio-group label {
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
+  transition:    var(--sewa-transition);
+  cursor:        pointer;
+  min-height:    52px;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  text-align:    center;
 }
 
-.visible-fields {
-    opacity: 1;
-    max-height: 1000px;
-    pointer-events: auto;
-    transition: all 0.3s ease;
+.age-radio-group label:active {
+  transform: scale(0.97);
 }
 
-/* ===== TIMEOUT WARNING ===== */
-.timeout-warning {
-    position: fixed;
-    bottom: 120px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--error-red);
-    color: var(--text-on-accent);
-    padding: 20px 40px;
-    border-radius: 12px;
-    font-weight: 700;
-    font-size: 20px;
-    animation: slideUp 0.3s ease;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-    z-index: 9998;
-    text-align: center;
-    max-width: 600px;
+.age-radio-group input.visually-hidden:checked + label {
+  box-shadow: 0 0 0 3px rgba(232, 96, 0, 0.20);
 }
 
-@keyframes slideUp {
-    from {
-        transform: translateX(-50%) translateY(100px);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(-50%) translateY(0);
-        opacity: 1;
-    }
+/* ─── 10. Followup Radio Group ───────────────────────────────────────────────── */
+/* Layout (grid grid-cols-2 sm:grid-cols-3) owned by Tailwind */
+.followup-radio-group label {
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
+  transition:    var(--sewa-transition);
+  cursor:        pointer;
+  min-height:    52px;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  text-align:    center;
 }
 
-/* ===== COMPLETION SCREEN ===== */
-.checkmark-container {
-    min-height: 500px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 32px;
-    padding: 40px;
+.followup-radio-group label:active {
+  transform: scale(0.97);
 }
 
-.checkmark-circle {
-    width: 160px;
-    height: 160px;
-    border-radius: 50%;
-    background: var(--success-green);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    animation: scaleIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 12px 48px rgba(4, 120, 87, 0.4);
+.followup-radio-group input.visually-hidden:checked + label {
+  box-shadow: 0 0 0 3px rgba(232, 96, 0, 0.20);
 }
 
-.checkmark-circle::before {
-    content: '';
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    border: 4px solid var(--success-green);
-    animation: ripple 1.5s ease-out infinite;
+/* Followup panel */
+[id^="shayona_intent_followup_"],
+[id^="expectation_met_followup_"] {
+  background:    #FFF8F4;
+  border:        1px solid #FDDCB5;
+  border-radius: var(--sewa-radius-sm);
+  padding:       0.875rem 1rem;
+  margin-top:    0.75rem;
 }
 
-@keyframes scaleIn {
-    from { transform: scale(0); opacity: 0; }
-    to   { transform: scale(1); opacity: 1; }
+[id^="shayona_intent_followup_"] p,
+[id^="expectation_met_followup_"] p {
+  font-size:   0.85rem;
+  font-weight: 600;
+  color:       #92400E; /* amber-800 — warm contrast on orange bg */
+  margin-bottom: 0.5rem;
 }
 
-@keyframes ripple {
-    0%   { transform: scale(1);   opacity: 0.8; }
-    100% { transform: scale(1.6); opacity: 0; }
+/* Followup checkbox tabs */
+.checkbox-tab-wrapper {
+  display: inline-flex;
 }
 
-.checkmark-icon {
-    width: 80px;
-    height: 80px;
-    stroke: #ffffff;
-    stroke-width: 5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    fill: none;
-    animation: drawCheck 0.5s ease-in-out 0.3s forwards;
-    stroke-dasharray: 100;
-    stroke-dashoffset: 100;
+.checkbox-tab-wrapper label {
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
+  cursor:        pointer;
+  transition:    var(--sewa-transition);
+  white-space:   nowrap;
+  padding:       0.4rem 0.85rem;
+  font-size:     0.82rem;
+  font-weight:   500;
 }
 
-@keyframes drawCheck {
-    to { stroke-dashoffset: 0; }
+.checkbox-tab-wrapper label:active {
+  transform: scale(0.96);
 }
 
-.spinner {
-    border-radius: 50%;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    width: 24px;
-    height: 24px;
-    animation: spin 0.6s linear infinite;
-}
-
-/* ===== QUESTION CONTAINER ===== */
-#questionContainer {
-    animation: fadeIn 0.3s ease;
-    padding: 32px 24px;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ===== QUESTION TEXT - iPAD READABLE ===== */
-#questionContainer h2,
-#questionContainer h3,
-#questionContainer label[id$="Label"],
-#rotatingQuestion {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: -0.02em;
-    line-height: 1.4;
-    margin-bottom: 24px;
-}
-
-#questionContainer p {
-    font-size: 19px;
-    font-weight: 400;
-    color: var(--text-secondary);
-    line-height: 1.6;
-    margin-bottom: 16px;
-}
-
-/* ===== TYPEWRITER EFFECT ===== */
-.typewriter {
-    display: inline-block;
-    overflow: hidden;
-    border-right: 3px solid var(--text-primary);
-    white-space: nowrap;
-    letter-spacing: 0.08em;
-    animation:
-        typing 2s steps(40, end),
-        blink-caret 0.75s step-end infinite;
-}
-
-.typewriter.typing-complete {
-    border-right: none;
-    animation: none;
-    white-space: normal;
-}
-
-#questionContainer:active .typewriter {
-    animation: none !important;
-    border-right: none !important;
-    white-space: normal !important;
-}
-
-@keyframes typing {
-    from { width: 0; }
-    to   { width: 100%; }
-}
-
-@keyframes blink-caret {
-    from, to { border-color: transparent; }
-    50%      { border-color: var(--text-primary); }
-}
-
-/* ===== CHECKBOX TABS ===== */
-.checkbox-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: center;
-}
-
+/* ─── 11. Checkbox-with-Other ────────────────────────────────────────────────── */
+/* Layout (grid grid-cols-2 sm:grid-cols-3) owned by Tailwind */
 .checkbox-group label {
-    transition: all 0.2s ease;
-    cursor: pointer;
-    background: var(--bg-surface-pure);
-    border-radius: 10px;
-    border: 2px solid var(--border-strong);
-    color: var(--text-secondary);
-    padding: 14px 24px;
-    font-weight: 600;
-    font-size: 17px;
-    min-height: var(--touch-target-min);
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
+  transition:    var(--sewa-transition);
+  cursor:        pointer;
+  min-height:    52px;
 }
 
 .checkbox-group label:active {
-    transform: scale(0.97);
+  transform: scale(0.97);
 }
 
-.checkbox-group input:checked + label {
-    background: var(--sewa-orange);
-    color: var(--text-on-accent);
-    border-color: var(--sewa-orange-deep);
-    box-shadow: 0 4px 12px var(--sewa-orange-glow);
+/* Checkbox indicator box */
+.checkbox-indicator {
+  flex-shrink: 0;
+  width:       1.25rem;
+  height:      1.25rem;
+  border:      2px solid #9CA3AF; /* gray-400 */
+  border-radius: 4px;
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  transition:  border-color 0.15s ease, background 0.15s ease;
+  pointer-events: none;
 }
 
-/* ===== SCROLLABLE CONTENT AREA ===== */
-#surveyContent {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 120px;
+/* ─── 12. Textarea ───────────────────────────────────────────────────────────── */
+textarea {
+  border:        var(--sewa-border);
+  border-radius: var(--sewa-radius-sm);
+  padding:       0.75rem 1rem;
+  font-size:     0.95rem;
+  line-height:   1.5;
+  resize:        none;
+  width:         100%;
+  transition:    border-color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-appearance: none;
 }
 
-#surveyContent::-webkit-scrollbar       { width: 12px; }
-#surveyContent::-webkit-scrollbar-track { background: var(--bg-subtle); border-radius: 6px; }
-#surveyContent::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
-#surveyContent::-webkit-scrollbar-thumb:active { background: var(--text-secondary); }
+textarea:focus {
+  outline:    none;
+  border-color: var(--sewa-orange);
+  box-shadow: 0 0 0 3px rgba(232, 96, 0, 0.18);
+}
 
-/* ===== FIXED BUTTON CONTAINER ===== */
+/* ─── 13. Navigation Buttons ─────────────────────────────────────────────────── */
 #buttonContainer {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 20px;
-    max-width: 1200px;
-    width: calc(100% - 48px);
-    padding: 16px 24px;
-    background: var(--bg-surface);
-    display: flex;
-    justify-content: space-between;
-    gap: 20px;
-    box-shadow:
-        0 -4px 16px rgba(0,0,0,0.12),
-        0 0 0 1px var(--border-subtle);
-    border-radius: 12px;
-    z-index: 100;
+  display:        flex;
+  gap:            0.75rem;
+  margin-top:     1.25rem;
+  justify-content: flex-end;
 }
 
-#buttonContainer button {
+/* Base button */
+#prevButton,
+#nextButton,
+#submitButton {
+  display:         inline-flex;
+  align-items:     center;
+  justify-content: center;
+  min-height:      48px;
+  padding:         0.625rem 1.5rem;
+  font-size:       1rem;
+  font-weight:     600;
+  border-radius:   var(--sewa-radius-sm);
+  border:          2px solid transparent;
+  cursor:          pointer;
+  transition:      var(--sewa-transition);
+  -webkit-tap-highlight-color: transparent;
+  touch-action:    manipulation;
+  white-space:     nowrap;
+}
+
+/* Prev — secondary/ghost */
+#prevButton {
+  background:    #FFFFFF;
+  color:         #374151; /* gray-700 */
+  border-color:  #D1D5DB; /* gray-300 */
+}
+
+#prevButton:hover:not(:disabled) {
+  background:   #F9FAFB;
+  border-color: #9CA3AF;
+}
+
+#prevButton:active:not(:disabled) {
+  transform: scale(0.97);
+  background: #F3F4F6;
+}
+
+/* Next — primary orange */
+#nextButton,
+#submitButton {
+  background:   var(--sewa-orange);
+  color:        #FFFFFF;
+  border-color: var(--sewa-orange);
+}
+
+#nextButton:hover:not(:disabled),
+#submitButton:hover:not(:disabled) {
+  background:   var(--sewa-orange-dark);
+  border-color: var(--sewa-orange-dark);
+}
+
+#nextButton:active:not(:disabled),
+#submitButton:active:not(:disabled) {
+  transform: scale(0.97);
+  background: var(--sewa-orange-dark);
+}
+
+/* Disabled state */
+#prevButton:disabled,
+#nextButton:disabled,
+#submitButton:disabled {
+  opacity:  0.45;
+  cursor:   not-allowed;
+  transform: none;
+}
+
+/* Hidden state */
+#prevButton.hidden,
+#nextButton.hidden,
+#submitButton.hidden {
+  display: none !important;
+}
+
+/* ─── 14. Error Messages ──────────────────────────────────────────────────────── */
+.error-message {
+  display:     block;
+  font-size:   0.8rem;
+  color:       #DC2626; /* red-600 */
+  margin-top:  0.35rem;
+  min-height:  0;
+  line-height: 1.3;
+}
+
+.error-message.hidden {
+  display: none !important;
+}
+
+/* Input error highlight */
+.input-error {
+  border-color: #DC2626 !important;
+  box-shadow:   0 0 0 3px rgba(220, 38, 38, 0.15) !important;
+}
+
+/* ─── 15. Success / Thank You Screen ─────────────────────────────────────────── */
+#thankYouMessage {
+  display:        flex;
+  flex-direction: column;
+  align-items:    center;
+  justify-content: center;
+  text-align:     center;
+  gap:            0.75rem;
+  padding:        2rem 1rem;
+}
+
+#thankYouMessage .thank-you-icon {
+  font-size:   4rem;
+  line-height: 1;
+}
+
+#thankYouMessage h2 {
+  font-size:   1.6rem;
+  font-weight: 700;
+  color:       #111827;
+}
+
+#thankYouMessage p {
+  font-size:   1rem;
+  color:       #6B7280;
+  max-width:   30ch;
+}
+
+/* ─── 16. Inactivity / Timeout Warning ───────────────────────────────────────── */
+#inactivityWarning,
+#timeoutWarning {
+  position:      fixed;
+  inset:         0;
+  z-index:       9999;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  background:    rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+#inactivityWarning.hidden,
+#timeoutWarning.hidden {
+  display: none !important;
+}
+
+.inactivity-card,
+.timeout-card {
+  background:    #FFFFFF;
+  border-radius: var(--sewa-radius);
+  padding:       2rem 2.5rem;
+  max-width:     360px;
+  width:         90%;
+  text-align:    center;
+  box-shadow:    0 8px 32px rgba(0,0,0,0.18);
+}
+
+.inactivity-card h3,
+.timeout-card h3 {
+  font-size:   1.25rem;
+  font-weight: 700;
+  color:       #111827;
+  margin-bottom: 0.5rem;
+}
+
+.inactivity-card p,
+.timeout-card p {
+  font-size:   0.95rem;
+  color:       #6B7280;
+  margin-bottom: 1.25rem;
+}
+
+/* Countdown number */
+#inactivityCountdown,
+#timeoutCountdown {
+  font-size:   2rem;
+  font-weight: 700;
+  color:       var(--sewa-orange);
+  display:     block;
+  margin:      0.5rem 0 1rem;
+}
+
+/* Continue / Dismiss button inside warning */
+.inactivity-card button,
+.timeout-card button {
+  background:    var(--sewa-orange);
+  color:         #FFFFFF;
+  border:        none;
+  border-radius: var(--sewa-radius-sm);
+  padding:       0.625rem 1.75rem;
+  font-size:     1rem;
+  font-weight:   600;
+  cursor:        pointer;
+  touch-action:  manipulation;
+  transition:    var(--sewa-transition);
+  min-height:    48px;
+}
+
+.inactivity-card button:hover,
+.timeout-card button:hover {
+  background: var(--sewa-orange-dark);
+}
+
+.inactivity-card button:active,
+.timeout-card button:active {
+  transform: scale(0.97);
+}
+
+/* ─── 17. Network / Sync Status Banner ───────────────────────────────────────── */
+#syncStatusMessage {
+  font-size:   0.8rem;
+  font-weight: 500;
+  color:       #6B7280;
+  min-height:  1.2em;
+  transition:  color 0.2s ease, opacity 0.2s ease;
+  text-align:  center;
+}
+
+#networkStatusIndicator,
+#networkStatus {
+  display:     inline-flex;
+  align-items: center;
+  gap:         0.35rem;
+  font-size:   0.75rem;
+  font-weight: 600;
+}
+
+#networkStatusIndicator.online,
+#networkStatus.online {
+  color: #059669; /* green-600 */
+}
+
+#networkStatusIndicator.offline,
+#networkStatus.offline {
+  color: #DC2626; /* red-600 */
+}
+
+/* ─── 18. Admin Panel ─────────────────────────────────────────────────────────── */
+#adminControls {
+  position:      fixed;
+  top:           0;
+  right:         0;
+  z-index:       10000;
+  background:    #FFFFFF;
+  border:        1px solid #E5E7EB;
+  border-radius: 0 0 0 var(--sewa-radius);
+  padding:       1rem;
+  min-width:     200px;
+  max-width:     260px;
+  box-shadow:    0 4px 16px rgba(0,0,0,0.12);
+}
+
+#adminControls.hidden {
+  display: none !important;
+}
+
+/* Admin buttons */
+#adminControls button {
+  display:       block;
+  width:         100%;
+  padding:       0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size:     0.82rem;
+  font-weight:   600;
+  border-radius: var(--sewa-radius-sm);
+  border:        1px solid #D1D5DB;
+  cursor:        pointer;
+  touch-action:  manipulation;
+  text-align:    left;
+  transition:    var(--sewa-transition);
+  background:    #FFFFFF;
+  color:         #374151;
+}
+
+#adminControls button:hover:not(:disabled) {
+  background:   #F3F4F6;
+  border-color: #9CA3AF;
+}
+
+#adminControls button:disabled {
+  opacity: 0.5;
+  cursor:  not-allowed;
+}
+
+/* ─── 19. Kiosk Video / Home Screen ──────────────────────────────────────────── */
+#kioskVideo,
+video#kioskVideo {
+  width:      100%;
+  height:     100%;
+  object-fit: cover;
+  display:    block;
+  pointer-events: none; /* prevents accidental tap-to-pause */
+}
+
+/* Overlay tap target on home screen */
+#startButton,
+#tapToStart {
+  position:        absolute;
+  inset:           0;
+  z-index:         10;
+  background:      transparent;
+  border:          none;
+  cursor:          pointer;
+  touch-action:    manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─── 20. Utility: Hidden ─────────────────────────────────────────────────────── */
+.hidden {
+  display: none !important;
+}
+
+/* ─── 21. Responsive Tweaks (iPad landscape / portrait) ──────────────────────── */
+@media (max-width: 640px) {
+  #questionContainer,
+  .question-card {
+    padding: 1rem;
+  }
+
+  .emoji-radio-group label {
+    min-width:  64px;
+    min-height: 64px;
+    padding:    0.75rem;
+  }
+
+  #buttonContainer {
+    flex-direction: row;
+    gap:            0.5rem;
+  }
+
+  #prevButton,
+  #nextButton,
+  #submitButton {
     flex: 1;
-    max-width: 300px;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.9rem;
+  }
 }
 
-/* ===== ANIMATIONS ===== */
-.animate-pulse {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+@media (min-width: 1024px) {
+  #questionContainer,
+  .question-card {
+    max-width: 680px;
+    margin:    0 auto;
+  }
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.92; }
-}
-
-/* ===== DEBUG MODE ===== */
-[data-debug="true"] * {
-    outline: 1px solid red !important;
-}
-
-[data-debug="true"] *:active {
-    background: rgba(255,0,0,0.1) !important;
-}
-
-/* ===== iPAD PRO 12.9" OPTIMIZATIONS ===== */
-@media (min-width: 1024px) and (max-width: 1366px) {
-    .emoji-radio-group {
-        grid-template-columns: repeat(5, minmax(150px, 1fr));
-        max-width: 1000px;
-    }
-
-    .number-scale-group {
-        max-width: 900px;
-    }
-}
-
-/* ===== HIGH CONTRAST MODE ===== */
-@media (prefers-contrast: high) {
-    :root {
-        --border-subtle: #6b7280;
-        --border-strong: #374151;
-        --border-input: #4b5563;
-        --text-secondary: #111827;
-    }
-
-    button,
-    label {
-        border-width: 3px !important;
-    }
-}
-
-/* ===== TYPE 2 SURVEY — ADDITIONAL QUESTION STYLES ===== */
-
-/* Radio with Other */
-.radio-with-other-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: center;
-}
-
-.radio-with-other-group label {
-    transition: all 0.2s ease;
-    cursor: pointer;
-    background: var(--bg-surface-pure);
-    border-radius: 10px;
-    border: 2px solid var(--border-strong);
-    color: var(--text-secondary);
-    padding: 14px 24px;
-    font-weight: 600;
-    font-size: 17px;
-    min-height: var(--touch-target-min);
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.radio-with-other-group label:active {
-    transform: scale(0.97);
-}
-
-.radio-with-other-group input:checked + label {
-    background: var(--sewa-orange);
-    color: var(--text-on-accent);
-    border-color: var(--sewa-orange-deep);
-    box-shadow: 0 4px 12px var(--sewa-orange-glow);
-    animation: successShake 0.4s ease;
-}
-
-.other-text-input-wrapper {
-    width: 100%;
-    margin-top: 12px;
-}
-
-.other-text-input-wrapper input {
-    border: 2px solid var(--border-input);
-    border-radius: 10px;
-    padding: 14px 18px;
-    font-size: 17px;
-    width: 100%;
-    background: var(--bg-surface-pure);
-    color: var(--text-primary);
-    transition: all 0.3s ease;
-}
-
-.other-text-input-wrapper input:focus {
-    border-color: var(--focus-blue-strong);
-    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25);
-    outline: none;
-}
-
-/* Radio with Follow-up */
-.radio-with-followup-group {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    max-width: 800px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-.radio-with-followup-group .main-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: center;
-}
-
-.radio-with-followup-group .main-options label {
-    transition: all 0.2s ease;
-    cursor: pointer;
-    background: var(--bg-surface-pure);
-    border-radius: 10px;
-    border: 2px solid var(--border-strong);
-    color: var(--text-secondary);
-    padding: 14px 28px;
-    font-weight: 600;
-    font-size: 17px;
-    min-height: var(--touch-target-min);
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.radio-with-followup-group .main-options label:active {
-    transform: scale(0.97);
-}
-
-.radio-with-followup-group .main-options input:checked + label {
-    background: var(--sewa-orange);
-    color: var(--text-on-accent);
-    border-color: var(--sewa-orange-deep);
-    box-shadow: 0 4px 12px var(--sewa-orange-glow);
-    animation: successShake 0.4s ease;
-}
-
-.followup-section {
-    background: var(--bg-subtle);
-    border-radius: 10px;
-    padding: 16px 20px;
-    border-left: 4px solid var(--sewa-orange);
-    transition: all 0.3s ease;
-}
-
-.followup-section p {
-    font-size: 17px !important;
-    font-weight: 600 !important;
-    color: var(--text-primary) !important;
-    margin-bottom: 12px !important;
-}
-
-.followup-section .followup-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.followup-section .followup-options label {
-    cursor: pointer;
-    background: var(--bg-surface-pure);
-    border-radius: 8px;
-    border: 2px solid var(--border-strong);
-    color: var(--text-secondary);
-    padding: 10px 18px;
-    font-weight: 600;
-    font-size: 15px;
-    min-height: var(--touch-target-min);
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.followup-section .followup-options input:checked + label {
-    background: var(--sewa-orange);
-    color: var(--text-on-accent);
-    border-color: var(--sewa-orange-deep);
-    box-shadow: 0 3px 8px var(--sewa-orange-glow);
-}
-
-.checkbox-group .other-specify-wrapper {
-    width: 100%;
-    margin-top: 4px;
-}
-
-.checkbox-group .other-specify-wrapper input {
-    border: 2px solid var(--border-input);
-    border-radius: 10px;
-    padding: 14px 18px;
-    font-size: 17px;
-    width: 100%;
+/* ─── 22. Print — suppress UI chrome ─────────────────────────────────────────── */
+@media print {
+  #adminControls,
+  #inactivityWarning,
+  #timeoutWarning,
+  #buttonContainer,
+  #progressBarContainer {
+    display: none !important;
+  }
 }

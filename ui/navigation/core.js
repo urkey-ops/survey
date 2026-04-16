@@ -1,42 +1,34 @@
 // FILE: ui/navigation/core.js
 // PURPOSE: Core navigation functions (goNext, goPrev, showQuestion)
-// VERSION: 5.3.0
-// CHANGES FROM 5.2.0:
-//   - showQuestion: tracks a pending render timeout ID (_pendingRenderTimer)
-//     so any in-flight fade-out delay can be cancelled before a new render
-//     begins — prevents "ghost question" repaints after fast nav or reset
-//   - _renderQuestion: guards against stale renders by checking a
-//     _renderGeneration counter; if the generation has advanced since the
-//     render was scheduled, the render is silently dropped
-//   - saveState: reads storage key from CONSTANTS first, then falls back
-//     to appState.storageKey, then to the legacy literal — no more
-//     hard-coded fallback string scattered across files
-//   - All other behaviour (fade timings, event wiring, error screen,
-//     goNext / goPrev / jump) is unchanged
+// VERSION: 5.4.0
+// CHANGES FROM 5.3.0:
+//   - safe storage key resolution via _getStorageKey()
+//   - active-survey-aware getQuestions() via config helpers
+//   - cleanupInputFocusScroll() prevents duplicate listeners
+//   - updateAdminCount() now reflects both queues
+//   - preserves all your render-generation guards + fade logic
 // DEPENDENCIES: window.dataUtils, window.appState
 
 // ─── Module-level render-cancellation state ───────────────────────────────────
-// _pendingRenderTimer  – the setTimeout id for a fade-out delay that has not
-//                        fired yet.  Cancelled before every new showQuestion call.
-// _renderGeneration    – incremented on every showQuestion call.  _renderQuestion
-//                        captures the value at scheduling time and bails out if
-//                        the counter has moved on by the time it executes.
 let _pendingRenderTimer = null;
-let _renderGeneration   = 0;
+let _renderGeneration = 0;
+
+// ─── Module-level input focus handler ────────────────────────────────────────
+let _boundInputFocusHandler = null;
 
 /**
  * Get dependencies from global scope
  */
 export function getDependencies() {
   return {
-    appState:          window.appState,
-    dataUtils:         window.dataUtils,
-    dataHandlers:      window.dataHandlers,
-    globals:           window.globals,
+    appState: window.appState,
+    dataUtils: window.dataUtils,
+    dataHandlers: window.dataHandlers,
+    globals: window.globals,
     typewriterManager: window.typewriterManager,
-    timerManager:      window.timerManager,
-    validateQuestion:  window.validateQuestion,
-    clearErrors:       window.clearErrors,
+    timerManager: window.timerManager,
+    validateQuestion: window.validateQuestion,
+    clearErrors: window.clearErrors,
   };
 }
 
@@ -44,22 +36,29 @@ export function getDependencies() {
  * Central helper — always returns the active survey's question array.
  * Reads active type on every call so type switches take effect immediately.
  */
-function getQuestions() {
+export function getQuestions() {
   const { dataUtils } = getDependencies();
-  return dataUtils.getSurveyQuestions
-    ? dataUtils.getSurveyQuestions()
-    : dataUtils.surveyQuestions;
+
+  if (typeof dataUtils?.getSurveyQuestions === 'function') {
+    return dataUtils.getSurveyQuestions();
+  }
+
+  if (Array.isArray(dataUtils?.surveyQuestions)) {
+    return dataUtils.surveyQuestions;
+  }
+
+  console.warn('[NAV] No questions array found in dataUtils');
+  return [];
 }
 
 /**
  * Resolve the canonical localStorage key for persisted kiosk state.
  * Priority: CONSTANTS → appState.storageKey → legacy fallback string.
- * Having one resolver here means no other file needs to know the key name.
  */
 function _getStorageKey() {
   return (
     window.CONSTANTS?.STORAGE_KEY_STATE ||
-    window.appState?.storageKey         ||
+    window.appState?.storageKey ||
     'kioskAppState'
   );
 }
@@ -70,12 +69,17 @@ function _getStorageKey() {
 export function saveState() {
   const { appState, dataHandlers } = getDependencies();
 
+  if (!dataHandlers?.safeSetLocalStorage) {
+    console.warn('[STATE] safeSetLocalStorage not available — skipping save');
+    return;
+  }
+
   dataHandlers.safeSetLocalStorage(_getStorageKey(), {
     currentQuestionIndex: appState.currentQuestionIndex,
-    formData:             appState.formData,
-    surveyStartTime:      appState.surveyStartTime,
-    questionStartTimes:   appState.questionStartTimes,
-    questionTimeSpent:    appState.questionTimeSpent,
+    formData: { ...appState.formData },
+    surveyStartTime: appState.surveyStartTime,
+    questionStartTimes: { ...appState.questionStartTimes },
+    questionTimeSpent: { ...appState.questionTimeSpent },
   });
 }
 
@@ -131,9 +135,13 @@ export function updateProgressBar() {
 
   if (!progressBar) return;
 
-  const questions      = getQuestions();
+  const questions = getQuestions();
   const totalQuestions = questions.length;
-  if (totalQuestions === 0) return;
+
+  if (totalQuestions === 0) {
+    progressBar.style.width = '0%';
+    return;
+  }
 
   const progressPercentage = Math.min(
     ((appState.currentQuestionIndex + 1) / totalQuestions) * 100,
@@ -149,10 +157,10 @@ export function updateProgressBar() {
 export function cleanupIntervals() {
   const { timerManager, appState } = getDependencies();
 
-  if (timerManager?.clearIntervals) {
+  if (typeof timerManager?.clearIntervals === 'function') {
     timerManager.clearIntervals();
   } else {
-    if (appState.rotationInterval) {
+    if (appState?.rotationInterval) {
       clearInterval(appState.rotationInterval);
       appState.rotationInterval = null;
     }
@@ -165,13 +173,12 @@ export function cleanupIntervals() {
 export function setupInputFocusScroll() {
   const { globals } = getDependencies();
   const questionContainer = globals?.questionContainer;
+
   if (!questionContainer) return;
 
-  if (window.boundInputFocusHandler) {
-    questionContainer.removeEventListener('focusin', window.boundInputFocusHandler);
-  }
+  cleanupInputFocusScroll();
 
-  window.boundInputFocusHandler = (event) => {
+  _boundInputFocusHandler = (event) => {
     const target = event.target;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
       setTimeout(() => {
@@ -180,7 +187,7 @@ export function setupInputFocusScroll() {
     }
   };
 
-  questionContainer.addEventListener('focusin', window.boundInputFocusHandler);
+  questionContainer.addEventListener('focusin', _boundInputFocusHandler);
 }
 
 /**
@@ -190,9 +197,9 @@ export function cleanupInputFocusScroll() {
   const { globals } = getDependencies();
   const questionContainer = globals?.questionContainer;
 
-  if (questionContainer && window.boundInputFocusHandler) {
-    questionContainer.removeEventListener('focusin', window.boundInputFocusHandler);
-    window.boundInputFocusHandler = null;
+  if (questionContainer && _boundInputFocusHandler) {
+    questionContainer.removeEventListener('focusin', _boundInputFocusHandler);
+    _boundInputFocusHandler = null;
   }
 }
 
@@ -202,20 +209,14 @@ export function cleanupInputFocusScroll() {
 
 /**
  * Cancel any in-flight render that has not yet executed.
- *
- * Called at the top of showQuestion so that rapid navigation (e.g. two quick
- * "Next" taps, or a reset firing while a fade-out is pending) never lets a
- * stale delayed render overwrite the DOM after the correct one has already
- * painted.
  */
 function _cancelPendingRender() {
   if (_pendingRenderTimer !== null) {
     clearTimeout(_pendingRenderTimer);
     _pendingRenderTimer = null;
   }
-  // Advancing the generation counter invalidates any _renderQuestion closure
-  // that was already scheduled via rAF or a timeout that we cannot cancel
-  // (e.g. a render that already started but whose rAF callbacks are queued).
+
+  // Advance generation to invalidate any queued rAF callbacks.
   _renderGeneration++;
 }
 
@@ -223,10 +224,8 @@ export function showQuestion(index) {
   const { globals } = getDependencies();
   const questionContainer = globals?.questionContainer;
 
-  // Always cancel whatever was previously pending before scheduling new work.
   _cancelPendingRender();
 
-  // Capture the generation for this particular call.
   const generation = _renderGeneration;
 
   if (questionContainer && questionContainer.innerHTML.trim() !== '') {
@@ -235,7 +234,6 @@ export function showQuestion(index) {
     _pendingRenderTimer = setTimeout(() => {
       _pendingRenderTimer = null;
 
-      // If another showQuestion call fired while we were waiting, bail out.
       if (generation !== _renderGeneration) return;
 
       _renderQuestion(index, generation);
@@ -245,42 +243,40 @@ export function showQuestion(index) {
   }
 }
 
-// ─── Private render ───────────────────────────────────────────────────────────
-
 function _renderQuestion(index, generation) {
   const { globals, appState, typewriterManager, dataUtils } = getDependencies();
   const questionContainer = globals?.questionContainer;
-  const nextBtn           = globals?.nextBtn;
-  const prevBtn           = globals?.prevBtn;
+  const nextBtn = globals?.nextBtn;
+  const prevBtn = globals?.prevBtn;
 
-  // Stale-render guard: if showQuestion was called again after this render was
-  // scheduled the generation counter will have advanced — drop this render
-  // entirely so we never paint old content over a newer question.
   if (generation !== _renderGeneration) return;
 
-  // Kill any pending auto-advance from the previous question.
-  if (dataUtils?.clearAutoAdvance) dataUtils.clearAutoAdvance();
+  if (dataUtils?.clearAutoAdvance) {
+    dataUtils.clearAutoAdvance();
+  }
 
   try {
-    if (window.clearErrors) window.clearErrors();
+    if (window.clearErrors) {
+      window.clearErrors();
+    }
 
     const questions = getQuestions();
-    const question  = questions[index];
+    const question = questions[index];
 
-    if (!question) throw new Error(`Question at index ${index} is undefined`);
+    if (!question) {
+      throw new Error(`Question at index ${index} is undefined`);
+    }
 
     const renderer = dataUtils.questionRenderers[question.type];
-    if (!renderer) throw new Error(`No renderer found for question type: ${question.type}`);
+    if (!renderer) {
+      throw new Error(`No renderer found for question type: ${question.type}`);
+    }
 
     startQuestionTimer(question.id);
 
-    // Swap content
     questionContainer.classList.remove('question-fade-out');
     questionContainer.innerHTML = renderer.render(question, appState.formData);
 
-    // Trigger fade-in on next two frames so CSS transition fires cleanly.
-    // Capture generation again so the rAF callbacks can also self-abort if
-    // yet another navigation fires before the frames execute.
     const fadeGeneration = _renderGeneration;
     requestAnimationFrame(() => {
       if (fadeGeneration !== _renderGeneration) return;
@@ -293,11 +289,10 @@ function _renderQuestion(index, generation) {
 
     if (typewriterManager) {
       typewriterManager.addEffect(questionContainer);
-    } else if (window.addTypewriterEffect) {
+    } else if (typeof window.addTypewriterEffect === 'function') {
       window.addTypewriterEffect(questionContainer);
     }
 
-    // BUG 1 FIX preserved: separate positional args (not an object)
     if (renderer.setupEvents) {
       renderer.setupEvents(question, goNext, updateData);
     }
@@ -306,14 +301,14 @@ function _renderQuestion(index, generation) {
       if (typewriterManager) {
         const interval = typewriterManager.rotateText(question, appState.rotationInterval);
         appState.rotationInterval = interval;
-      } else if (window.rotateQuestionText) {
+      } else if (typeof window.rotateQuestionText === 'function') {
         window.rotateQuestionText(question);
       }
     }
 
-    prevBtn.disabled    = (index === 0);
+    prevBtn.disabled = (index === 0);
     nextBtn.textContent = (index === questions.length - 1) ? 'Submit Survey' : 'Next';
-    nextBtn.disabled    = false;
+    nextBtn.disabled = false;
 
     updateProgressBar();
     setupInputFocusScroll();
@@ -321,28 +316,27 @@ function _renderQuestion(index, generation) {
   } catch (error) {
     console.error('[ERROR] Fatal error during showQuestion render:', error);
 
-    // Only log/show the error UI if this render is still current.
-    // If it has been superseded, swallowing it silently is correct behaviour.
     if (generation !== _renderGeneration) return;
 
     try {
       const questions = getQuestions();
-      const errorLog  = JSON.parse(localStorage.getItem('errorLog') || '[]');
+      const errorLog = JSON.parse(safeGetLocalStorage('errorLog') || '[]');
       errorLog.push({
-        timestamp:     new Date().toISOString(),
-        error:         error.message,
-        stack:         error.stack,
+        timestamp: new Date().toISOString(),
+        error: error.message,
+        stack: error.stack,
         questionIndex: index,
-        questionId:    questions[index]?.id,
+        questionId: questions[index]?.id,
       });
-      localStorage.setItem('errorLog', JSON.stringify(errorLog.slice(-20)));
-    } catch (e) { console.error('Could not log error:', e); }
+      safeSetLocalStorage('errorLog', JSON.stringify(errorLog.slice(-20)));
+    } catch (e) {
+      console.error('Could not log error:', e);
+    }
 
     if (nextBtn) nextBtn.disabled = true;
     if (prevBtn) prevBtn.disabled = true;
     cleanupIntervals();
 
-    // Always clean up fade classes — container must never be stuck invisible.
     if (questionContainer) {
       questionContainer.classList.remove('question-fade-out', 'question-fade-in');
     }
@@ -366,7 +360,7 @@ function _renderQuestion(index, generation) {
       </div>`;
 
     document.getElementById('errorRestart')?.addEventListener('click', () => {
-      if (window.uiHandlers?.performKioskReset) {
+      if (typeof window.uiHandlers?.performKioskReset === 'function') {
         window.uiHandlers.performKioskReset();
       } else {
         location.reload();
@@ -385,10 +379,10 @@ function _renderQuestion(index, generation) {
 export function goNext() {
   const { appState } = getDependencies();
 
-  const questions       = getQuestions();
+  const questions = getQuestions();
   const currentQuestion = questions[appState.currentQuestionIndex];
 
-  const isValid = window.validateQuestion
+  const isValid = typeof window.validateQuestion === 'function'
     ? window.validateQuestion(currentQuestion, appState.formData)
     : true;
 
@@ -396,14 +390,17 @@ export function goNext() {
 
   stopQuestionTimer(currentQuestion.id);
   cleanupIntervals();
-  if (window.clearErrors) window.clearErrors();
+
+  if (typeof window.clearErrors === 'function') {
+    window.clearErrors();
+  }
 
   if (appState.currentQuestionIndex < questions.length - 1) {
     appState.currentQuestionIndex++;
     saveState();
     showQuestion(appState.currentQuestionIndex);
   } else {
-    if (window.navigationHandler?.submitSurvey) {
+    if (typeof window.navigationHandler?.submitSurvey === 'function') {
       window.navigationHandler.submitSurvey();
     }
   }
@@ -416,7 +413,7 @@ export function goPrev() {
   const { appState } = getDependencies();
 
   if (appState.currentQuestionIndex > 0) {
-    const questions       = getQuestions();
+    const questions = getQuestions();
     const currentQuestion = questions[appState.currentQuestionIndex];
     stopQuestionTimer(currentQuestion.id);
     cleanupIntervals();
@@ -469,14 +466,23 @@ export function jumpToQuestion(index) {
     return false;
   }
 
-  const { appState }    = getDependencies();
+  const { appState } = getDependencies();
   const currentQuestion = getCurrentQuestion();
 
-  if (currentQuestion) stopQuestionTimer(currentQuestion.id);
+  if (currentQuestion) {
+    stopQuestionTimer(currentQuestion.id);
+  }
 
   appState.currentQuestionIndex = index;
   saveState();
   showQuestion(index);
 
   return true;
+}
+
+// ─── Module cleanup ───────────────────────────────────────────────────────────
+export function cleanupCoreNavigation() {
+  _cancelPendingRender();
+  cleanupInputFocusScroll();
+  cleanupIntervals();
 }

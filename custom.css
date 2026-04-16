@@ -20,6 +20,11 @@
 }
 
 /* ─── 1. Base Reset / Touch Optimisation ───────────────────────────────────── */
+/* Body background — warm neutral so the white survey card has visible depth */
+body {
+  background-color: #F3F4F6; /* gray-100 — neutral kiosk background */
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -334,9 +339,9 @@ textarea:focus {
   justify-content: flex-end;
 }
 
-/* Base button */
-#prevButton,
-#nextButton,
+/* Base button — HTML uses prevBtn/nextBtn; aliases cover both naming conventions */
+#prevButton, #prevBtn,
+#nextButton, #nextBtn,
 #submitButton {
   display:         inline-flex;
   align-items:     center;
@@ -355,45 +360,45 @@ textarea:focus {
 }
 
 /* Prev — secondary/ghost */
-#prevButton {
+#prevButton, #prevBtn {
   background:    #FFFFFF;
   color:         #374151; /* gray-700 */
   border-color:  #D1D5DB; /* gray-300 */
 }
 
-#prevButton:hover:not(:disabled) {
+#prevButton:hover:not(:disabled), #prevBtn:hover:not(:disabled) {
   background:   #F9FAFB;
   border-color: #9CA3AF;
 }
 
-#prevButton:active:not(:disabled) {
+#prevButton:active:not(:disabled), #prevBtn:active:not(:disabled) {
   transform: scale(0.97);
   background: #F3F4F6;
 }
 
 /* Next — primary orange */
-#nextButton,
+#nextButton, #nextBtn,
 #submitButton {
   background:   var(--sewa-orange);
   color:        #FFFFFF;
   border-color: var(--sewa-orange);
 }
 
-#nextButton:hover:not(:disabled),
+#nextButton:hover:not(:disabled), #nextBtn:hover:not(:disabled),
 #submitButton:hover:not(:disabled) {
   background:   var(--sewa-orange-dark);
   border-color: var(--sewa-orange-dark);
 }
 
-#nextButton:active:not(:disabled),
+#nextButton:active:not(:disabled), #nextBtn:active:not(:disabled),
 #submitButton:active:not(:disabled) {
   transform: scale(0.97);
   background: var(--sewa-orange-dark);
 }
 
 /* Disabled state */
-#prevButton:disabled,
-#nextButton:disabled,
+#prevButton:disabled, #prevBtn:disabled,
+#nextButton:disabled, #nextBtn:disabled,
 #submitButton:disabled {
   opacity:  0.45;
   cursor:   not-allowed;
@@ -401,8 +406,8 @@ textarea:focus {
 }
 
 /* Hidden state */
-#prevButton.hidden,
-#nextButton.hidden,
+#prevButton.hidden, #prevBtn.hidden,
+#nextButton.hidden, #nextBtn.hidden,
 #submitButton.hidden {
   display: none !important;
 }
@@ -566,40 +571,40 @@ textarea:focus {
 }
 
 /* ─── 18. Admin Panel ─────────────────────────────────────────────────────────── */
+/* ─── 18. Admin Controls ─────────────────────────────────────────────────────
+   adminControls lives INSIDE the header as an inline flex element.
+   It is NOT a fixed panel — it flows with the header layout.
+   The .hidden class (section 20) handles show/hide.
+   The inline <style> block in index.html handles .admin-active layout changes.
+─────────────────────────────────────────────────────────────────────────────── */
 #adminControls {
-  position:      fixed;
-  top:           0;
-  right:         0;
-  z-index:       10000;
-  background:    #FFFFFF;
-  border:        1px solid #E5E7EB;
-  border-radius: 0 0 0 var(--sewa-radius);
-  padding:       1rem;
-  min-width:     200px;
-  max-width:     260px;
-  box-shadow:    0 4px 16px rgba(0,0,0,0.12);
+  /* No position:fixed — flows inside header flex row */
+  display:    flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap:         0.35rem;
 }
 
 #adminControls.hidden {
   display: none !important;
 }
 
-/* Admin buttons */
+/* Admin buttons — compact inline style to fit inside header */
 #adminControls button {
-  display:       block;
-  width:         100%;
-  padding:       0.5rem 0.75rem;
-  margin-bottom: 0.5rem;
-  font-size:     0.82rem;
+  display:       inline-flex;
+  align-items:   center;
+  padding:       0.3rem 0.65rem;
+  font-size:     0.75rem;
   font-weight:   600;
   border-radius: var(--sewa-radius-sm);
   border:        1px solid #D1D5DB;
   cursor:        pointer;
   touch-action:  manipulation;
-  text-align:    left;
   transition:    var(--sewa-transition);
   background:    #FFFFFF;
   color:         #374151;
+  white-space:   nowrap;
+  min-height:    32px;
 }
 
 #adminControls button:hover:not(:disabled) {
@@ -615,10 +620,9 @@ textarea:focus {
 /* ─── 19. Kiosk Video / Home Screen ──────────────────────────────────────────── */
 #kioskVideo,
 video#kioskVideo {
-  width:      100%;
-  height:     100%;
-  object-fit: cover;
+  /* width/height controlled by Tailwind: max-w-xl max-h-full on the element */
   display:    block;
+  object-fit: contain; /* contain keeps aspect ratio inside max-w-xl bounds */
   pointer-events: none; /* prevents accidental tap-to-pause */
 }
 

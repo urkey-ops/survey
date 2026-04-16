@@ -1,12 +1,15 @@
 // FILE: data-util.js
 // PURPOSE: Survey questions definition and question renderers
-// VERSION: 3.3.0 - FIXES:
-//   1. radio-with-followup: unique followup IDs scoped per parent option (fixes duplicate ID / unclickable buttons)
-//   2. radio-with-followup: getFollowupValues() queries only visible panel (fixes wrong panel data capture)
-//   3. radio-with-followup: flex-wrap layout for followup options (fixes alignment)
-//   4. radio-with-other: saves { main, other } object — other text captured and synced
-//   5. checkbox-with-other: saves plain array + separate 'other'+id key — other text captured and synced
-//   6. submit-survey sync: both other fields land in correct sheet columns via COLUMN_ORDER
+// VERSION: 5.1.0 - Grid centering + orphan fix + press feedback + readability bumps
+//   CHANGES FROM 3.3.0:
+//   - getGridCols() / getGridMaxWidth() helpers added
+//   - All option grids: grid-template-columns set dynamically via getGridCols()
+//   - All option grids: justify-content:center (CSS backs this up too)
+//   - All option <label> elements: option-label class added (press feedback)
+//   - Multi-line labels: <span class="block"> so line1/line2 stack centered
+//   - checkbox-group labels: items-start so indicator tops out on text wrap
+//   - followup option labels: followup-option-label class (0.9rem font)
+//   - followup panel heading: followup-panel-label class (0.95rem font)
 
 window.dataUtils = (function () {
 
@@ -14,14 +17,43 @@ window.dataUtils = (function () {
   const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
   const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
 
-  // Auto-advance timer tracking — prevents race conditions
   let autoAdvanceTimer = null;
   function scheduleAutoAdvance(callback, delay) {
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
     autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; callback(); }, delay);
   }
 
-  // ─── HELPER: Apply/remove orange selected state on radio labels ────────────
+  // ─── GRID HELPERS ─────────────────────────────────────────────────────────
+
+  /**
+   * Returns ideal column count for n options.
+   * Avoids orphan-heavy layouts (e.g. 4 items → 2×2, not 3+1).
+   */
+  function getGridCols(n) {
+    if (n <= 1) return 1;
+    if (n === 2) return 2;
+    if (n === 3) return 3;
+    if (n === 4) return 2;
+    if (n === 5) return 5;
+    if (n === 6) return 3;
+    if (n === 7) return 4;
+    if (n === 8) return 4;
+    if (n === 9) return 3;
+    if (n === 10) return 5;
+    return 3;
+  }
+
+  /**
+   * Constrains small grids so they don't stretch across the full card width.
+   */
+  function getGridMaxWidth(n, cols) {
+    if (cols <= 2 && n <= 4) return 'max-width:320px; margin-left:auto; margin-right:auto;';
+    if (cols === 3 && n <= 3) return 'max-width:460px; margin-left:auto; margin-right:auto;';
+    return '';
+  }
+
+  // ─── STYLE HELPERS ────────────────────────────────────────────────────────
+
   function applyRadioSelectedStyles(container, inputName) {
     const labels = container.querySelectorAll('label');
     labels.forEach(label => {
@@ -38,7 +70,6 @@ window.dataUtils = (function () {
     });
   }
 
-  // ─── HELPER: Apply star gold-fill on selection ────────────────────────────
   function applyStarSelectedStyles(container, selectedValue) {
     const labels = container.querySelectorAll('label.star');
     labels.forEach(label => {
@@ -58,7 +89,7 @@ window.dataUtils = (function () {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // SURVEY TYPE 1 — Original questions
+  // SURVEY TYPE 1
   // ═══════════════════════════════════════════════════════════
   const surveyQuestionsType1 = [
     {
@@ -158,15 +189,9 @@ window.dataUtils = (function () {
   ];
 
   // ═══════════════════════════════════════════════════════════
-  // SURVEY TYPE 2 — Visitor Experience questions
-  // Column names match COLUMN_ORDER_TYPE2 in api/submit-survey.js:
-  //   visit_feeling, experiences, standout, standout_other,
-  //   shayona_intent, shayona_reason, expectation_met,
-  //   expectation_diff, final_thoughts
+  // SURVEY TYPE 2
   // ═══════════════════════════════════════════════════════════
   const surveyQuestionsType2 = [
-
-    // Q1 — Emotional Hook (same emoji-radio layout as Type 1)
     {
       id: 'satisfaction',
       name: 'satisfaction',
@@ -180,8 +205,6 @@ window.dataUtils = (function () {
       ],
       required: true,
     },
-
-    // Q2 — Journey Map (select up to 3, no Other option)
     {
       id: 'experiences',
       name: 'experiences',
@@ -197,8 +220,6 @@ window.dataUtils = (function () {
       ],
       required: true,
     },
-
-    // Q3 — Sentiment Menu (radio-with-other, "Something Else" opens keyboard)
     {
       id: 'standout',
       name: 'standout',
@@ -214,68 +235,30 @@ window.dataUtils = (function () {
       ],
       required: true,
     },
-
-    // Q4 — Shayona Funnel (radio-with-followup)
-    // Followup triggers on "Maybe next time" AND "Didn't know about it"
     {
       id: 'shayona_intent',
       name: 'shayona_intent',
       type: 'radio-with-followup',
       question: 'Have you visited the Shayona Cafe and the Gift Shop today?',
       options: [
-        {
-          value: 'Already visited',
-          label: 'Already visited',
-          followupLabel: null,
-          followupOptions: [],
-        },
-        {
-          value: 'Going there now',
-          label: 'Going there now',
-          followupLabel: null,
-          followupOptions: [],
-        },
-        {
-          value: 'Maybe next time',
-          label: 'Maybe next time',
-          followupLabel: 'What would help next time?',
-          followupOptions: ["Better signs", "More information", "See what's offered", "Campus map"],
-        },
-        {
-          value: "Didn't know about it",
-          label: "Didn't know about it",
-          followupLabel: 'What would help next time?',
-          followupOptions: ["Better signs", "More information", "See what's offered", "Campus map"],
-        },
+        { value: 'Already visited',       label: 'Already visited',       followupLabel: null, followupOptions: [] },
+        { value: 'Going there now',       label: 'Going there now',       followupLabel: null, followupOptions: [] },
+        { value: 'Maybe next time',       label: 'Maybe next time',       followupLabel: 'What would help next time?', followupOptions: ["Better signs","More information","See what's offered","Campus map"] },
+        { value: "Didn't know about it",  label: "Didn't know about it",  followupLabel: 'What would help next time?', followupOptions: ["Better signs","More information","See what's offered","Campus map"] },
       ],
       required: true,
     },
-
-    // Q5 — Expectation Check (radio-with-followup)
-    // Followup only on "A few things were unclear"
     {
       id: 'expectation_met',
       name: 'expectation_met',
       type: 'radio-with-followup',
       question: 'Did your visit flow smoothly today?',
       options: [
-        {
-          value: 'Yes everything was smooth',
-          label: 'Yes, everything was smooth',
-          followupLabel: null,
-          followupOptions: [],
-        },
-        {
-          value: 'A few things were unclear',
-          label: 'A few things were unclear',
-          followupLabel: 'What was unclear?',
-          followupOptions: ['Darshan timing', 'Finding my way', 'Signs & directions', 'Parking'],
-        },
+        { value: 'Yes everything was smooth',  label: 'Yes, everything was smooth', followupLabel: null, followupOptions: [] },
+        { value: 'A few things were unclear',  label: 'A few things were unclear',  followupLabel: 'What was unclear?', followupOptions: ['Darshan timing','Finding my way','Signs & directions','Parking'] },
       ],
       required: true,
     },
-
-    // Q6 — Final Reflection (optional textarea)
     {
       id: 'final_thoughts',
       name: 'final_thoughts',
@@ -299,7 +282,8 @@ window.dataUtils = (function () {
     textarea: {
       render(q, data) {
         return `
-          <label id="rotatingQuestion" for="${q.id}" class="block text-gray-700 font-semibold mb-2" aria-live="polite">${q.question}</label>
+          <label id="rotatingQuestion" for="${q.id}"
+            class="block text-gray-700 font-semibold mb-2" aria-live="polite">${q.question}</label>
           <textarea id="${q.id}" name="${q.name}" rows="4"
             class="shadow-sm resize-none appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="${q.placeholder}"
@@ -317,18 +301,25 @@ window.dataUtils = (function () {
     // ── EMOJI RADIO ──────────────────────────────────────────────────────────
     'emoji-radio': {
       render(q, data) {
+        const n    = q.options.length;
+        const cols = getGridCols(n);
+        const maxW = getGridMaxWidth(n, cols);
+
         const opts = q.options.map(opt => `
-          <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}" name="${q.name}" value="${opt.value}"
-            class="visually-hidden" ${data[q.name] === opt.value ? 'checked' : ''}>
+          <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+            name="${q.name}" value="${opt.value}"
+            class="visually-hidden"
+            ${data[q.name] === opt.value ? 'checked' : ''}>
           <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-            class="flex flex-col items-center p-4 sm:p-6 border-2 rounded-full cursor-pointer transition-all duration-200
-              bg-white border-transparent hover:bg-gray-50 text-gray-700">
+            class="option-label flex flex-col items-center p-4 sm:p-6 border-2 rounded-full cursor-pointer transition-all duration-200 bg-white border-transparent hover:bg-gray-50 text-gray-700">
             <span class="text-4xl sm:text-5xl mb-2" aria-hidden="true">${opt.emoji}</span>
             <span class="text-sm font-medium">${opt.label}</span>
           </label>`).join('');
+
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-          <div class="emoji-radio-group flex justify-around items-center space-x-4"
+          <div class="emoji-radio-group"
+            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
             role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
       },
@@ -348,13 +339,14 @@ window.dataUtils = (function () {
       render(q, data) {
         const btns = Array.from({ length: q.max }, (_, i) => i + 1).map(num => `
           <input type="radio" id="${q.id}_${num}" name="${q.name}" value="${num}"
-            class="visually-hidden" ${String(data[q.name]) === String(num) ? 'checked' : ''}>
+            class="visually-hidden"
+            ${String(data[q.name]) === String(num) ? 'checked' : ''}>
           <label for="${q.id}_${num}"
-            class="flex items-center justify-center border-2 rounded-full font-bold cursor-pointer transition-all duration-200 w-12 h-12 sm:w-14 sm:h-14 text-lg
-              bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+            class="option-label flex items-center justify-center border-2 rounded-full font-bold cursor-pointer transition-all duration-200 w-12 h-12 sm:w-14 sm:h-14 text-lg bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
             role="radio" aria-label="Rating ${num}">
             <span>${num}</span>
           </label>`).join('');
+
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
           <div class="number-scale-group flex justify-around items-center"
@@ -381,11 +373,13 @@ window.dataUtils = (function () {
       render(q, data) {
         const stars = Array.from({ length: q.max }, (_, i) => q.max - i).map(num => `
           <input type="radio" id="${q.id}_${num}" name="${q.name}" value="${num}"
-            class="visually-hidden" ${String(data[q.name]) === String(num) ? 'checked' : ''}>
+            class="visually-hidden"
+            ${String(data[q.name]) === String(num) ? 'checked' : ''}>
           <label for="${q.id}_${num}"
-            class="star text-4xl sm:text-5xl pr-1 cursor-pointer transition-colors duration-150
+            class="star option-label text-4xl sm:text-5xl pr-1 cursor-pointer transition-colors duration-150
               ${parseInt(data[q.name]) >= num ? 'text-yellow-400' : 'text-gray-300'}"
             role="radio" aria-label="${num} stars">★</label>`).join('');
+
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
           <div class="star-rating flex flex-row-reverse justify-center mt-2"
@@ -405,29 +399,29 @@ window.dataUtils = (function () {
     },
 
     // ── RADIO WITH OTHER ─────────────────────────────────────────────────────
-    // FIX: saves { main, other } object so other text is captured and synced.
-    // submit-survey.js must read:
-    //   const loc = typeof fd.location === 'object' ? fd.location.main : fd.location;
-    //   const locOther = typeof fd.location === 'object' ? fd.location.other : '';
-    //   const standout = typeof fd.standout === 'object' ? fd.standout.main : fd.standout;
-    //   const standoutOther = typeof fd.standout === 'object' ? fd.standout.other : '';
     'radio-with-other': {
       render(q, data) {
-        const savedVal   = data[q.name];
-        const mainVal    = savedVal && typeof savedVal === 'object' ? savedVal.main  : savedVal;
-        const otherVal   = savedVal && typeof savedVal === 'object' ? savedVal.other : '';
-        const showOther  = mainVal === 'Other';
+        const savedVal  = data[q.name];
+        const mainVal   = savedVal && typeof savedVal === 'object' ? savedVal.main  : savedVal;
+        const otherVal  = savedVal && typeof savedVal === 'object' ? savedVal.other : '';
+        const showOther = mainVal === 'Other';
+
+        const n    = q.options.length;
+        const cols = getGridCols(n);
+        const maxW = getGridMaxWidth(n, cols);
 
         const opts = q.options.map(opt => {
+          // v5.1.0: multi-line labels use <span class="block"> to stack centered
           const labelHtml = typeof opt.label === 'object'
-            ? `<span>${opt.label.line1}</span><br><span>${opt.label.line2}</span>`
+            ? `<span class="block">${opt.label.line1}</span><span class="block">${opt.label.line2}</span>`
             : opt.label;
           const isSelected = mainVal === opt.value;
           return `
-            <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}" name="${q.name}"
-              value="${opt.value}" class="visually-hidden" ${isSelected ? 'checked' : ''}>
+            <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+              name="${q.name}" value="${opt.value}"
+              class="visually-hidden" ${isSelected ? 'checked' : ''}>
             <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-              class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
+              class="option-label px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
                 ${isSelected
                   ? 'bg-orange-500 text-white border-orange-500'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
@@ -436,7 +430,8 @@ window.dataUtils = (function () {
 
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-          <div class="location-radio-group grid grid-cols-2 sm:grid-cols-3 gap-2"
+          <div class="location-radio-group"
+            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
             role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
           <div id="other-${q.id}-container" class="mt-4 ${showOther ? '' : 'hidden'}">
             <input type="text" id="other-${q.id}-text" name="other-${q.id}"
@@ -455,7 +450,6 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           const val = e.target.value;
-          // Always save as { main, other } so submit-survey.js can extract both fields
           updateData(q.name, { main: val, other: val === 'Other' ? (otherInput?.value || '') : '' });
           applyRadioSelectedStyles(container, q.name);
           if (otherContainer) {
@@ -481,21 +475,28 @@ window.dataUtils = (function () {
     // ── RADIO (Age, and any simple radio) ────────────────────────────────────
     radio: {
       render(q, data) {
+        const n    = q.options.length;
+        const cols = getGridCols(n);
+        const maxW = getGridMaxWidth(n, cols);
+
         const opts = q.options.map(opt => {
           const isSelected = data[q.name] === opt.value;
           return `
-            <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}" name="${q.name}"
-              value="${opt.value}" class="visually-hidden" ${isSelected ? 'checked' : ''}>
+            <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+              name="${q.name}" value="${opt.value}"
+              class="visually-hidden" ${isSelected ? 'checked' : ''}>
             <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-              class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
+              class="option-label px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
                 ${isSelected
                   ? 'bg-orange-500 text-white border-orange-500'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
               role="radio">${opt.label}</label>`;
         }).join('');
+
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-          <div class="age-radio-group grid grid-cols-3 grid-flow-row gap-2"
+          <div class="age-radio-group"
+            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
             role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
       },
@@ -512,17 +513,15 @@ window.dataUtils = (function () {
     },
 
     // ── RADIO WITH FOLLOWUP ───────────────────────────────────────────────────
-    // FIX 1: followup input IDs are scoped to parent option value — no duplicate IDs
-    //        OLD: `${q.id}_fu_${fv}`  → same ID in both panels when options are shared
-    //        NEW: `${q.id}_fu_${optSlug}_${fvSlug}` → unique per panel
-    // FIX 2: getFollowupValues() queries only the VISIBLE panel — not all panels
-    // FIX 3: followup layout uses flex-wrap instead of fixed grid
-    // FIX 4: checkbox style update targets only the changed label via e.target.id
     'radio-with-followup': {
       render(q, data) {
         const current      = data[q.name] || {};
         const mainVal      = typeof current === 'object' ? current.main  : current;
         const followupVals = Array.isArray(current.followup) ? current.followup : [];
+
+        const n    = q.options.length;
+        const cols = getGridCols(n);
+        const maxW = getGridMaxWidth(n, cols);
 
         const opts = q.options.map(opt => {
           const isSelected = mainVal === opt.value;
@@ -531,7 +530,7 @@ window.dataUtils = (function () {
             <input type="radio" id="${q.id}_${optSlug}" name="${q.name}"
               value="${opt.value}" class="visually-hidden" ${isSelected ? 'checked' : ''}>
             <label for="${q.id}_${optSlug}"
-              class="px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
+              class="option-label px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
                 ${isSelected
                   ? 'bg-orange-500 text-white border-orange-500'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
@@ -543,8 +542,12 @@ window.dataUtils = (function () {
           const optSlug = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
           const show    = mainVal === opt.value;
 
+          // Followup option cols
+          const fn    = opt.followupOptions.length;
+          const fcols = getGridCols(fn);
+          const fmaxW = getGridMaxWidth(fn, fcols);
+
           const cbOptions = opt.followupOptions.map(fv => {
-            // UNIQUE ID: scoped to parent option slug so shared options across panels never collide
             const fvSlug  = fv.replace(/\s+/g,'_').replace(/'/g,'');
             const fid     = `${q.id}_fu_${optSlug}_${fvSlug}`;
             const checked = followupVals.includes(fv);
@@ -553,7 +556,7 @@ window.dataUtils = (function () {
                 <input type="checkbox" id="${fid}" name="${q.id}_followup_${optSlug}"
                   value="${fv}" class="visually-hidden" ${checked ? 'checked' : ''}>
                 <label for="${fid}"
-                  class="inline-block px-4 py-2 text-sm font-medium border-2 rounded-lg cursor-pointer transition-all duration-200 select-none
+                  class="option-label followup-option-label inline-block px-4 py-2 font-medium border-2 rounded-lg cursor-pointer transition-all duration-200 select-none
                     ${checked
                       ? 'bg-orange-500 text-white border-orange-500'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}">
@@ -564,14 +567,18 @@ window.dataUtils = (function () {
 
           return `
             <div id="${q.id}_followup_${optSlug}" class="mt-4 ${show ? '' : 'hidden'}">
-              <p class="text-sm font-semibold text-gray-700 mb-3">${opt.followupLabel}</p>
-              <div class="flex flex-wrap gap-2">${cbOptions}</div>
+              <p class="followup-panel-label">${opt.followupLabel}</p>
+              <div class="followup-radio-group"
+                style="display:grid; grid-template-columns:repeat(${fcols},1fr); gap:8px; ${fmaxW}">
+                ${cbOptions}
+              </div>
             </div>`;
         }).join('');
 
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-          <div class="followup-radio-group grid grid-cols-2 sm:grid-cols-3 gap-2"
+          <div class="followup-radio-group"
+            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
             role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
           ${followupHtml}
           <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
@@ -581,8 +588,6 @@ window.dataUtils = (function () {
         const container = document.querySelector('.followup-radio-group');
         if (!container) return;
 
-        // FIX: query only the VISIBLE panel's checkboxes — avoids picking up
-        // checked state from the hidden duplicate panel with shared option values
         const getFollowupValues = () => {
           const visiblePanel = Array.from(
             document.querySelectorAll(`[id^="${q.id}_followup_"]`)
@@ -597,14 +602,11 @@ window.dataUtils = (function () {
           updateData(q.name, { main: mainVal, followup: getFollowupValues() });
         };
 
-        // Main radio selection
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          const val     = e.target.value;
-          const optSlug = val.replace(/\s+/g,'_').replace(/'/g,'');
+          const val = e.target.value;
           applyRadioSelectedStyles(container, q.name);
 
-          // Show only the matching followup panel, hide all others
           q.options.forEach(opt => {
             const slug  = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
             const panel = document.getElementById(`${q.id}_followup_${slug}`);
@@ -619,14 +621,11 @@ window.dataUtils = (function () {
           }
         });
 
-        // Followup checkbox changes — use document-level listener scoped by name prefix
-        // Each panel uses a unique name `${q.id}_followup_${optSlug}` so events are isolated
         document.addEventListener('change', e => {
           if (!e.target.name?.startsWith(`${q.id}_followup_`)) return;
           const mainVal = container.querySelector('input:checked')?.value || '';
           saveData(mainVal);
 
-          // Update style only for the label that was just toggled
           const lbl = document.querySelector(`label[for="${e.target.id}"]`);
           if (!lbl) return;
           if (e.target.checked) {
@@ -641,25 +640,24 @@ window.dataUtils = (function () {
     },
 
     // ── CHECKBOX WITH OTHER ──────────────────────────────────────────────────
-    // FIX: saves plain array for the main field + 'other'+id key for typed text.
-    // submit-survey.js reads both:
-    //   experiences: formData.experiences?.join(', ')
-    //   hear_about:  formData.hear_about?.join(', ')
-    //   otherhearabout: formData.otherhearabout   ← typed Other text for Type 1
-    //   otherexperiences: formData.otherexperiences ← not used (no Other in Type 2 Q2)
     'checkbox-with-other': {
       render(q, data) {
         const selectedValues = Array.isArray(data[q.name]) ? data[q.name] : [];
         const otherVal       = data['other' + q.id] || '';
 
+        const n    = q.options.length;
+        const cols = getGridCols(n);
+        const maxW = getGridMaxWidth(n, cols);
+
         const opts = q.options.map(opt => {
           const isSelected = selectedValues.includes(opt.value);
           return `
             <div class="checkbox-tab-wrapper">
-              <input type="checkbox" id="${q.id}_${opt.value.replace(/\s+/g,'_')}" name="${q.name}"
-                value="${opt.value}" class="visually-hidden" ${isSelected ? 'checked' : ''}>
+              <input type="checkbox" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+                name="${q.name}" value="${opt.value}"
+                class="visually-hidden" ${isSelected ? 'checked' : ''}>
               <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-                class="flex items-center px-3 py-3 text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
+                class="option-label flex items-start px-3 py-3 text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
                   ${isSelected
                     ? 'bg-orange-500 text-white border-orange-500'
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}">
@@ -679,7 +677,8 @@ window.dataUtils = (function () {
         return `
           <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
           <p class="text-sm text-gray-600 mb-3 italic">You can select more than one option</p>
-          <div class="checkbox-group grid grid-cols-2 sm:grid-cols-3 gap-2"
+          <div class="checkbox-group"
+            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
             role="group" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
           <div id="other-${q.id}-container" class="mt-4 ${selectedValues.includes('Other') ? '' : 'hidden'}">
             <input type="text" id="other-${q.id}-text" name="other-${q.id}"
@@ -699,11 +698,7 @@ window.dataUtils = (function () {
         const save = () => {
           const checked = container.querySelectorAll(`input[name="${q.name}"]:checked`);
           const values  = Array.from(checked).map(cb => cb.value);
-          // Main field: plain array — validation.js checks Array.isArray && length > 0
           updateData(q.name, values);
-          // Other text: stored under 'other' + question id key
-          // Type 1 hearabout  → key: 'otherhearabout'
-          // Type 2 experiences → key: 'otherexperiences' (no Other option, but safe)
           updateData('other' + q.id, values.includes('Other') ? (otherInput?.value || '') : '');
         };
 
@@ -711,7 +706,6 @@ window.dataUtils = (function () {
           if (e.target.name !== q.name) return;
           save();
 
-          // Update visual state for all checkboxes
           container.querySelectorAll('label').forEach(label => {
             const checkbox  = document.getElementById(label.getAttribute('for'));
             const indicator = label.querySelector('.checkbox-indicator');
@@ -733,7 +727,6 @@ window.dataUtils = (function () {
             }
           });
 
-          // Show/hide Other text input
           if (otherContainer) {
             const values = Array.from(
               container.querySelectorAll(`input[name="${q.name}"]:checked`)

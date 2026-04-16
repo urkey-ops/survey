@@ -201,10 +201,21 @@ export function cleanupInputFocusScroll() {
 }
 
 /**
- * Show a specific question by index
- * @param {number} index - Question index to display
- */
+
 export function showQuestion(index) {
+  const { globals } = getDependencies();
+  const questionContainer = globals?.questionContainer;
+
+  // Fade out existing content before swapping, skip on first render
+  if (questionContainer && questionContainer.innerHTML.trim() !== '') {
+    questionContainer.classList.add('question-fade-out');
+    setTimeout(() => _renderQuestion(index), 120);
+  } else {
+    _renderQuestion(index);
+  }
+}
+
+function _renderQuestion(index) {
   const { globals, appState, typewriterManager } = getDependencies();
   const questionContainer = globals?.questionContainer;
   const nextBtn           = globals?.nextBtn;
@@ -216,20 +227,25 @@ export function showQuestion(index) {
     const questions = getQuestions();
     const question  = questions[index];
 
-    if (!question) {
-      throw new Error(`Question at index ${index} is undefined`);
-    }
+    if (!question) throw new Error(`Question at index ${index} is undefined`);
 
     const { dataUtils } = getDependencies();
     const renderer = dataUtils.questionRenderers[question.type];
-
-    if (!renderer) {
-      throw new Error(`No renderer found for question type: ${question.type}`);
-    }
+    if (!renderer) throw new Error(`No renderer found for question type: ${question.type}`);
 
     startQuestionTimer(question.id);
 
+    // Swap content and trigger fade-in
+    questionContainer.classList.remove('question-fade-out');
     questionContainer.innerHTML = renderer.render(question, appState.formData);
+    questionContainer.classList.add('question-fade-in');
+
+    // Remove fade-in class on next paint so CSS transition fires cleanly
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        questionContainer.classList.remove('question-fade-in');
+      });
+    });
 
     if (typewriterManager) {
       typewriterManager.addEffect(questionContainer);
@@ -237,16 +253,10 @@ export function showQuestion(index) {
       window.addTypewriterEffect(questionContainer);
     }
 
-    // ── BUG 1 FIX ────────────────────────────────────────────────────────────
-    // Was: renderer.setupEvents(question, { handleNextQuestion: goNext, updateData })
-    //      → arg 2 was an object, arg 3 was undefined
-    //      → every renderer destructured arg 2 as handleNextQuestion and got undefined
-    //      → auto-advance never fired; no data was recorded
-    // Now: goNext and updateData passed as separate positional args
+    // BUG 1 FIX preserved: separate positional args (not an object)
     if (renderer.setupEvents) {
       renderer.setupEvents(question, goNext, updateData);
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     if (question.rotatingText) {
       if (typewriterManager) {
@@ -257,9 +267,9 @@ export function showQuestion(index) {
       }
     }
 
-    prevBtn.disabled      = (index === 0);
-    nextBtn.textContent   = (index === questions.length - 1) ? 'Submit Survey' : 'Next';
-    nextBtn.disabled      = false;
+    prevBtn.disabled    = (index === 0);
+    nextBtn.textContent = (index === questions.length - 1) ? 'Submit Survey' : 'Next';
+    nextBtn.disabled    = false;
 
     updateProgressBar();
     setupInputFocusScroll();
@@ -278,18 +288,21 @@ export function showQuestion(index) {
         questionId:    questions[index]?.id,
       });
       localStorage.setItem('errorLog', JSON.stringify(errorLog.slice(-20)));
-    } catch (e) {
-      console.error('Could not log error:', e);
-    }
+    } catch (e) { console.error('Could not log error:', e); }
 
     if (nextBtn) nextBtn.disabled = true;
     if (prevBtn) prevBtn.disabled = true;
     cleanupIntervals();
 
+    // Clean up fade classes so display is never stuck invisible
+    if (questionContainer) {
+      questionContainer.classList.remove('question-fade-out', 'question-fade-in');
+    }
+
     questionContainer.innerHTML = `
       <div class="text-center p-8">
-        <h2 class="text-xl font-bold text-red-600 mb-4">⚠️ Technical Issue</h2>
-        <p class="text-gray-600 mb-6">We're having trouble loading this question.</p>
+        <h2 class="text-xl font-bold text-red-600 mb-4">Technical Issue</h2>
+        <p class="text-gray-600 mb-6">We are having trouble loading this question.</p>
         <div class="space-y-4">
           <button id="errorRestart"
             class="w-full px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-lg font-semibold">
@@ -302,7 +315,6 @@ export function showQuestion(index) {
       </div>`;
 
     document.getElementById('errorRestart')?.addEventListener('click', () => {
-      console.log('[ERROR RECOVERY] User initiated restart');
       if (window.uiHandlers?.performKioskReset) {
         window.uiHandlers.performKioskReset();
       } else {

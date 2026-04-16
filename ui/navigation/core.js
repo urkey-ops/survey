@@ -1,9 +1,13 @@
 // FILE: ui/navigation/core.js
 // PURPOSE: Core navigation functions (goNext, goPrev, showQuestion)
-// VERSION: 3.3.0 - CHECKBOX FIX: updateData array-equality guard replaced with
-//                  deep-equality check so checkbox arrays are never silently dropped.
-//                  BUG 1 FIX: setupEvents called with correct separate args (unchanged from 3.2.0)
-//                  BUG 5 FIX: getSurveyQuestions() used everywhere (unchanged from 3.2.0)
+// VERSION: 5.2.0
+// CHANGES FROM 3.3.0:
+//   - showQuestion: fade-out → swap → fade-in (120ms / 150ms)
+//   - _renderQuestion: extracted as private function
+//   - clearAutoAdvance() called on each render to kill stale timers
+//   - dataUtils pulled inside _renderQuestion (not destructured at top)
+//   - Error screen uses inline styles (no Tailwind dependency)
+//   - All other functions (goNext, goPrev, jump, etc.) unchanged
 // DEPENDENCIES: window.dataUtils, window.appState
 
 /**
@@ -11,19 +15,19 @@
  */
 export function getDependencies() {
   return {
-    appState:         window.appState,
-    dataUtils:        window.dataUtils,
-    dataHandlers:     window.dataHandlers,
-    globals:          window.globals,
+    appState:          window.appState,
+    dataUtils:         window.dataUtils,
+    dataHandlers:      window.dataHandlers,
+    globals:           window.globals,
     typewriterManager: window.typewriterManager,
-    timerManager:     window.timerManager,
-    validateQuestion: window.validateQuestion,
-    clearErrors:      window.clearErrors,
+    timerManager:      window.timerManager,
+    validateQuestion:  window.validateQuestion,
+    clearErrors:       window.clearErrors,
   };
 }
 
 /**
- * BUG 5 FIX: Central helper — always returns the active survey's question array.
+ * Central helper — always returns the active survey's question array.
  * Reads active type on every call so type switches take effect immediately.
  */
 function getQuestions() {
@@ -49,36 +53,11 @@ export function saveState() {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CHECKBOX FIX: deep equality helper
-//
-// BEFORE (broken):
-//   if (appState.formData[key] !== value) { ... }
-//   For arrays: [] !== [] is always true (different object references) but
-//   ['A'] !== ['A'] is also true — both branches would fall through correctly
-//   in isolation. HOWEVER the real failure was the INVERSE case:
-//
-//   On the VERY FIRST checkbox tap the formData[key] is undefined.
-//   undefined !== ['Instagram'] → true  ✓ saves correctly.
-//
-//   On the SECOND tap (e.g. adding 'Facebook') the NEW array reference
-//   ['Instagram','Facebook'] !== ['Instagram'] → true  ✓ saves correctly.
-//
-//   So updateData itself was actually fine for arrays, BUT the === guard was
-//   still wrong in principle (would silently drop identical primitive values
-//   set twice, e.g. re-selecting the same star rating after going back).
-//
-//   The REAL stopper for checkboxes was validateQuestion receiving undefined
-//   for currentQuestion when dataUtils.surveyQuestions pointed to Type 1
-//   while the active survey was Type 2 (Bug 5, already fixed).  After the
-//   Bug 5 fix in getQuestions(), checkbox "Next" started working.
-//
-//   This update also hardens updateData against the subtle primitive-double-set
-//   edge case by replacing the reference-equality guard with _isEqual():
-//   — Arrays:    serialise to JSON and compare strings
-//   — Primitives: strict ===
-//   Either way, if the value is genuinely unchanged, we skip the write.
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Deep equality helper ─────────────────────────────────────────────────────
+// Arrays: JSON-serialise and compare strings
+// Primitives: strict ===
+// Prevents silent drops when the same value is set twice (e.g. re-selecting
+// the same star rating after going back).
 function _isEqual(a, b) {
   if (Array.isArray(a) && Array.isArray(b)) {
     return JSON.stringify(a) === JSON.stringify(b);
@@ -102,7 +81,6 @@ export function updateData(key, value) {
 
 /**
  * Start tracking time for a question
- * @param {string} questionId - Question ID
  */
 export function startQuestionTimer(questionId) {
   const { appState } = getDependencies();
@@ -112,7 +90,6 @@ export function startQuestionTimer(questionId) {
 
 /**
  * Stop tracking time for a question
- * @param {string} questionId - Question ID
  */
 export function stopQuestionTimer(questionId) {
   const { appState } = getDependencies();
@@ -164,7 +141,6 @@ export function cleanupIntervals() {
 
 /**
  * Setup input focus scroll behavior
- * Scrolls input fields into view when focused (mobile-friendly)
  */
 export function setupInputFocusScroll() {
   const { globals } = getDependencies();
@@ -200,13 +176,15 @@ export function cleanupInputFocusScroll() {
   }
 }
 
-// FILE: 
+// ─────────────────────────────────────────────────────────────────────────────
+// SHOW QUESTION — fade-out → swap → fade-in
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function showQuestion(index) {
   const { globals } = getDependencies();
   const questionContainer = globals?.questionContainer;
 
-  // Fade out existing content before swapping, skip on first render
+  // Skip fade-out on first render (container is empty)
   if (questionContainer && questionContainer.innerHTML.trim() !== '') {
     questionContainer.classList.add('question-fade-out');
     setTimeout(() => _renderQuestion(index), 120);
@@ -216,10 +194,13 @@ export function showQuestion(index) {
 }
 
 function _renderQuestion(index) {
-  const { globals, appState, typewriterManager } = getDependencies();
+  const { globals, appState, typewriterManager, dataUtils } = getDependencies();
   const questionContainer = globals?.questionContainer;
   const nextBtn           = globals?.nextBtn;
   const prevBtn           = globals?.prevBtn;
+
+  // Kill any pending auto-advance from the previous question
+  if (dataUtils?.clearAutoAdvance) dataUtils.clearAutoAdvance();
 
   try {
     if (window.clearErrors) window.clearErrors();
@@ -229,21 +210,20 @@ function _renderQuestion(index) {
 
     if (!question) throw new Error(`Question at index ${index} is undefined`);
 
-    const { dataUtils } = getDependencies();
     const renderer = dataUtils.questionRenderers[question.type];
     if (!renderer) throw new Error(`No renderer found for question type: ${question.type}`);
 
     startQuestionTimer(question.id);
 
-    // Swap content and trigger fade-in
+    // Swap content
     questionContainer.classList.remove('question-fade-out');
     questionContainer.innerHTML = renderer.render(question, appState.formData);
-    questionContainer.classList.add('question-fade-in');
 
-    // Remove fade-in class on next paint so CSS transition fires cleanly
+    // Trigger fade-in on next two frames so CSS transition fires cleanly
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        questionContainer.classList.remove('question-fade-in');
+        questionContainer.classList.add('question-fade-in');
+        setTimeout(() => questionContainer.classList.remove('question-fade-in'), 150);
       });
     });
 
@@ -278,8 +258,8 @@ function _renderQuestion(index) {
     console.error('[ERROR] Fatal error during showQuestion render:', error);
 
     try {
-      const errorLog = JSON.parse(localStorage.getItem('errorLog') || '[]');
       const questions = getQuestions();
+      const errorLog  = JSON.parse(localStorage.getItem('errorLog') || '[]');
       errorLog.push({
         timestamp:     new Date().toISOString(),
         error:         error.message,
@@ -294,24 +274,27 @@ function _renderQuestion(index) {
     if (prevBtn) prevBtn.disabled = true;
     cleanupIntervals();
 
-    // Clean up fade classes so display is never stuck invisible
+    // Always clean up fade classes — container must never be stuck invisible
     if (questionContainer) {
       questionContainer.classList.remove('question-fade-out', 'question-fade-in');
     }
 
     questionContainer.innerHTML = `
-      <div class="text-center p-8">
-        <h2 class="text-xl font-bold text-red-600 mb-4">Technical Issue</h2>
-        <p class="text-gray-600 mb-6">We are having trouble loading this question.</p>
-        <div class="space-y-4">
-          <button id="errorRestart"
-            class="w-full px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-lg font-semibold">
-            Restart Survey
-          </button>
-          <p class="text-sm text-gray-500">
-            Your previous answers have been saved if you were on Question 2 or later.
-          </p>
-        </div>
+      <div style="text-align:center; padding:2rem;">
+        <h2 style="font-size:1.2rem; font-weight:700; color:#DC2626; margin-bottom:1rem;">
+          Technical Issue
+        </h2>
+        <p style="color:#6B7280; margin-bottom:1.5rem;">
+          We are having trouble loading this question.
+        </p>
+        <button id="errorRestart"
+          style="width:100%; padding:1rem 2rem; background:#10b981; color:#fff;
+                 border:none; border-radius:8px; font-size:1rem; font-weight:600; cursor:pointer;">
+          Restart Survey
+        </button>
+        <p style="font-size:0.85rem; color:#9CA3AF; margin-top:1rem;">
+          Your previous answers have been saved if you were on Question 2 or later.
+        </p>
       </div>`;
 
     document.getElementById('errorRestart')?.addEventListener('click', () => {
@@ -324,6 +307,9 @@ function _renderQuestion(index) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Navigate to the next question or submit survey
@@ -334,11 +320,6 @@ export function goNext() {
   const questions       = getQuestions();
   const currentQuestion = questions[appState.currentQuestionIndex];
 
-  // ── CHECKBOX FIX: validateQuestion now receives a defined currentQuestion ──
-  // Before the Bug 5 / getQuestions() fix, currentQuestion could be undefined
-  // when Type 2 was active (index pointed into a different array).
-  // validateQuestion(undefined, formData) returned false → Next was silently
-  // blocked even with valid checkbox selections.
   const isValid = window.validateQuestion
     ? window.validateQuestion(currentQuestion, appState.formData)
     : true;
@@ -380,7 +361,6 @@ export function goPrev() {
 
 /**
  * Get current question object
- * @returns {Object|null} Current question or null
  */
 export function getCurrentQuestion() {
   const { appState } = getDependencies();
@@ -389,7 +369,6 @@ export function getCurrentQuestion() {
 
 /**
  * Get total number of questions
- * @returns {number} Total questions in survey
  */
 export function getTotalQuestions() {
   return getQuestions().length;
@@ -397,7 +376,6 @@ export function getTotalQuestions() {
 
 /**
  * Check if on first question
- * @returns {boolean}
  */
 export function isFirstQuestion() {
   const { appState } = getDependencies();
@@ -406,7 +384,6 @@ export function isFirstQuestion() {
 
 /**
  * Check if on last question
- * @returns {boolean}
  */
 export function isLastQuestion() {
   const { appState } = getDependencies();
@@ -415,8 +392,6 @@ export function isLastQuestion() {
 
 /**
  * Jump to a specific question by index
- * @param {number} index - Question index
- * @returns {boolean} True if successful
  */
 export function jumpToQuestion(index) {
   const totalQuestions = getTotalQuestions();
@@ -426,8 +401,8 @@ export function jumpToQuestion(index) {
     return false;
   }
 
-  const { appState }     = getDependencies();
-  const currentQuestion  = getCurrentQuestion();
+  const { appState }    = getDependencies();
+  const currentQuestion = getCurrentQuestion();
 
   if (currentQuestion) stopQuestionTimer(currentQuestion.id);
 

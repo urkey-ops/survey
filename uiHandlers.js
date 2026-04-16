@@ -1,6 +1,6 @@
 // FILE: uiHandlers.js
 // PURPOSE: Bridge file to collect all modular exports and assign to window.uiHandlers
-// This maintains backward compatibility with main.js
+// This maintains backward compatibility with older non-module access patterns
 
 import {
     resetInactivityTimer,
@@ -20,7 +20,7 @@ import {
     clearSyncTimer,
     clearCountdownTimer,
     clearRotationTimer,
-    clearTypewriterTimers,
+    clearTypewriterTimers as clearTimerManagerTypewriterTimers,
     clearIntervals,
     setInactivityTimer,
     setSyncTimer,
@@ -34,7 +34,7 @@ import {
 import {
     typewriterManager,
     addTypewriterEffect,
-    clearTypewriterTimers as clearTypewriterTimersExport,
+    clearTypewriterTimers as clearTypewriterEffectTimers,
     rotateQuestionText
 } from './ui/typewriterEffect.js';
 
@@ -63,7 +63,7 @@ import {
     submitSurvey,
     cleanupStartScreenListeners,
     cleanupInputFocusScroll,
-    cleanupIntervals
+    cleanupIntervals as cleanupNavigationIntervals
 } from './ui/navigation/index.js';
 
 // Assign required globals for module compatibility
@@ -72,7 +72,21 @@ window.timerManager = timerManager;
 window.validateQuestion = validateQuestion;
 window.clearErrors = clearErrors;
 
-// Combine everything into window.uiHandlers for backward compatibility
+// Unified helper so legacy callers can clear both timer-manager and typewriter-owned timers safely
+function clearAllTypewriterTimers() {
+    try {
+        clearTimerManagerTypewriterTimers();
+    } catch (error) {
+        console.warn('[UI HANDLERS] Timer manager typewriter cleanup failed:', error);
+    }
+
+    try {
+        clearTypewriterEffectTimers();
+    } catch (error) {
+        console.warn('[UI HANDLERS] Typewriter effect cleanup failed:', error);
+    }
+}
+
 window.uiHandlers = {
     // Inactivity handlers
     resetInactivityTimer,
@@ -83,7 +97,7 @@ window.uiHandlers = {
     isInactivityTimerActive,
     pauseInactivityTimer,
     resumeInactivityTimer,
-    
+
     // Timer manager
     timerManager,
     clearAllTimers,
@@ -91,7 +105,7 @@ window.uiHandlers = {
     clearSyncTimer,
     clearCountdownTimer,
     clearRotationTimer,
-    clearTypewriterTimers,
+    clearTypewriterTimers: clearAllTypewriterTimers,
     clearIntervals,
     setInactivityTimer,
     setSyncTimer,
@@ -100,12 +114,12 @@ window.uiHandlers = {
     getTimerStatus,
     hasActiveTimers,
     emergencyStopAllTimers,
-    
+
     // Typewriter effect
     typewriterManager,
     addTypewriterEffect,
     rotateQuestionText,
-    
+
     // Validation
     validateQuestion,
     clearErrors,
@@ -115,7 +129,7 @@ window.uiHandlers = {
     getValidationErrors,
     validateMultipleQuestions,
     validationUtils,
-    
+
     // Navigation
     showQuestion,
     goNext,
@@ -130,11 +144,12 @@ window.uiHandlers = {
     submitSurvey,
     cleanupStartScreenListeners,
     cleanupInputFocusScroll,
-    
-    // Helper for inactivityHandler
+    cleanupIntervals: cleanupNavigationIntervals,
+
+    // Helper for inactivityHandler / legacy consumers
     getTotalSurveyTime: () => {
         const appState = window.appState;
-        if (!appState.surveyStartTime) return 0;
+        if (!appState || !appState.surveyStartTime) return 0;
         return Math.round((Date.now() - appState.surveyStartTime) / 1000);
     }
 };

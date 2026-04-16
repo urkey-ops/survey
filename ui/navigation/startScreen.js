@@ -1,12 +1,18 @@
 // FILE: ui/navigation/startScreen.js
 // PURPOSE: Start screen orchestration (refactored into modules)
 // DEPENDENCIES: core.js, videoLoopManager.js
-// VERSION: 4.0.0 - Added video fallback
+// VERSION: 4.2.0
+// CHANGES FROM 4.1.0:
+//   - stores removable listener references for start screen, visibility, video error, and touch fallback
+//   - prevents duplicate listeners across repeated reset cycles
+//   - adds start-transition guard so rapid double taps cannot launch duplicate survey starts
+//   - keeps kioskStartScreen in the DOM permanently (idempotent reset-safe behavior preserved)
+//   - preserves attract mode and video setup behavior
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
-import { 
-  setupVideoLoop, 
-  pauseVideo, 
+import {
+  setupVideoLoop,
+  pauseVideo,
   resumeVideo,
   handleVideoVisibilityChange as videoVisibilityHandler,
   triggerNuclearReload as videoNuclearReload
@@ -30,53 +36,60 @@ async function getVideoSchedulerModule() {
 let attractModeActive = false;
 let attractTargets = [];
 
-/**
- * SAFETY FIX: Show text-only mode if video fails completely
- */
-function showVideoFallback() {
-    const kioskStartScreen = window.globals?.kioskStartScreen;
-    if (!kioskStartScreen) return;
-    
-    console.log('[VIDEO FALLBACK] Showing text-only mode');
-    
-    const video = document.getElementById('kioskVideo');
-    if (video) {
-        video.style.display = 'none';
-    }
-    
-    const fallbackMsg = document.createElement('div');
-    fallbackMsg.id = 'video-fallback';
-    fallbackMsg.className = 'text-center p-8 bg-emerald-50 rounded-lg max-w-xl mx-auto';
-    
-    const icon = document.createElement('p');
-    icon.className = 'text-4xl mb-4';
-    icon.textContent = '📋';
-    
-    const title = document.createElement('p');
-    title.className = 'text-2xl text-emerald-800 mb-2 font-bold';
-    title.textContent = 'Welcome!';
-    
-    const subtitle = document.createElement('p');
-    subtitle.className = 'text-lg text-emerald-700';
-    subtitle.textContent = 'Ready to share your experience?';
-    
-    fallbackMsg.appendChild(icon);
-    fallbackMsg.appendChild(title);
-    fallbackMsg.appendChild(subtitle);
-    
-    if (!document.getElementById('video-fallback')) {
-        const contentDiv = kioskStartScreen.querySelector('.mb-8.content');
-        if (contentDiv && contentDiv.nextSibling) {
-            kioskStartScreen.insertBefore(fallbackMsg, contentDiv.nextSibling);
-        } else {
-            kioskStartScreen.appendChild(fallbackMsg);
-        }
-    }
-}
+// Track screen/setup state
+let startTransitionInProgress = false;
+let startTransitionTimer = null;
+let attractVisibilityBound = false;
+let boundTouchFallback = null;
+let boundVideoErrorHandler = null;
+
+// ─── Video fallback ───────────────────────────────────────────────────────────
 
 /**
- * Start attract mode animation
+ * Show text-only mode if video fails completely.
+ * Idempotent: the fallback node is only inserted once.
  */
+function showVideoFallback() {
+  const kioskStartScreen = window.globals?.kioskStartScreen;
+  if (!kioskStartScreen) return;
+
+  console.log('[VIDEO FALLBACK] Showing text-only mode');
+
+  const video = document.getElementById('kioskVideo');
+  if (video) video.style.display = 'none';
+
+  if (document.getElementById('video-fallback')) return;
+
+  const fallbackMsg = document.createElement('div');
+  fallbackMsg.id = 'video-fallback';
+  fallbackMsg.className = 'text-center p-8 bg-emerald-50 rounded-lg max-w-xl mx-auto';
+
+  const icon = document.createElement('p');
+  icon.className = 'text-4xl mb-4';
+  icon.textContent = '📋';
+
+  const title = document.createElement('p');
+  title.className = 'text-2xl text-emerald-800 mb-2 font-bold';
+  title.textContent = 'Welcome!';
+
+  const subtitle = document.createElement('p');
+  subtitle.className = 'text-lg text-emerald-700';
+  subtitle.textContent = 'Ready to share your experience?';
+
+  fallbackMsg.appendChild(icon);
+  fallbackMsg.appendChild(title);
+  fallbackMsg.appendChild(subtitle);
+
+  const contentDiv = kioskStartScreen.querySelector('.mb-8.content');
+  if (contentDiv && contentDiv.nextSibling) {
+    kioskStartScreen.insertBefore(fallbackMsg, contentDiv.nextSibling);
+  } else {
+    kioskStartScreen.appendChild(fallbackMsg);
+  }
+}
+
+// ─── Attract mode ─────────────────────────────────────────────────────────────
+
 async function startAttractMode() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
   if (!kioskStartScreen) return;
@@ -87,7 +100,7 @@ async function startAttractMode() {
   }
 
   const { isInSleepMode } = await getVideoSchedulerModule();
-  
+
   if (isInSleepMode()) {
     console.log('[ATTRACT] Skipping animation - sleep mode');
     return;
@@ -96,68 +109,49 @@ async function startAttractMode() {
   attractTargets = [
     kioskStartScreen.querySelector('.content'),
     kioskStartScreen.querySelector('.title'),
-    kioskStartScreen.querySelector('.btn-start')
+    kioskStartScreen.querySelector('.btn-start'),
   ].filter(Boolean);
 
   console.log('[ATTRACT] Enabling subtle pulse effect...');
-  attractTargets.forEach(target => {
-    target.classList.add('animate-pulse');
+  attractTargets.forEach(t => {
+    t.style.animationPlayState = 'running';
+    t.classList.add('animate-pulse');
   });
-  
+
   attractModeActive = true;
 }
 
-/**
- * Stop attract mode animation
- */
 function stopAttractMode() {
-  if (!attractModeActive) return;
-  
+  if (!attractModeActive && attractTargets.length === 0) return;
+
   console.log('[ATTRACT] Stopping pulse animation');
-  
-  attractTargets.forEach(target => {
-    if (target) {
-      target.classList.remove('animate-pulse');
+  attractTargets.forEach(t => {
+    if (t) {
+      t.classList.remove('animate-pulse');
+      t.style.animationPlayState = '';
     }
   });
-  
+
   attractTargets = [];
   attractModeActive = false;
 }
 
-/**
- * Pause attract mode (when page hidden)
- */
 function pauseAttractMode() {
   if (!attractModeActive) return;
-  
   console.log('[ATTRACT] Pausing animations (page hidden)');
-  
-  attractTargets.forEach(target => {
-    if (target) {
-      target.style.animationPlayState = 'paused';
-    }
+  attractTargets.forEach(t => {
+    if (t) t.style.animationPlayState = 'paused';
   });
 }
 
-/**
- * Resume attract mode (when page visible)
- */
 function resumeAttractMode() {
   if (!attractModeActive) return;
-  
   console.log('[ATTRACT] Resuming animations');
-  
-  attractTargets.forEach(target => {
-    if (target) {
-      target.style.animationPlayState = 'running';
-    }
+  attractTargets.forEach(t => {
+    if (t) t.style.animationPlayState = 'running';
   });
 }
 
-/**
- * Handle visibility changes for attract mode
- */
 function handleAttractVisibility() {
   if (document.hidden) {
     pauseAttractMode();
@@ -166,23 +160,20 @@ function handleAttractVisibility() {
   }
 }
 
-/**
- * Setup attract mode visibility handler
- */
 function setupAttractVisibilityHandler() {
+  if (attractVisibilityBound) return;
   document.addEventListener('visibilitychange', handleAttractVisibility);
+  attractVisibilityBound = true;
 }
 
-/**
- * Cleanup attract mode visibility handler
- */
 function cleanupAttractVisibilityHandler() {
+  if (!attractVisibilityBound) return;
   document.removeEventListener('visibilitychange', handleAttractVisibility);
+  attractVisibilityBound = false;
 }
 
-/**
- * Trigger touch feedback on element
- */
+// ─── Touch feedback ───────────────────────────────────────────────────────────
+
 function triggerTouchFeedback(element) {
   if (element) {
     element.classList.remove('animate-pulse');
@@ -190,153 +181,199 @@ function triggerTouchFeedback(element) {
   }
 }
 
+// ─── Listener management ──────────────────────────────────────────────────────
+
+function cleanupVideoStartScreenListeners() {
+  const kioskStartScreen = window.globals?.kioskStartScreen;
+  const kioskVideo = window.globals?.kioskVideo;
+
+  if (kioskStartScreen && boundTouchFallback) {
+    kioskStartScreen.removeEventListener('touchstart', boundTouchFallback);
+    boundTouchFallback = null;
+  }
+
+  if (kioskVideo && boundVideoErrorHandler) {
+    kioskVideo.removeEventListener('error', boundVideoErrorHandler);
+    boundVideoErrorHandler = null;
+  }
+}
+
 /**
- * Clean up start screen event listeners
+ * Clean up start screen event listeners and attract mode.
+ * Safe to call multiple times.
  */
 export function cleanupStartScreenListeners() {
   const kioskStartScreen = window.globals?.kioskStartScreen;
-  
+
+  if (startTransitionTimer) {
+    clearTimeout(startTransitionTimer);
+    startTransitionTimer = null;
+  }
+
   if (window.boundStartSurvey && kioskStartScreen) {
     kioskStartScreen.removeEventListener('click', window.boundStartSurvey);
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
     window.boundStartSurvey = null;
   }
-  
+
+  cleanupVideoStartScreenListeners();
   stopAttractMode();
   cleanupAttractVisibilityHandler();
   pauseVideo();
-  
+
+  startTransitionInProgress = false;
+
   console.log('[START SCREEN] Cleanup complete (animations stopped)');
 }
 
-/**
- * Start the survey
- */
+// ─── Survey start ─────────────────────────────────────────────────────────────
+
 function startSurvey(e) {
   const { globals, appState, dataHandlers } = getDependencies();
   const kioskStartScreen = globals?.kioskStartScreen;
 
-  if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) {
+  if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) return;
+  if (startTransitionInProgress) {
+    console.log('[START] Transition already in progress — ignoring duplicate interaction');
     return;
   }
+
+  startTransitionInProgress = true;
 
   if (e) {
     e.preventDefault();
     e.stopPropagation();
-    const targetElement = e.target.closest('.content') || kioskStartScreen.querySelector('.content');
+    const targetElement =
+      e.target.closest('.content') || kioskStartScreen.querySelector('.content');
     triggerTouchFeedback(targetElement);
   }
 
   console.log('[START] User interaction detected...');
 
-  // Step 1: begin CSS fade-out immediately on tap
   kioskStartScreen.classList.add('start-screen-fade-out');
 
-  // Step 2: after 250ms fade completes, hide and transition to survey
-  setTimeout(() => {
+  startTransitionTimer = setTimeout(() => {
+    startTransitionTimer = null;
+
     console.log('[START] Transitioning to survey...');
+
     cleanupStartScreenListeners();
 
     kioskStartScreen.classList.add('hidden');
     kioskStartScreen.classList.remove('start-screen-fade-out');
+
     pauseVideo();
 
     if (!appState.formData.id) {
       appState.formData.id = dataHandlers.generateUUID();
     }
+
     if (!appState.formData.timestamp) {
       appState.formData.timestamp = new Date().toISOString();
     }
 
     if (!appState.surveyStartTime) {
       appState.surveyStartTime = Date.now();
-      saveState();
     }
 
+    saveState();
     showQuestion(appState.currentQuestionIndex);
 
-    if (window.uiHandlers && window.uiHandlers.resetInactivityTimer) {
+    if (window.uiHandlers?.resetInactivityTimer) {
       window.uiHandlers.resetInactivityTimer();
     }
 
-    // Remove from DOM after transition fully settles (unchanged from original)
-    setTimeout(() => {
-      if (kioskStartScreen && document.body.contains(kioskStartScreen)) {
-        kioskStartScreen.remove();
-      }
-    }, 400);
-
-  }, 250); // 250ms matches .start-screen-fade-out transition in custom.css
+    startTransitionInProgress = false;
+  }, 250);
 }
 
+// ─── Video + attract setup ────────────────────────────────────────────────────
+
+function _setupVideoAndAttract() {
+  const kioskStartScreen = window.globals?.kioskStartScreen;
+  const kioskVideo = window.globals?.kioskVideo;
+
+  cleanupVideoStartScreenListeners();
+
+  if (kioskVideo) {
+    kioskVideo.style.display = '';
+
+    const existingFallback = document.getElementById('video-fallback');
+    if (existingFallback) {
+      existingFallback.remove();
+    }
+
+    boundTouchFallback = async () => {
+      if (kioskVideo.paused) {
+        console.log('[VIDEO] Touch fallback triggered');
+        const { playVideoOnce, videoState } = await import('./videoPlayer.js');
+        if (!videoState.isPlaying) {
+          playVideoOnce(kioskVideo);
+        }
+      }
+    };
+
+    boundVideoErrorHandler = () => {
+      console.error('[VIDEO] Failed to load - showing fallback');
+      showVideoFallback();
+    };
+
+    kioskStartScreen.addEventListener('touchstart', boundTouchFallback, {
+      once: true,
+      passive: true,
+    });
+
+    kioskVideo.addEventListener('error', boundVideoErrorHandler, { once: true });
+
+    setupVideoLoop(kioskVideo);
+  }
+
+  startAttractMode();
+  setupAttractVisibilityHandler();
+}
+
+// ─── Show start screen ────────────────────────────────────────────────────────
 
 /**
- * Show the start screen
+ * Show the start screen.
+ * Idempotent: safe on first boot, inactivity reset, manual reset, visibility resume.
  */
 export function showStartScreen() {
   const { globals } = getDependencies();
   const kioskStartScreen = globals?.kioskStartScreen;
-  const kioskVideo = globals?.kioskVideo;
   const questionContainer = globals?.questionContainer;
   const nextBtn = globals?.nextBtn;
   const prevBtn = globals?.prevBtn;
   const progressBar = globals?.progressBar;
-  
-  if (window.uiHandlers && window.uiHandlers.clearAllTimers) {
+
+  if (window.uiHandlers?.clearAllTimers) {
     window.uiHandlers.clearAllTimers();
   }
-  
+
   cleanupStartScreenListeners();
   cleanupInputFocusScroll();
 
   if (questionContainer) questionContainer.innerHTML = '';
   if (nextBtn) nextBtn.disabled = true;
   if (prevBtn) prevBtn.disabled = true;
-  
+  if (progressBar) progressBar.style.width = '0%';
+
   console.log('[START SCREEN] Showing with iOS-safe video...');
-  
+
   if (kioskStartScreen) {
-    if (!document.body.contains(kioskStartScreen)) {
-      document.body.appendChild(kioskStartScreen);
-    }
-    kioskStartScreen.classList.remove('hidden');
+    kioskStartScreen.classList.remove('hidden', 'start-screen-fade-out');
 
-    if (kioskVideo) {
-      const touchFallback = async () => {
-        if (kioskVideo.paused) {
-          console.log('[VIDEO] Touch fallback triggered');
-          const { playVideoOnce, videoState } = await import('./videoPlayer.js');
-          if (!videoState.isPlaying) {
-            playVideoOnce(kioskVideo);
-          }
-        }
-      };
-      
-      kioskStartScreen.addEventListener('touchstart', touchFallback, { once: true, passive: true });
-      
-      kioskVideo.addEventListener('error', () => {
-        console.error('[VIDEO] Failed to load - showing fallback');
-        showVideoFallback();
-      }, { once: true });
-      
-      setupVideoLoop(kioskVideo);
-    }
+    _setupVideoAndAttract();
 
-    startAttractMode();
-    setupAttractVisibilityHandler();
+    window.boundStartSurvey = (e) => startSurvey(e);
 
-    window.boundStartSurvey = (e) => {
-      startSurvey(e);
-    };
-    
     kioskStartScreen.addEventListener('click', window.boundStartSurvey, { once: true });
-    kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { once: true, passive: false });
-    
-    console.log('[START SCREEN] Listeners attached (battery optimized)');
-  }
+    kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, {
+      once: true,
+      passive: false,
+    });
 
-  if (progressBar) {
-    progressBar.style.width = '0%';
+    console.log('[START SCREEN] Listeners attached (battery optimized)');
   }
 }
 
@@ -344,5 +381,5 @@ export {
   startAttractMode,
   stopAttractMode,
   pauseAttractMode,
-  resumeAttractMode
+  resumeAttractMode,
 };

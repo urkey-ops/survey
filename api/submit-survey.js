@@ -169,7 +169,7 @@ function processSingleSubmissionType2(submission) {
     id:               source.id,
     timestamp:        source.timestamp || new Date().toISOString(),
     sync_status:      source.sync_status || 'unsynced',
-    visit_feeling:    source.visit_feeling || '',
+    visit_feeling:    source.visit_feeling || source.satisfaction || '',
     experiences:      flattenCheckbox(source.experiences),
     standout:         flattenRadioWithOther(source.standout),
     shayona_intent:   flattenRadioWithFollowup(source.shayona_intent),
@@ -313,7 +313,7 @@ export default async function handler(request, response) {
     // Append to Google Sheet
     const appendResult = await sheets.spreadsheets.values.append({
       spreadsheetId:    SPREADSHEET_ID,
-      range:            `${activeSheetName}!A1`,
+      range:            `${activeSheetName}!A:Z`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: rowsToAppend },
     });

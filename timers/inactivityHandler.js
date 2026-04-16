@@ -1,25 +1,69 @@
 // FILE: timers/inactivityHandler.js
 // PURPOSE: Handle user inactivity detection and auto-reset
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 3.1.0 - FIX: rebind admin panel after inactivity reset; fixed KIOSK_CONFIG typo
+// VERSION: 3.3.0
+// CHANGES FROM 3.2.0:
+//   - adds window.focus listener alongside visibilitychange
+//     because some iPad PWA resumptions do not reliably fire visibilitychange
+//   - guards setupInactivityVisibilityHandler against duplicate binds
+//   - getQuestions() now reads active survey type consistently
+//   - performKioskReset() uses safeRemoveLocalStorage
+//   - clears throttleTimeout in removeInactivityListeners and on reset
+//   - periodic sync timer cleanup added to full teardown path
 
 let boundResetInactivityTimer = null;
 let throttleTimeout = null;
 const THROTTLE_DELAY = 2000;
+
+let visibilityHandlerBound = false;
+let focusHandlerBound = false;
 
 // ── Dependency accessor ───────────────────────────────────────────────────────
 
 function getDependencies() {
   return {
     INACTIVITY_TIMEOUT_MS: window.CONSTANTS?.INACTIVITY_TIMEOUT_MS ?? 30000,
-    SYNC_INTERVAL_MS:      window.CONSTANTS?.SYNC_INTERVAL_MS ?? 900000,
-    STORAGE_KEY_QUEUE:     window.CONSTANTS?.STORAGE_KEY_QUEUE ?? 'submissionQueue',
-    MAX_QUEUE_SIZE:        window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250,
-    appState:              window.appState,
-    dataHandlers:          window.dataHandlers,
-    dataUtils:             window.dataUtils,
-    timerManager:          window.timerManager,
+    SYNC_INTERVAL_MS: window.CONSTANTS?.SYNC_INTERVAL_MS ?? 900000,
+    MAX_QUEUE_SIZE: window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250,
+    appState: window.appState,
+    dataHandlers: window.dataHandlers,
+    dataUtils: window.dataUtils,
+    timerManager: window.timerManager,
   };
+}
+
+// ── Storage key helper ────────────────────────────────────────────────────────
+
+function _getStorageKey() {
+  return (
+    window.CONSTANTS?.STORAGE_KEY_STATE ||
+    window.appState?.storageKey ||
+    'kioskAppState'
+  );
+}
+
+function _safeRemoveStorageKey() {
+  try {
+    localStorage.removeItem(_getStorageKey());
+  } catch (e) {
+    console.warn('[INACTIVITY] Failed to remove state key:', e.message);
+  }
+}
+
+// ── Active survey question helper ─────────────────────────────────────────────
+
+function getQuestions() {
+  const { dataUtils } = getDependencies();
+
+  if (typeof dataUtils?.getSurveyQuestions === 'function') {
+    return dataUtils.getSurveyQuestions();
+  }
+
+  if (Array.isArray(dataUtils?.surveyQuestions)) {
+    return dataUtils.surveyQuestions;
+  }
+
+  return [];
 }
 
 // ── Throttled interaction handler ─────────────────────────────────────────────
@@ -27,21 +71,44 @@ function getDependencies() {
 function throttledResetInactivityTimer() {
   if (throttleTimeout) return;
   throttleTimeout = setTimeout(() => {
-    resetInactivityTimer();
     throttleTimeout = null;
+    resetInactivityTimer();
   }, THROTTLE_DELAY);
 }
 
 // ── Periodic sync ─────────────────────────────────────────────────────────────
 
 export function startPeriodicSync() {
-  const { SYNC_INTERVAL_MS, dataHandlers, timerManager } = getDependencies();
+  const { SYNC_INTERVAL_MS, dataHandlers, timerManager, appState } = getDependencies();
+
+  if (!dataHandlers?.autoSync) {
+    console.warn('[INACTIVITY] autoSync not available — skipping periodic sync setup');
+    return;
+  }
+
   if (timerManager) {
     timerManager.setSync(dataHandlers.autoSync, SYNC_INTERVAL_MS);
   } else {
-    window.appState.syncTimer = setInterval(dataHandlers.autoSync, SYNC_INTERVAL_MS);
+    if (appState.syncTimer) {
+      clearInterval(appState.syncTimer);
+    }
+    appState.syncTimer = setInterval(dataHandlers.autoSync, SYNC_INTERVAL_MS);
   }
+
   console.log(`[INACTIVITY] Periodic sync started (every ${SYNC_INTERVAL_MS / 1000}s)`);
+}
+
+export function stopPeriodicSync() {
+  const { appState, timerManager } = getDependencies();
+
+  if (timerManager) {
+    timerManager.clearSync?.();
+  } else if (appState?.syncTimer) {
+    clearInterval(appState.syncTimer);
+    appState.syncTimer = null;
+  }
+
+  console.log('[INACTIVITY] Periodic sync stopped');
 }
 
 // ── Inactivity timer ──────────────────────────────────────────────────────────
@@ -52,15 +119,19 @@ export function resetInactivityTimer() {
   if (timerManager) {
     timerManager.clearInactivity();
   } else {
-    if (appState.inactivityTimer) clearTimeout(appState.inactivityTimer);
+    if (appState.inactivityTimer) {
+      clearTimeout(appState.inactivityTimer);
+      appState.inactivityTimer = null;
+    }
   }
 
-  if (!window.isKioskVisible) {
+  if (document.hidden) {
     console.log('[INACTIVITY] Page hidden — timer not started');
     return;
   }
 
   const timeoutCallback = () => handleInactivityTimeout(dataUtils, appState);
+
   if (timerManager) {
     timerManager.setInactivity(timeoutCallback, INACTIVITY_TIMEOUT_MS);
   } else {
@@ -72,7 +143,8 @@ export function resetInactivityTimer() {
 
 function handleInactivityTimeout(dataUtils, appState) {
   const idx = appState.currentQuestionIndex;
-  const currentQuestion = dataUtils.surveyQuestions[idx];
+  const questions = getQuestions();
+  const currentQuestion = questions[idx];
 
   console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion?.id})`);
 
@@ -84,16 +156,13 @@ function handleInactivityTimeout(dataUtils, appState) {
         questionIndex: idx,
         totalTimeSeconds: getTotalSurveyTime(),
         reason: 'inactivity_q1',
-        partialData: { satisfaction: appState.formData.satisfaction ?? null },
+        partialData: { satisfaction: appState.formData?.satisfaction ?? null },
       });
     } catch (analyticsErr) {
       console.warn('[INACTIVITY] Q1 abandonment analytics failed:', analyticsErr);
     }
 
-    if (typeof window.cleanupAdminPanel === 'function') {
-      window.cleanupAdminPanel();
-    }
-
+    if (typeof window.cleanupAdminPanel === 'function') window.cleanupAdminPanel();
     performKioskReset();
     return;
   }
@@ -102,8 +171,8 @@ function handleInactivityTimeout(dataUtils, appState) {
   stopQuestionTimer(currentQuestion?.id);
 
   const totalTimeSeconds = getTotalSurveyTime();
-
   const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+
   const queueKey =
     window.CONSTANTS?.SURVEY_TYPES?.[surveyType]?.storageKey ||
     window.CONSTANTS?.STORAGE_KEY_QUEUE ||
@@ -111,7 +180,13 @@ function handleInactivityTimeout(dataUtils, appState) {
 
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
 
-  let submissionQueue = getDependencies().dataHandlers.getSubmissionQueue(queueKey);
+  const { dataHandlers } = getDependencies();
+  let submissionQueue = dataHandlers.getSubmissionQueue(queueKey);
+
+  if (!Array.isArray(submissionQueue)) {
+    submissionQueue = [];
+  }
+
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
     console.warn(`[INACTIVITY] Queue full (${MAX_QUEUE_SIZE}) — trimming oldest`);
     submissionQueue = submissionQueue.slice(-(MAX_QUEUE_SIZE - 1));
@@ -120,6 +195,7 @@ function handleInactivityTimeout(dataUtils, appState) {
   const timestamp = new Date().toISOString();
   const partialData = {
     ...appState.formData,
+    id: appState.formData?.id || dataHandlers.generateUUID(),
     surveyType,
     completionTimeSeconds: totalTimeSeconds,
     questionTimeSpent: { ...appState.questionTimeSpent },
@@ -130,24 +206,26 @@ function handleInactivityTimeout(dataUtils, appState) {
   };
 
   submissionQueue.push(partialData);
-  getDependencies().dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
-  console.log(`[INACTIVITY] Partial abandonment saved (queue ${surveyType}: ${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
+  dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
+
+  console.log(
+    `[INACTIVITY] Partial abandonment saved ` +
+    `(queue ${surveyType}: ${submissionQueue.length}/${MAX_QUEUE_SIZE})`
+  );
 
   try {
-    getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
+    dataHandlers.recordAnalytics('survey_abandoned', {
       questionId: currentQuestion?.id,
       questionIndex: idx,
       totalTimeSeconds,
       reason: 'inactivity',
+      surveyType,
     });
   } catch (analyticsErr) {
     console.warn('[INACTIVITY] Abandonment analytics failed:', analyticsErr);
   }
 
-  if (typeof window.cleanupAdminPanel === 'function') {
-    window.cleanupAdminPanel();
-  }
-
+  if (typeof window.cleanupAdminPanel === 'function') window.cleanupAdminPanel();
   performKioskReset();
 }
 
@@ -163,20 +241,23 @@ export function addInactivityListeners() {
 
   boundResetInactivityTimer = throttledResetInactivityTimer;
 
-  document.addEventListener('mousemove',  boundResetInactivityTimer, { passive: true });
-  document.addEventListener('keydown',    boundResetInactivityTimer, { passive: true });
+  document.addEventListener('mousemove', boundResetInactivityTimer, { passive: true });
+  document.addEventListener('keydown', boundResetInactivityTimer, { passive: true });
   document.addEventListener('touchstart', boundResetInactivityTimer, { passive: true });
+  document.addEventListener('click', boundResetInactivityTimer, { passive: true });
 
   console.log('[INACTIVITY] Listeners active (throttled, passive)');
 }
 
 export function removeInactivityListeners() {
   if (boundResetInactivityTimer) {
-    document.removeEventListener('mousemove',  boundResetInactivityTimer);
-    document.removeEventListener('keydown',    boundResetInactivityTimer);
+    document.removeEventListener('mousemove', boundResetInactivityTimer);
+    document.removeEventListener('keydown', boundResetInactivityTimer);
     document.removeEventListener('touchstart', boundResetInactivityTimer);
+    document.removeEventListener('click', boundResetInactivityTimer);
     boundResetInactivityTimer = null;
   }
+
   if (throttleTimeout) {
     clearTimeout(throttleTimeout);
     throttleTimeout = null;
@@ -187,6 +268,7 @@ export function removeInactivityListeners() {
 
 export function pauseInactivityTimer() {
   const { timerManager, appState } = getDependencies();
+
   if (timerManager) {
     timerManager.clearInactivity();
   } else {
@@ -195,6 +277,7 @@ export function pauseInactivityTimer() {
       appState.inactivityTimer = null;
     }
   }
+
   console.log('[INACTIVITY] Timer paused');
 }
 
@@ -207,21 +290,54 @@ export function resumeInactivityTimer() {
 
 function handleInactivityVisibilityChange() {
   if (document.hidden) {
-    console.log('[INACTIVITY] Hidden — removing listeners');
+    console.log('[INACTIVITY] Hidden — pausing timer and removing listeners');
+    pauseInactivityTimer();
     removeInactivityListeners();
   } else {
-    console.log('[INACTIVITY] Visible — adding listeners');
+    console.log('[INACTIVITY] Visible — restoring listeners and restarting timer');
     addInactivityListeners();
+    resetInactivityTimer();
+  }
+}
+
+// Some iPad PWA resumptions do not reliably fire visibilitychange.
+// window.focus provides a secondary coverage path for these cases.
+function handleWindowFocus() {
+  if (!document.hidden) {
+    console.log('[INACTIVITY] window.focus — restoring listeners and restarting timer');
+    addInactivityListeners();
+    resetInactivityTimer();
   }
 }
 
 export function setupInactivityVisibilityHandler() {
-  document.addEventListener('visibilitychange', handleInactivityVisibilityChange);
-  console.log('[INACTIVITY] Visibility handler active');
+  if (visibilityHandlerBound) {
+    console.log('[INACTIVITY] Visibility handler already registered — skipping');
+  } else {
+    document.addEventListener('visibilitychange', handleInactivityVisibilityChange);
+    visibilityHandlerBound = true;
+    console.log('[INACTIVITY] Visibility handler active');
+  }
+
+  if (focusHandlerBound) {
+    console.log('[INACTIVITY] Focus handler already registered — skipping');
+  } else {
+    window.addEventListener('focus', handleWindowFocus);
+    focusHandlerBound = true;
+    console.log('[INACTIVITY] Window focus handler active (iPad PWA resume coverage)');
+  }
 }
 
 export function cleanupInactivityVisibilityHandler() {
-  document.removeEventListener('visibilitychange', handleInactivityVisibilityChange);
+  if (visibilityHandlerBound) {
+    document.removeEventListener('visibilitychange', handleInactivityVisibilityChange);
+    visibilityHandlerBound = false;
+  }
+
+  if (focusHandlerBound) {
+    window.removeEventListener('focus', handleWindowFocus);
+    focusHandlerBound = false;
+  }
 }
 
 // ── Kiosk reset ───────────────────────────────────────────────────────────────
@@ -230,13 +346,18 @@ export function performKioskReset() {
   console.log('[INACTIVITY] 🔄 Performing kiosk reset...');
 
   const { appState, dataHandlers } = getDependencies();
-  const STORAGE_KEY_STATE = window.CONSTANTS?.STORAGE_KEY_STATE ?? 'kioskAppState';
 
-  if (window.uiHandlers?.cleanupStartScreenListeners) window.uiHandlers.cleanupStartScreenListeners();
-  if (window.uiHandlers?.cleanupInputFocusScroll)      window.uiHandlers.cleanupInputFocusScroll();
-  if (window.uiHandlers?.cleanupIntervals)             window.uiHandlers.cleanupIntervals();
+  if (window.uiHandlers?.cleanupStartScreenListeners) {
+    window.uiHandlers.cleanupStartScreenListeners();
+  }
+  if (window.uiHandlers?.cleanupInputFocusScroll) {
+    window.uiHandlers.cleanupInputFocusScroll();
+  }
+  if (window.uiHandlers?.cleanupIntervals) {
+    window.uiHandlers.cleanupIntervals();
+  }
 
-  localStorage.removeItem(STORAGE_KEY_STATE);
+  _safeRemoveStorageKey();
 
   appState.formData = {
     id: dataHandlers.generateUUID(),
@@ -246,6 +367,11 @@ export function performKioskReset() {
   appState.surveyStartTime = null;
   appState.questionStartTimes = {};
   appState.questionTimeSpent = {};
+
+  if (appState.countdownInterval) {
+    clearInterval(appState.countdownInterval);
+    appState.countdownInterval = null;
+  }
 
   console.log('[INACTIVITY] New session ID:', appState.formData.id);
 
@@ -270,6 +396,16 @@ export function performKioskReset() {
   }, 150);
 }
 
+// ── Full cleanup ──────────────────────────────────────────────────────────────
+
+export function cleanupInactivityHandler() {
+  removeInactivityListeners();
+  cleanupInactivityVisibilityHandler();
+  pauseInactivityTimer();
+  stopPeriodicSync();
+  console.log('[INACTIVITY] Full cleanup done');
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getTotalSurveyTime() {
@@ -282,29 +418,28 @@ function stopQuestionTimer(questionId) {
   if (!questionId) return;
   const { appState, dataHandlers } = getDependencies();
 
-  if (appState.questionStartTimes[questionId]) {
-    const timeSpent = Date.now() - appState.questionStartTimes[questionId];
-    appState.questionTimeSpent[questionId] = timeSpent;
-    delete appState.questionStartTimes[questionId];
+  if (!appState.questionStartTimes[questionId]) return;
 
-    if (dataHandlers) {
-      const STORAGE_KEY_STATE = window.CONSTANTS?.STORAGE_KEY_STATE ?? 'kioskAppState';
-      dataHandlers.safeSetLocalStorage(STORAGE_KEY_STATE, {
-        currentQuestionIndex: appState.currentQuestionIndex,
-        formData: appState.formData,
-        surveyStartTime: appState.surveyStartTime,
-        questionStartTimes: appState.questionStartTimes,
-        questionTimeSpent: appState.questionTimeSpent,
-      });
-    }
+  const timeSpent = Date.now() - appState.questionStartTimes[questionId];
+  appState.questionTimeSpent[questionId] = timeSpent;
+  delete appState.questionStartTimes[questionId];
+
+  if (dataHandlers) {
+    dataHandlers.safeSetLocalStorage(_getStorageKey(), {
+      currentQuestionIndex: appState.currentQuestionIndex,
+      formData: { ...appState.formData },
+      surveyStartTime: appState.surveyStartTime,
+      questionStartTimes: { ...appState.questionStartTimes },
+      questionTimeSpent: { ...appState.questionTimeSpent },
+    });
   }
 }
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
 export function isInactivityTimerActive() {
-  const { appState } = getDependencies();
-  return appState.inactivityTimer !== null;
+  const { appState, timerManager } = getDependencies();
+  return timerManager ? timerManager.hasInactivityTimer?.() : appState.inactivityTimer !== null;
 }
 
 export function getInactivityTimeRemaining() {
@@ -320,7 +455,9 @@ export default {
   removeInactivityListeners,
   setupInactivityVisibilityHandler,
   cleanupInactivityVisibilityHandler,
+  cleanupInactivityHandler,
   startPeriodicSync,
+  stopPeriodicSync,
   performKioskReset,
   isInactivityTimerActive,
   pauseInactivityTimer,

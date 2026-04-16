@@ -1,6 +1,6 @@
 // FILE: pwa-update-manager.js
 // PURPOSE: Automatic PWA update detection and user prompt
-// VERSION: 2.1.0 - single registration path + safer reload handling
+// VERSION: 2.2.0 - safer kiosk prompting, deduped timers, more robust banner/toast handling
 
 class PWAUpdateManager {
     constructor() {
@@ -9,7 +9,9 @@ class PWAUpdateManager {
         this.hasUpdate = false;
         this.isUpdating = false;
         this.updateIntervalId = null;
-        this.delayedPromptIntervalId = null;
+        this.delayedPromptTimeoutId = null;
+        this.visibilityPromptTimeoutId = null;
+        this.repromptTimeoutId = null;
         this.isPaused = false;
         this.isReloadingForUpdate = false;
 
@@ -129,8 +131,7 @@ class PWAUpdateManager {
             console.log('[PWA UPDATE] 🔍 Checking for updates...');
             await this.registration.update();
 
-            // Refresh registration reference in case browser updated it
-            this.registration = await navigator.serviceWorker.getRegistration('/');
+            this.registration = await navigator.serviceWorker.getRegistration('/') || this.registration;
 
             if (this.registration?.waiting) {
                 console.log('[PWA UPDATE] ✅ Waiting worker already present');
@@ -143,6 +144,10 @@ class PWAUpdateManager {
     }
 
     startPeriodicUpdateCheck() {
+        if (this.updateIntervalId) {
+            clearInterval(this.updateIntervalId);
+        }
+
         this.updateIntervalId = setInterval(() => {
             if (this.isPaused || this.hasUpdate || this.isUpdating || document.hidden) {
                 return;
@@ -154,15 +159,40 @@ class PWAUpdateManager {
         console.log(`[PWA UPDATE] Periodic checking enabled (every ${this.updateCheckInterval / 1000}s)`);
     }
 
+    isSurveyInProgress() {
+        const appState = window.appState;
+        return !!(appState && typeof appState.currentQuestionIndex === 'number' && appState.currentQuestionIndex > 0);
+    }
+
+    clearPromptTimers() {
+        if (this.delayedPromptTimeoutId) {
+            clearTimeout(this.delayedPromptTimeoutId);
+            this.delayedPromptTimeoutId = null;
+        }
+
+        if (this.visibilityPromptTimeoutId) {
+            clearTimeout(this.visibilityPromptTimeoutId);
+            this.visibilityPromptTimeoutId = null;
+        }
+
+        if (this.repromptTimeoutId) {
+            clearTimeout(this.repromptTimeoutId);
+            this.repromptTimeoutId = null;
+        }
+    }
+
     showUpdatePrompt() {
+        if (!this.hasUpdate || this.isUpdating) {
+            return;
+        }
+
         if (document.hidden) {
             console.log('[PWA UPDATE] 🔋 Page hidden, deferring prompt');
             this.scheduleVisibilityPrompt();
             return;
         }
 
-        const appState = window.appState;
-        if (appState && appState.currentQuestionIndex > 0) {
+        if (this.isSurveyInProgress()) {
             console.log('[PWA UPDATE] Survey in progress, delaying update prompt');
             this.scheduleDelayedPrompt();
             return;
@@ -172,23 +202,38 @@ class PWAUpdateManager {
     }
 
     scheduleVisibilityPrompt() {
+        if (this.visibilityPromptTimeoutId) {
+            return;
+        }
+
         const handler = () => {
-            if (!document.hidden && this.hasUpdate) {
+            if (!document.hidden && this.hasUpdate && !this.isSurveyInProgress()) {
                 document.removeEventListener('visibilitychange', handler);
+                if (this.visibilityPromptTimeoutId) {
+                    clearTimeout(this.visibilityPromptTimeoutId);
+                    this.visibilityPromptTimeoutId = null;
+                }
                 this.showUpdatePrompt();
             }
         };
 
         document.addEventListener('visibilitychange', handler);
 
-        setTimeout(() => {
+        this.visibilityPromptTimeoutId = setTimeout(() => {
             document.removeEventListener('visibilitychange', handler);
+            this.visibilityPromptTimeoutId = null;
         }, 3600000);
     }
 
     displayUpdateBanner() {
+        if (document.hidden || this.isSurveyInProgress() || this.isUpdating || !this.hasUpdate) {
+            return;
+        }
+
         const existing = document.getElementById('pwa-update-banner');
-        if (existing) existing.remove();
+        if (existing) {
+            return;
+        }
 
         const banner = document.createElement('div');
         banner.id = 'pwa-update-banner';
@@ -206,10 +251,11 @@ class PWAUpdateManager {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
+                gap: 12px;
                 animation: slideDown 0.3s ease-out;
             ">
                 <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
                     </svg>
                     <div>
@@ -221,8 +267,8 @@ class PWAUpdateManager {
                         </div>
                     </div>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                    <button id="pwa-update-later" style="
+                <div style="display: flex; gap: 8px; flex-shrink: 0;">
+                    <button id="pwa-update-later" type="button" style="
                         background: rgba(255,255,255,0.2);
                         border: 1px solid rgba(255,255,255,0.3);
                         color: white;
@@ -235,7 +281,7 @@ class PWAUpdateManager {
                     ">
                         Later
                     </button>
-                    <button id="pwa-update-now" style="
+                    <button id="pwa-update-now" type="button" style="
                         background: white;
                         border: none;
                         color: #667eea;
@@ -268,44 +314,65 @@ class PWAUpdateManager {
 
         document.body.insertBefore(banner, document.body.firstChild);
 
-        document.getElementById('pwa-update-now').addEventListener('click', () => {
-            this.applyUpdate();
-        });
+        const updateNowButton = document.getElementById('pwa-update-now');
+        const updateLaterButton = document.getElementById('pwa-update-later');
 
-        document.getElementById('pwa-update-later').addEventListener('click', () => {
-            banner.remove();
-            setTimeout(() => {
-                if (this.hasUpdate && !document.hidden) {
-                    this.showUpdatePrompt();
+        if (updateNowButton) {
+            updateNowButton.addEventListener('click', () => {
+                this.applyUpdate();
+            });
+        }
+
+        if (updateLaterButton) {
+            updateLaterButton.addEventListener('click', () => {
+                banner.remove();
+
+                if (this.repromptTimeoutId) {
+                    clearTimeout(this.repromptTimeoutId);
                 }
-            }, 300000);
-        });
+
+                this.repromptTimeoutId = setTimeout(() => {
+                    this.repromptTimeoutId = null;
+                    if (this.hasUpdate && !document.hidden && !this.isSurveyInProgress()) {
+                        this.showUpdatePrompt();
+                    }
+                }, 300000);
+            });
+        }
 
         console.log('[PWA UPDATE] 📢 Update banner displayed');
     }
 
     scheduleDelayedPrompt() {
-        const checkOnce = () => {
-            const appState = window.appState;
-            if (appState && appState.currentQuestionIndex === 0) {
-                if (!document.hidden && this.hasUpdate) {
-                    this.displayUpdateBanner();
-                }
+        if (this.delayedPromptTimeoutId) {
+            return;
+        }
+
+        const tryShow = () => {
+            if (!this.hasUpdate || this.isUpdating) return;
+            if (document.hidden) return;
+
+            if (!this.isSurveyInProgress()) {
+                this.delayedPromptTimeoutId = null;
+                this.displayUpdateBanner();
             }
         };
 
         const visibilityHandler = () => {
             if (!document.hidden) {
-                checkOnce();
-                document.removeEventListener('visibilitychange', visibilityHandler);
+                tryShow();
+                if (!this.isSurveyInProgress()) {
+                    document.removeEventListener('visibilitychange', visibilityHandler);
+                }
             }
         };
 
         document.addEventListener('visibilitychange', visibilityHandler);
 
-        setTimeout(() => {
-            checkOnce();
+        this.delayedPromptTimeoutId = setTimeout(() => {
+            tryShow();
             document.removeEventListener('visibilitychange', visibilityHandler);
+            this.delayedPromptTimeoutId = null;
         }, 60000);
 
         console.log('[PWA UPDATE] Scheduled prompt after survey completion');
@@ -329,6 +396,7 @@ class PWAUpdateManager {
         }
 
         this.isUpdating = true;
+        this.clearPromptTimers();
 
         const banner = document.getElementById('pwa-update-banner');
         if (banner) {
@@ -380,9 +448,15 @@ class PWAUpdateManager {
     }
 
     showToast(message, type = 'info') {
+        const existingToast = document.getElementById('pwa-update-toast');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
         const color = type === 'success' ? '#10b981' : '#3b82f6';
 
         const toast = document.createElement('div');
+        toast.id = 'pwa-update-toast';
         toast.innerHTML = `
             <div style="
                 position: fixed;
@@ -409,7 +483,9 @@ class PWAUpdateManager {
         document.body.appendChild(toast);
 
         setTimeout(() => {
-            toast.remove();
+            if (toast.parentNode) {
+                toast.remove();
+            }
         }, 3000);
     }
 
@@ -419,10 +495,7 @@ class PWAUpdateManager {
             this.updateIntervalId = null;
         }
 
-        if (this.delayedPromptIntervalId) {
-            clearInterval(this.delayedPromptIntervalId);
-            this.delayedPromptIntervalId = null;
-        }
+        this.clearPromptTimers();
 
         console.log('[PWA UPDATE] Cleaned up');
     }

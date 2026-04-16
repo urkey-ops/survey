@@ -1,93 +1,112 @@
 // FILE: ui/navigation/videoScheduler.js
-// PURPOSE: Time-based video scheduling logic (EST timezone)
+// PURPOSE: Time-based video scheduling logic (America/New_York timezone)
 // DEPENDENCIES: None (pure scheduling logic)
-// VERSION: 2.1.0
+// VERSION: 2.2.0
+
+const TZ = 'America/New_York';
+
+const SCHEDULE = {
+  morningStart: 9 * 60,        // 9:00am
+  afternoonStart: 13 * 60,     // 1:00pm
+  eveningStart: 15 * 60,       // 3:00pm
+  eveningEnd: 18 * 60 + 30,    // 6:30pm
+  peakInterval: 20000,
+  slowInterval: 60000,
+};
+
+const timeFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+function getCurrentNYParts() {
+  const parts = timeFormatter.formatToParts(new Date());
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  const currentMinutes = hour * 60 + minute;
+
+  return { hour, minute, currentMinutes };
+}
+
+function getScheduleState(currentMinutes) {
+  const { morningStart, afternoonStart, eveningStart, eveningEnd } = SCHEDULE;
+
+  if (currentMinutes >= eveningEnd || currentMinutes < morningStart) {
+    return {
+      mode: 'sleep',
+      label: 'Sleep Mode (6:30pm-9am)',
+      interval: null,
+    };
+  }
+
+  if (currentMinutes >= morningStart && currentMinutes < afternoonStart) {
+    return {
+      mode: 'peak',
+      label: 'Peak Hours (9am-1pm)',
+      interval: SCHEDULE.peakInterval,
+    };
+  }
+
+  if (currentMinutes >= afternoonStart && currentMinutes < eveningStart) {
+    return {
+      mode: 'afternoon',
+      label: 'Afternoon (1pm-3pm)',
+      interval: SCHEDULE.slowInterval,
+    };
+  }
+
+  if (currentMinutes >= eveningStart && currentMinutes < eveningEnd) {
+    return {
+      mode: 'evening',
+      label: 'Evening Rush (3pm-6:30pm)',
+      interval: SCHEDULE.peakInterval,
+    };
+  }
+
+  return {
+    mode: 'fallback',
+    label: 'Fallback',
+    interval: SCHEDULE.slowInterval,
+  };
+}
 
 /**
- * Get video play interval based on time of day
- * Custom schedule for maximum battery efficiency
- * TIMEZONE: EST (Eastern Standard Time - America/New_York)
+ * Get video play interval based on time of day.
+ * TIMEZONE: America/New_York (handles EST/EDT automatically)
  */
 export function getSmartVideoInterval() {
-  const now = new Date();
-  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const hour = estTime.getHours();
-  const minute = estTime.getMinutes();
-  
-  const currentMinutes = hour * 60 + minute;
-  
-  // Define schedule boundaries (in minutes since midnight)
-  const morningStart = 9 * 60;           // 9:00am
-  const afternoonStart = 13 * 60;        // 1:00pm
-  const eveningStart = 15 * 60;          // 3:00pm
-  const eveningEnd = 18 * 60 + 30;       // 6:30pm
-  
-  // 6:30pm - 9am: NO VIDEO (sleep mode)
-  if (currentMinutes >= eveningEnd || currentMinutes < morningStart) {
+  const { currentMinutes } = getCurrentNYParts();
+  const state = getScheduleState(currentMinutes);
+
+  if (state.interval === null) {
     console.log('[VIDEO] 😴 Sleep mode (6:30pm-9am) - Video disabled');
-    return null;
   }
-  
-  // 9am - 1pm: Peak hours - every 20 seconds
-  if (currentMinutes >= morningStart && currentMinutes < afternoonStart) {
-    return 20000;
-  }
-  
-  // 1pm - 3pm: Afternoon slowdown - every 60 seconds
-  if (currentMinutes >= afternoonStart && currentMinutes < eveningStart) {
-    return 60000;
-  }
-  
-  // 3pm - 6:30pm: Evening rush - every 20 seconds
-  if (currentMinutes >= eveningStart && currentMinutes < eveningEnd) {
-    return 20000;
-  }
-  
-  return 60000;
+
+  return state.interval;
 }
 
 /**
- * Get human-readable schedule description
+ * Get human-readable schedule description.
  */
 export function getScheduleDescription() {
-  const now = new Date();
-  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const hour = estTime.getHours();
-  const minute = estTime.getMinutes();
-  const currentMinutes = hour * 60 + minute;
-  
-  const morningStart = 9 * 60;
-  const afternoonStart = 13 * 60;
-  const eveningStart = 15 * 60;
-  const eveningEnd = 18 * 60 + 30;
-  
-  if (currentMinutes >= eveningEnd || currentMinutes < morningStart) {
-    return 'Sleep Mode (6:30pm-9am)';
-  } else if (currentMinutes >= morningStart && currentMinutes < afternoonStart) {
-    return 'Peak Hours (9am-1pm)';
-  } else if (currentMinutes >= afternoonStart && currentMinutes < eveningStart) {
-    return 'Afternoon (1pm-3pm)';
-  } else if (currentMinutes >= eveningStart && currentMinutes < eveningEnd) {
-    return 'Evening Rush (3pm-6:30pm)';
-  }
-  return 'Unknown';
+  const { currentMinutes } = getCurrentNYParts();
+  return getScheduleState(currentMinutes).label;
 }
 
 /**
- * Get current EST time formatted for logging
+ * Get current New York time formatted for logging.
  */
 export function getCurrentESTTime() {
-  const now = new Date();
-  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  return `${estTime.getHours()}:${estTime.getMinutes().toString().padStart(2, '0')}`;
+  const { hour, minute } = getCurrentNYParts();
+  return `${hour}:${String(minute).padStart(2, '0')}`;
 }
 
-// In videoScheduler.js - add export
+/**
+ * Check whether current schedule is in sleep mode.
+ */
 export function isInSleepMode() {
-  const now = new Date();
-  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const currentMinutes = estTime.getHours() * 60 + estTime.getMinutes();
-  const eveningEnd = 18 * 60 + 30;
-  const morningStart = 9 * 60;
-  return currentMinutes >= eveningEnd || currentMinutes < morningStart;
+  const { currentMinutes } = getCurrentNYParts();
+  return getScheduleState(currentMinutes).interval === null;
 }

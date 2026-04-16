@@ -1,14 +1,13 @@
 // FILE: data-util.js
-// VERSION: 5.2.0
-// FIXES:
-//   - emoji-radio: always 4 columns, single row (hardcoded, not getGridCols)
-//   - location/age grids: capped at 3 cols max for text options
-//   - two-line labels: <span class="block"> stacks lines centered
-//   - followup drawer: uses .followup-drawer + .followup-sub-grid classes
-//   - followup chips: pill-shaped .followup-option-label
-//   - checkbox labels: items-start so indicator tops out on wrap
-//   - radio-with-followup: container-scoped change listener (no global leak)
-//   - getGridCols: separate logic for text vs emoji vs number grids
+// VERSION: 5.3.0
+// CHANGES FROM 5.2.0:
+//   - radio-with-other: stores { main, other } object shape consistently
+//   - radio-with-followup: stores { main, followup[] } object shape consistently
+//   - checkbox-with-other (Type 2 "experiences"): enforces max 3 selections
+//   - companion "other" field normalized to `other_${q.name}` (was `other${q.id}`)
+//   - number-scale: value stored as Number, not string
+//   - star-rating: value stored as Number, not string
+//   - clearAutoAdvance exposed for kiosk reset paths
 
 window.dataUtils = (function () {
 
@@ -16,39 +15,33 @@ window.dataUtils = (function () {
   const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
   const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
 
+  // Max selections for checkbox questions that have a cap
+  const CHECKBOX_MAX_SELECTIONS = 3;
+
   let autoAdvanceTimer = null;
   function scheduleAutoAdvance(callback, delay) {
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
     autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; callback(); }, delay);
   }
 
-  // Public: allow kiosk reset to clear pending timer
   function clearAutoAdvance() {
     if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
   }
 
   // ─── GRID HELPERS ─────────────────────────────────────────
 
-  /**
-   * Text option grids (radio, checkbox, followup main).
-   * Caps at 3 cols so text labels are readable.
-   * Avoids bad orphan splits.
-   */
   function getTextGridCols(n) {
     if (n <= 1) return 1;
     if (n === 2) return 2;
     if (n === 3) return 3;
-    if (n === 4) return 2;   // 2×2 — clean
-    if (n === 5) return 3;   // 3+2 — acceptable, CSS centers orphan
-    if (n === 6) return 3;   // 3×2 — perfect
-    if (n === 7) return 3;   // 3+3+1
-    if (n === 8) return 3;   // 3+3+2 — better than 4+4
+    if (n === 4) return 2;
+    if (n === 5) return 3;
+    if (n === 6) return 3;
+    if (n === 7) return 3;
+    if (n === 8) return 3;
     return 3;
   }
 
-  /**
-   * Constrains small grids so they don't stretch the full card width.
-   */
   function getGridMaxWidth(n, cols) {
     if (cols === 1)           return 'max-width:340px; margin-left:auto; margin-right:auto;';
     if (cols === 2 && n <= 4) return 'max-width:400px; margin-left:auto; margin-right:auto;';
@@ -63,15 +56,15 @@ window.dataUtils = (function () {
       const input = document.getElementById(label.getAttribute('for'));
       if (!input) return;
       if (input.checked) {
-        label.style.background   = 'var(--orange-light)';
-        label.style.borderColor  = 'var(--orange)';
-        label.style.color        = 'var(--orange-dark)';
-        label.style.borderWidth  = '2px';
+        label.style.background  = 'var(--orange-light)';
+        label.style.borderColor = 'var(--orange)';
+        label.style.color       = 'var(--orange-dark)';
+        label.style.borderWidth = '2px';
       } else {
-        label.style.background   = '';
-        label.style.borderColor  = '';
-        label.style.color        = '';
-        label.style.borderWidth  = '';
+        label.style.background  = '';
+        label.style.borderColor = '';
+        label.style.color       = '';
+        label.style.borderWidth = '';
       }
     });
   }
@@ -90,6 +83,12 @@ window.dataUtils = (function () {
         label.classList.add('text-gray-300');
       }
     });
+  }
+
+  // ─── Companion "other" key — normalized, name-based ───────
+  // IMPORTANT: validator and submit.js must use the same helper
+  function otherKey(qName) {
+    return `other_${qName}`;
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -168,6 +167,7 @@ window.dataUtils = (function () {
         { value: 'Drove by',  label: 'Drove by / Saw your location' },
         { value: 'Other',     label: 'Other' },
       ],
+      maxSelections: null, // no cap for Type 1 hear-about
       required: true,
     },
     {
@@ -215,13 +215,14 @@ window.dataUtils = (function () {
       type: 'checkbox-with-other',
       question: 'What did you enjoy most today? (Select up to 3)',
       options: [
-        { value: 'Art & Architecture',    label: 'Art & Architecture' },
-        { value: 'Darshan & Ceremonies',  label: 'Darshan & Ceremonies' },
-        { value: 'Walking the Grounds',   label: 'Walking the Grounds' },
-        { value: 'Shayona Cafe & Shop',   label: 'Shayona Cafe & Shop' },
-        { value: 'Volunteers & Service',  label: 'Volunteers & Service' },
-        { value: 'Time with Family',      label: 'Time with Family' },
+        { value: 'Art & Architecture',   label: 'Art & Architecture' },
+        { value: 'Darshan & Ceremonies', label: 'Darshan & Ceremonies' },
+        { value: 'Walking the Grounds',  label: 'Walking the Grounds' },
+        { value: 'Shayona Cafe & Shop',  label: 'Shayona Cafe & Shop' },
+        { value: 'Volunteers & Service', label: 'Volunteers & Service' },
+        { value: 'Time with Family',     label: 'Time with Family' },
       ],
+      maxSelections: CHECKBOX_MAX_SELECTIONS, // enforced in setupEvents
       required: true,
     },
     {
@@ -258,7 +259,7 @@ window.dataUtils = (function () {
       type: 'radio-with-followup',
       question: 'Did your visit flow smoothly today?',
       options: [
-        { value: 'Yes everything was smooth', label: 'Yes, everything was smooth', followupLabel: null,              followupOptions: [] },
+        { value: 'Yes everything was smooth', label: 'Yes, everything was smooth', followupLabel: null,               followupOptions: [] },
         { value: 'A few things were unclear', label: 'A few things were unclear',  followupLabel: 'What was unclear?', followupOptions: ['Darshan timing','Finding my way','Signs & directions','Parking'] },
       ],
       required: true,
@@ -306,7 +307,6 @@ window.dataUtils = (function () {
     // ── EMOJI RADIO — always 4 cols, single row ─────────────
     'emoji-radio': {
       render(q, data) {
-        // Emoji always renders in ONE row — never use getTextGridCols here
         const opts = q.options.map(opt => `
           <input type="radio"
             id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
@@ -333,6 +333,7 @@ window.dataUtils = (function () {
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
+          // Store as plain string — emoji-radio has no companion field
           updateData(q.name, e.target.value);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
@@ -346,7 +347,7 @@ window.dataUtils = (function () {
           <input type="radio"
             id="${q.id}_${num}" name="${q.name}" value="${num}"
             class="visually-hidden"
-            ${String(data[q.name]) === String(num) ? 'checked' : ''}>
+            ${Number(data[q.name]) === num ? 'checked' : ''}>
           <label for="${q.id}_${num}"
             class="option-label"
             role="radio" aria-label="Rating ${num}">
@@ -370,7 +371,8 @@ window.dataUtils = (function () {
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          updateData(q.name, e.target.value);
+          // Store as Number — avoids string/number comparison bugs in validator
+          updateData(q.name, Number(e.target.value));
           applyRadioSelectedStyles(container);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
@@ -384,7 +386,7 @@ window.dataUtils = (function () {
           <input type="radio"
             id="${q.id}_${num}" name="${q.name}" value="${num}"
             class="visually-hidden"
-            ${String(data[q.name]) === String(num) ? 'checked' : ''}>
+            ${Number(data[q.name]) === num ? 'checked' : ''}>
           <label for="${q.id}_${num}"
             class="star option-label"
             style="font-size:2.6rem; padding:0 4px; color:${parseInt(data[q.name]) >= num ? '#FBBF24' : '#D1D5DB'};"
@@ -404,7 +406,8 @@ window.dataUtils = (function () {
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          updateData(q.name, e.target.value);
+          // Store as Number
+          updateData(q.name, Number(e.target.value));
           applyStarSelectedStyles(container, e.target.value);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
@@ -414,9 +417,10 @@ window.dataUtils = (function () {
     // ── RADIO WITH OTHER ───────────────────────────────────
     'radio-with-other': {
       render(q, data) {
-        const savedVal  = data[q.name];
-        const mainVal   = savedVal && typeof savedVal === 'object' ? savedVal.main  : savedVal;
-        const otherVal  = savedVal && typeof savedVal === 'object' ? savedVal.other : '';
+        // Always read from { main, other } shape
+        const saved     = data[q.name];
+        const mainVal   = saved && typeof saved === 'object' ? saved.main  : (saved || '');
+        const otherVal  = saved && typeof saved === 'object' ? saved.other : (data[otherKey(q.name)] || '');
         const showOther = mainVal === 'Other';
 
         const n    = q.options.length;
@@ -424,7 +428,6 @@ window.dataUtils = (function () {
         const maxW = getGridMaxWidth(n, cols);
 
         const opts = q.options.map(opt => {
-          // Two-line label: each span is display:block, centered
           const labelHtml = typeof opt.label === 'object'
             ? `<span style="display:block;text-align:center;">${opt.label.line1}</span>
                <span style="display:block;text-align:center;">${opt.label.line2}</span>`
@@ -449,6 +452,7 @@ window.dataUtils = (function () {
             ${q.question}
           </label>
           <div class="location-radio-group"
+            id="${q.id}_radioGrid"
             style="grid-template-columns:repeat(${cols},1fr); ${maxW}"
             role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
           <div id="other-${q.id}-container" style="${showOther ? '' : 'display:none;'}">
@@ -460,15 +464,24 @@ window.dataUtils = (function () {
           <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
-        const container      = document.querySelector('.location-radio-group');
+        // Scoped by ID — avoids targeting wrong grid on back/forward
+        const container      = document.getElementById(`${q.id}_radioGrid`);
         const otherContainer = document.getElementById(`other-${q.id}-container`);
         const otherInput     = document.getElementById(`other-${q.id}-text`);
         if (!container) return;
 
+        const save = (mainVal) => {
+          // Always store as { main, other } — validator depends on this shape
+          updateData(q.name, {
+            main:  mainVal,
+            other: mainVal === 'Other' ? (otherInput?.value || '') : '',
+          });
+        };
+
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           const val = e.target.value;
-          updateData(q.name, { main: val, other: val === 'Other' ? (otherInput?.value || '') : '' });
+          save(val);
           applyRadioSelectedStyles(container);
           if (otherContainer) {
             otherContainer.style.display = val === 'Other' ? '' : 'none';
@@ -479,12 +492,12 @@ window.dataUtils = (function () {
         });
 
         otherInput?.addEventListener('input', e => {
-          updateData(q.name, { main: 'Other', other: e.target.value });
+          save('Other');
         });
       },
     },
 
-    // ── RADIO (Age, simple) ────────────────────────────────
+    // ── RADIO (simple, e.g. Age) ───────────────────────────
     radio: {
       render(q, data) {
         const n    = q.options.length;
@@ -512,15 +525,17 @@ window.dataUtils = (function () {
             ${q.question}
           </label>
           <div class="age-radio-group"
+            id="${q.id}_radioGrid"
             style="grid-template-columns:repeat(${cols},1fr); ${maxW}"
             role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
-        const container = document.querySelector('.age-radio-group');
+        const container = document.getElementById(`${q.id}_radioGrid`);
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
+          // Store as plain string — simple radio has no companion field
           updateData(q.name, e.target.value);
           applyRadioSelectedStyles(container);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
@@ -531,9 +546,10 @@ window.dataUtils = (function () {
     // ── RADIO WITH FOLLOWUP ────────────────────────────────
     'radio-with-followup': {
       render(q, data) {
-        const current      = data[q.name] || {};
-        const mainVal      = typeof current === 'object' ? current.main  : current;
-        const followupVals = Array.isArray(current.followup) ? current.followup : [];
+        // Always read from { main, followup[] } shape
+        const saved        = data[q.name] || {};
+        const mainVal      = typeof saved === 'object' ? (saved.main || '') : (saved || '');
+        const followupVals = Array.isArray(saved.followup) ? saved.followup : [];
 
         const n    = q.options.length;
         const cols = getTextGridCols(n);
@@ -555,7 +571,6 @@ window.dataUtils = (function () {
               role="radio">${opt.label}</label>`;
         }).join('');
 
-        // Dependent followup drawers
         const drawers = q.options.map(opt => {
           if (!opt.followupLabel || !opt.followupOptions.length) return '';
           const optSlug = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
@@ -606,7 +621,6 @@ window.dataUtils = (function () {
       },
 
       setupEvents(q, handleNextQuestion, updateData) {
-        // Use ID-scoped container — avoids targeting wrong grid on back/forward
         const container = document.getElementById(`${q.id}_mainGrid`);
         if (!container) return;
 
@@ -620,11 +634,11 @@ window.dataUtils = (function () {
           ).map(cb => cb.value);
         };
 
-        const saveData = (mainVal) => {
+        const save = (mainVal) => {
+          // Always store as { main, followup[] } — validator depends on this shape
           updateData(q.name, { main: mainVal, followup: getFollowupValues() });
         };
 
-        // Main radio — scoped to this container only
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           const val     = e.target.value;
@@ -632,14 +646,13 @@ window.dataUtils = (function () {
 
           applyRadioSelectedStyles(container);
 
-          // Show matching drawer, hide all others
           q.options.forEach(opt => {
             const slug   = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
             const drawer = document.getElementById(`${q.id}_drawer_${slug}`);
             if (drawer) drawer.style.display = (opt.value === val && opt.followupOptions.length) ? '' : 'none';
           });
 
-          saveData(val);
+          save(val);
 
           const activeOpt = q.options.find(o => o.value === val);
           if (!activeOpt?.followupLabel || !activeOpt.followupOptions.length) {
@@ -647,8 +660,6 @@ window.dataUtils = (function () {
           }
         });
 
-        // Followup chips — scoped to drawers of this question only
-        // No global document listener — avoids accumulation on back/forward
         q.options.forEach(opt => {
           if (!opt.followupOptions.length) return;
           const optSlug = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
@@ -658,7 +669,7 @@ window.dataUtils = (function () {
           drawer.addEventListener('change', e => {
             if (!e.target.name?.startsWith(`${q.id}_followup_`)) return;
             const mainVal = container.querySelector('input:checked')?.value || '';
-            saveData(mainVal);
+            save(mainVal);
 
             const lbl = drawer.querySelector(`label[for="${e.target.id}"]`);
             if (!lbl) return;
@@ -682,7 +693,8 @@ window.dataUtils = (function () {
     'checkbox-with-other': {
       render(q, data) {
         const selectedValues = Array.isArray(data[q.name]) ? data[q.name] : [];
-        const otherVal       = data['other' + q.id] || '';
+        const otherVal       = data[otherKey(q.name)] || '';
+        const cap            = q.maxSelections || null;
 
         const n    = q.options.length;
         const cols = getTextGridCols(n);
@@ -714,14 +726,21 @@ window.dataUtils = (function () {
             </div>`;
         }).join('');
 
+        // Cap hint shown only when maxSelections is set
+        const capHint = cap
+          ? `<p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">
+               Select up to ${cap}
+             </p>`
+          : `<p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">
+               You can select more than one option
+             </p>`;
+
         return `
           <label id="${q.id}Label"
             style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:4px;">
             ${q.question}
           </label>
-          <p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">
-            You can select more than one option
-          </p>
+          ${capHint}
           <div class="checkbox-group"
             id="${q.id}_checkboxGrid"
             style="grid-template-columns:repeat(${cols},1fr); ${maxW}"
@@ -736,25 +755,45 @@ window.dataUtils = (function () {
       },
 
       setupEvents(q, handleNextQuestion, updateData) {
-        // Scoped to this question's grid — no class-based querySelector
         const container      = document.getElementById(`${q.id}_checkboxGrid`);
         const otherContainer = document.getElementById(`other-${q.id}-container`);
         const otherInput     = document.getElementById(`other-${q.id}-text`);
         if (!container) return;
 
+        const cap = q.maxSelections || null;
+
         const save = () => {
           const values = Array.from(
             container.querySelectorAll(`input[name="${q.name}"]:checked`)
           ).map(cb => cb.value);
+          // Store array directly — validator expects string[]
           updateData(q.name, values);
-          updateData('other' + q.id, values.includes('Other') ? (otherInput?.value || '') : '');
+          // Normalized other key
+          updateData(otherKey(q.name), values.includes('Other') ? (otherInput?.value || '') : '');
         };
 
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
+
+          // Enforce max selection cap before accepting the change
+          if (cap && e.target.checked) {
+            const currentlyChecked = Array.from(
+              container.querySelectorAll(`input[name="${q.name}"]:checked`)
+            );
+            if (currentlyChecked.length > cap) {
+              e.target.checked = false;
+              // Flash the error span as a hint
+              const errEl = document.getElementById(`${q.id}Error`);
+              if (errEl) {
+                errEl.textContent = `Maximum ${cap} selections allowed`;
+                setTimeout(() => { if (errEl) errEl.textContent = ''; }, 2000);
+              }
+              return;
+            }
+          }
+
           save();
 
-          // Update visual state for the toggled label only
           const lbl       = container.querySelector(`label[for="${e.target.id}"]`);
           const indicator = lbl?.querySelector('.checkbox-indicator');
           if (!lbl || !indicator) return;
@@ -797,6 +836,7 @@ window.dataUtils = (function () {
     surveyQuestions: surveyQuestionsType1,
     getSurveyQuestions,
     questionRenderers,
+    otherKey,           // exported so validation.js and submit.js use same key formula
     kioskId,
     clearAutoAdvance,
   };

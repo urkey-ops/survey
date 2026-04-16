@@ -1,17 +1,25 @@
 // FILE: main/visibilityHandler.js
 // PURPOSE: Handle visibility change events (tab switching, minimizing, iPad sleep)
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.uiHandlers
-// VERSION: 3.0.0 - BUG #22 FIX: Pause inactivity timer immediately on hide (not clear)
+// VERSION: 3.1.0
+// FIXES:
+//   - idempotent setup/cleanup
+//   - document.hidden used as primary source of truth
+//   - deduped resume flow across visibilitychange + focus
+//   - clears/replaces pending hidden timeout safely
+//   - preserves iOS pageshow/bfcache handling
 
 let visibilityTimeout = null;
-let startScreenModule = null; // Cached import
+let startScreenModule = null;
+
+let handlersBound = false;
+let lastResumeAt = 0;
+let batteryCheckTimeout = null;
+
+const RESUME_DEDUPE_MS = 750;
 
 // ── Module cache ──────────────────────────────────────────────────────────────
 
-/**
- * Import startScreen module once and cache it.
- * BATTERY: Import once, reuse many times.
- */
 async function getStartScreenModule() {
   if (!startScreenModule) {
     try {
@@ -24,135 +32,155 @@ async function getStartScreenModule() {
   return startScreenModule;
 }
 
+// ── Timer helpers ─────────────────────────────────────────────────────────────
+
+function clearVisibilityTimeout() {
+  if (visibilityTimeout) {
+    clearTimeout(visibilityTimeout);
+    visibilityTimeout = null;
+  }
+}
+
+function clearBatteryCheckTimeout() {
+  if (batteryCheckTimeout) {
+    clearTimeout(batteryCheckTimeout);
+    batteryCheckTimeout = null;
+  }
+}
+
+function markVisibleCompatibilityFlag() {
+  window.isKioskVisible = !document.hidden;
+}
+
+function recentlyResumed() {
+  return Date.now() - lastResumeAt < RESUME_DEDUPE_MS;
+}
+
 // ── Video helpers ─────────────────────────────────────────────────────────────
 
 async function handleVideoOnHidden() {
   const module = await getStartScreenModule();
-  if (module && module.handleVideoVisibilityChange) {
+  if (module?.handleVideoVisibilityChange) {
     module.handleVideoVisibilityChange(false);
   }
 }
 
 async function handleVideoOnVisible() {
   const module = await getStartScreenModule();
-  if (module && module.handleVideoVisibilityChange) {
+  if (module?.handleVideoVisibilityChange) {
     module.handleVideoVisibilityChange(true);
+  }
+}
+
+// ── Core visibility flows ─────────────────────────────────────────────────────
+
+function handleHiddenState() {
+  const CONSTANTS = window.CONSTANTS;
+  const uiHandlers = window.uiHandlers;
+
+  console.log('[VISIBILITY] Document hidden — pausing inactivity timer immediately');
+
+  clearVisibilityTimeout();
+  handleVideoOnHidden();
+
+  if (uiHandlers?.pauseInactivityTimer) {
+    uiHandlers.pauseInactivityTimer();
+  }
+
+  visibilityTimeout = setTimeout(() => {
+    console.log('[VISIBILITY] Kiosk hidden for grace window — clearing all timers');
+    window.isKioskVisible = false;
+    uiHandlers?.clearAllTimers?.();
+    visibilityTimeout = null;
+  }, CONSTANTS?.VISIBILITY_CHANGE_DELAY_MS ?? 5000);
+}
+
+function handleVisibleState(source = 'visibilitychange') {
+  const appState = window.appState;
+  const uiHandlers = window.uiHandlers;
+
+  if (document.hidden) return;
+
+  if (recentlyResumed()) {
+    console.log(`[VISIBILITY] Resume deduped (${source})`);
+    markVisibleCompatibilityFlag();
+    return;
+  }
+
+  lastResumeAt = Date.now();
+
+  console.log(`[VISIBILITY] Document visible — resuming (${source})`);
+
+  clearVisibilityTimeout();
+  markVisibleCompatibilityFlag();
+  handleVideoOnVisible();
+
+  if (appState?.currentQuestionIndex > 0) {
+    if (uiHandlers?.resumeInactivityTimer) {
+      uiHandlers.resumeInactivityTimer();
+    } else if (uiHandlers?.resetInactivityTimer) {
+      uiHandlers.resetInactivityTimer();
+    }
   }
 }
 
 // ── Core visibility handler ───────────────────────────────────────────────────
 
-/**
- * Handle document visibility changes.
- *
- * BUG #22 FIX: When the page becomes hidden we now IMMEDIATELY pause the
- * inactivity timer (preserving remaining time) instead of letting it tick
- * during the 5-second grace window. This prevents false kiosk resets when
- * a user was at e.g. 28s and the iPad screen locked for 5s.
- *
- * On visible: resume the paused timer so remaining time is honoured.
- */
 function handleVisibilityChange() {
-  const CONSTANTS   = window.CONSTANTS;
-  const appState    = window.appState;
-  const uiHandlers  = window.uiHandlers;
-
   if (document.hidden) {
-    console.log('[VISIBILITY] Document hidden — pausing inactivity timer immediately');
-
-    // Pause video immediately (battery saving)
-    handleVideoOnHidden();
-
-    // BUG #22 FIX: Pause inactivity timer NOW, before the grace window.
-    // pauseInactivityTimer() sets the timer to null without triggering reset.
-    if (uiHandlers.pauseInactivityTimer) {
-      uiHandlers.pauseInactivityTimer();
-    }
-
-    // After grace period, flag kiosk as hidden and clear ALL remaining timers
-    visibilityTimeout = setTimeout(() => {
-      console.log('[VISIBILITY] Kiosk hidden for 5s+ — clearing all timers');
-      window.isKioskVisible = false;
-      uiHandlers.clearAllTimers();
-    }, CONSTANTS.VISIBILITY_CHANGE_DELAY_MS);
-
+    handleHiddenState();
   } else {
-    console.log('[VISIBILITY] Document visible — resuming');
-    clearTimeout(visibilityTimeout);
-    visibilityTimeout = null;
-
-    // Resume video (if on start screen)
-    handleVideoOnVisible();
-
-    if (!window.isKioskVisible) {
-      console.log('[VISIBILITY] Kiosk visible — resuming timers');
-      window.isKioskVisible = true;
-
-      if (appState.currentQuestionIndex > 0) {
-        // BUG #22 FIX: Resume the paused inactivity timer (not a full reset)
-        if (uiHandlers.resumeInactivityTimer) {
-          uiHandlers.resumeInactivityTimer();
-        } else {
-          // Fallback for older uiHandlers that lack resumeInactivityTimer
-          uiHandlers.resetInactivityTimer();
-        }
-      } else {
-        uiHandlers.startPeriodicSync();
-      }
-    }
+    handleVisibleState('visibilitychange');
   }
 }
 
 // ── iOS-specific handlers ─────────────────────────────────────────────────────
 
-/**
- * Fires when page is restored from bfcache (iOS PWA back-forward navigation).
- */
 function handlePageShow(event) {
   if (event.persisted) {
     console.log('[VISIBILITY] Page restored from cache (iOS bfcache)');
-    handleVideoOnVisible();
-    window.isKioskVisible = !document.hidden;
-  } else {
-    // Fresh load — possible battery death recovery
-    console.log('[VISIBILITY] 🔋 Fresh page load (possible battery death recovery)');
-    setTimeout(() => {
-      checkVideoHealthAfterBatteryDeath();
-    }, 2000);
+    markVisibleCompatibilityFlag();
+    handleVisibleState('pageshow.persisted');
+    return;
   }
+
+  console.log('[VISIBILITY] 🔋 Fresh page load (possible battery death recovery)');
+
+  clearBatteryCheckTimeout();
+  batteryCheckTimeout = setTimeout(() => {
+    checkVideoHealthAfterBatteryDeath();
+    batteryCheckTimeout = null;
+  }, 2000);
 }
 
-/**
- * Fires when window gains focus.
- * Sometimes visibilitychange does not fire on iOS.
- */
 function handleFocus() {
-  if (!document.hidden && !window.isKioskVisible) {
+  if (!document.hidden) {
     console.log('[VISIBILITY] Focus gained — forcing visibility check');
-    handleVisibilityChange();
+    handleVisibleState('focus');
   }
 }
 
 // ── Battery death recovery ────────────────────────────────────────────────────
 
 async function checkVideoHealthAfterBatteryDeath() {
-  const kioskVideo       = window.globals?.kioskVideo;
+  const kioskVideo = window.globals?.kioskVideo;
   const kioskStartScreen = window.globals?.kioskStartScreen;
 
   if (!kioskStartScreen || kioskStartScreen.classList.contains('hidden')) return;
+
   if (!kioskVideo) {
     console.error('[VISIBILITY] ⚠️ Video element missing after page load');
     return;
   }
 
-  const hasSrc       = kioskVideo.src || kioskVideo.currentSrc;
+  const hasSrc = !!(kioskVideo.src || kioskVideo.currentSrc);
   const hasValidState = kioskVideo.readyState > 0;
-  const hasSource    = kioskVideo.querySelector('source');
+  const hasSource = !!kioskVideo.querySelector('source');
 
   if (!hasSrc && !hasSource) {
     console.error('[VISIBILITY] 💥 Video corrupted — triggering nuclear reload');
     const module = await getStartScreenModule();
-    if (module && module.triggerNuclearReload) {
+    if (module?.triggerNuclearReload) {
       module.triggerNuclearReload();
     }
   } else if (!hasValidState) {
@@ -165,30 +193,41 @@ async function checkVideoHealthAfterBatteryDeath() {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Setup all visibility handlers (visibilitychange, pageshow, focus).
- */
 export function setupVisibilityHandler() {
+  if (handlersBound) {
+    console.log('[VISIBILITY] Handlers already active — skipping duplicate setup');
+    return;
+  }
+
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('pageshow', handlePageShow);
   window.addEventListener('focus', handleFocus);
-  console.log('[VISIBILITY] ✅ Handlers active (iOS-enhanced, battery optimised, timer-pause fix)');
+
+  handlersBound = true;
+  markVisibleCompatibilityFlag();
+
+  console.log('[VISIBILITY] ✅ Handlers active (iOS-enhanced, deduped, battery optimised)');
 }
 
-/**
- * Remove all visibility handlers and clear pending timeout.
- */
 export function cleanupVisibilityHandler() {
+  if (!handlersBound) {
+    clearVisibilityTimeout();
+    clearBatteryCheckTimeout();
+    startScreenModule = null;
+    return;
+  }
+
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   window.removeEventListener('pageshow', handlePageShow);
   window.removeEventListener('focus', handleFocus);
 
-  if (visibilityTimeout) {
-    clearTimeout(visibilityTimeout);
-    visibilityTimeout = null;
-  }
+  handlersBound = false;
+  clearVisibilityTimeout();
+  clearBatteryCheckTimeout();
 
   startScreenModule = null;
+  lastResumeAt = 0;
+
   console.log('[VISIBILITY] Handlers cleaned up');
 }
 

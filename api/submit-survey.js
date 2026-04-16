@@ -313,7 +313,7 @@ export default async function handler(request, response) {
     // Append to Google Sheet
     const appendResult = await sheets.spreadsheets.values.append({
       spreadsheetId:    SPREADSHEET_ID,
-      range:            `${activeSheetName}!A1`,
+      range:            `${activeSheetName}!A:Z`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: rowsToAppend },
     });

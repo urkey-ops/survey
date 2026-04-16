@@ -169,7 +169,7 @@ function processSingleSubmissionType2(submission) {
     id:               source.id,
     timestamp:        source.timestamp || new Date().toISOString(),
     sync_status:      source.sync_status || 'unsynced',
-    visit_feeling:    source.visit_feeling || '',
+    visit_feeling:    source.visit_feeling || source.satisfaction || '',
     experiences:      flattenCheckbox(source.experiences),
     standout:         flattenRadioWithOther(source.standout),
     shayona_intent:   flattenRadioWithFollowup(source.shayona_intent),

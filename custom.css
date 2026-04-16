@@ -1,5 +1,5 @@
 /* FILE: custom.css
-   VERSION: 5.3.0
+   VERSION: 5.4.0
    FIXES:
    - Header CSS Grid: row1 = title + admin card, row2 = progress bar
    - Admin panel redesigned as minimal utility card
@@ -12,6 +12,8 @@
    - stepCounter repositioned (no overlap)
    - Checkbox indicator tops out on text wrap
    - followup-sub-grid separate from main grid class
+   - iPad/PWA tap fix: start screen fully non-interactive when hidden
+   - iPad/PWA tap fix: header/title elevated above overlapping layers
 */
 
 :root {
@@ -69,7 +71,7 @@ label {
 #kioskStartScreen {
   position: fixed !important;
   inset: 0;
-  z-index: 100;
+  z-index: 1000;
   background: #000;
   display: flex !important;
   flex-direction: column;
@@ -77,16 +79,30 @@ label {
   justify-content: center;
   overflow: hidden;
   color: #fff;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
   opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
-#kioskStartScreen.hidden { display: none !important; }
-#kioskStartScreen.start-screen-fade-out { opacity: 0; pointer-events: none; }
+
+#kioskStartScreen.hidden,
+#kioskStartScreen.start-screen-fade-out,
+#kioskStartScreen[aria-hidden="true"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#kioskStartScreen.hidden {
+  display: none !important;
+}
+
 #kioskStartScreen h1,
 #kioskStartScreen h2,
 #kioskStartScreen h3,
 #kioskStartScreen p,
 #kioskStartScreen span { color: #fff; }
+
 #rotatingQuestion {
   color: #fff;
   font-weight: 600;
@@ -106,9 +122,12 @@ main {
   padding: var(--page-v-pad) var(--page-h-pad);
   gap: var(--card-gap);
 }
+
 main:not(.hidden) { display: flex !important; }
 
 header {
+  position: relative;
+  z-index: 200;
   width: 100%;
   max-width: var(--col-max);
   background: var(--card-bg);
@@ -127,6 +146,8 @@ header {
 }
 
 #mainTitle {
+  position: relative;
+  z-index: 210;
   grid-column: 1;
   grid-row: 1;
   font-size: 1.15rem;
@@ -140,10 +161,17 @@ header {
   align-items: center;
   transition: background 0.15s ease;
   -webkit-user-select: none;
+  user-select: none;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: rgba(232,96,0,0.12);
 }
+
 #mainTitle:active { background: rgba(232,96,0,0.10); }
 
 #adminControls {
+  position: relative;
+  z-index: 205;
   grid-column: 2;
   grid-row: 1;
   display: flex;
@@ -152,6 +180,7 @@ header {
   gap: 10px;
   min-width: 0;
 }
+
 #adminControls.hidden { display: none !important; }
 
 .admin-status-row {
@@ -344,13 +373,16 @@ header {
   position: relative;
   overflow: hidden;
   align-self: end;
+  z-index: 201;
 }
+
 #progressBar {
   height: 100%;
   background: var(--orange);
   transition: width 0.45s cubic-bezier(0.4,0,0.2,1);
   min-width: 0;
 }
+
 #stepCounter {
   position: absolute;
   right: 20px;
@@ -367,6 +399,7 @@ header {
   opacity: 0;
   transition: opacity 0.12s ease;
 }
+
 #questionContainer.question-fade-in {
   opacity: 1;
   transition: opacity 0.15s ease;
@@ -413,6 +446,7 @@ label[id$="Label"] {
   text-align: left;
   width: 100%;
 }
+
 #questionContainer p.text-sm,
 #questionContainer p.italic {
   font-size: 0.85rem;
@@ -435,6 +469,7 @@ label[id$="Label"] {
   background: var(--card-bg);
   padding-bottom: 4px;
 }
+
 #prevBtn {
   height: var(--min-tap);
   padding: 0 1.5rem;
@@ -449,6 +484,7 @@ label[id$="Label"] {
   min-width: 100px;
   flex-shrink: 0;
 }
+
 #prevBtn:hover  { background: #F9F8F6; border-color: #9CA3AF; }
 #prevBtn:active { transform: scale(0.97); }
 
@@ -467,8 +503,10 @@ label[id$="Label"] {
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(232,96,0,0.30);
 }
+
 #nextBtn:hover  { background: var(--orange-dark); box-shadow: 0 3px 12px rgba(232,96,0,0.38); }
 #nextBtn:active { transform: scale(0.97); }
+
 #nextBtn:disabled,
 #prevBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
@@ -500,6 +538,7 @@ input.visually-hidden:checked + label {
   gap: 10px;
   width: 100%;
 }
+
 .emoji-radio-group label {
   display: flex;
   flex-direction: column;
@@ -514,7 +553,9 @@ input.visually-hidden:checked + label {
   gap: 6px;
   transition: var(--transition);
 }
+
 .emoji-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+
 .emoji-radio-group label > span:first-child {
   font-size: 2.2rem;
   line-height: 1;
@@ -522,6 +563,7 @@ input.visually-hidden:checked + label {
   align-items: center;
   justify-content: center;
 }
+
 .emoji-radio-group label > span:last-child {
   font-size: 0.9rem;
   font-weight: 500;
@@ -529,12 +571,14 @@ input.visually-hidden:checked + label {
   text-align: center;
   line-height: 1.2;
 }
+
 .emoji-radio-group input.visually-hidden:checked + label {
   background: var(--orange-light) !important;
   border-color: var(--orange) !important;
   border-width: 2px !important;
   transform: scale(1.04);
 }
+
 .emoji-radio-group input.visually-hidden:checked + label > span:last-child {
   color: var(--orange-dark) !important;
 }
@@ -546,6 +590,7 @@ input.visually-hidden:checked + label {
   gap: 6px !important;
   width: 100%;
 }
+
 .number-scale-group label {
   border: 1.5px solid #D1D5DB;
   border-radius: 50%;
@@ -562,7 +607,9 @@ input.visually-hidden:checked + label {
   font-weight: 700;
   color: var(--text-secondary);
 }
+
 .number-scale-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+
 .number-scale-group input.visually-hidden:checked + label {
   background: var(--orange-light) !important;
   border-color: var(--orange) !important;
@@ -584,6 +631,7 @@ input.visually-hidden:checked + label {
   width: 100%;
   justify-items: stretch;
 }
+
 .location-radio-group label,
 .age-radio-group label {
   display: flex;
@@ -603,8 +651,10 @@ input.visually-hidden:checked + label {
   color: var(--text-secondary);
   transition: var(--transition);
 }
+
 .location-radio-group label:hover,
 .age-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+
 .location-radio-group label span,
 .age-radio-group label span {
   display: block;
@@ -617,6 +667,7 @@ input.visually-hidden:checked + label {
   gap: var(--gap-grid);
   width: 100%;
 }
+
 .followup-radio-group label {
   display: flex;
   align-items: center;
@@ -633,6 +684,7 @@ input.visually-hidden:checked + label {
   color: var(--text-secondary);
   transition: var(--transition);
 }
+
 .followup-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
 .followup-drawer {
@@ -643,6 +695,7 @@ input.visually-hidden:checked + label {
   border-radius: var(--radius-md);
   width: 100%;
 }
+
 .followup-panel-label {
   font-size: 0.95rem;
   font-weight: 600;
@@ -656,9 +709,11 @@ input.visually-hidden:checked + label {
   gap: 8px;
   justify-content: flex-start;
 }
+
 .followup-sub-grid .checkbox-tab-wrapper {
   flex: 0 0 auto;
 }
+
 .followup-option-label {
   display: inline-flex;
   align-items: center;
@@ -673,7 +728,9 @@ input.visually-hidden:checked + label {
   transition: var(--transition);
   white-space: nowrap;
 }
+
 .followup-option-label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+
 input.visually-hidden:checked + .followup-option-label {
   background: var(--orange-light) !important;
   border-color: var(--orange) !important;
@@ -686,6 +743,7 @@ input.visually-hidden:checked + .followup-option-label {
   gap: var(--gap-grid);
   width: 100%;
 }
+
 .checkbox-group label {
   display: flex;
   align-items: flex-start;
@@ -701,6 +759,7 @@ input.visually-hidden:checked + .followup-option-label {
   transition: var(--transition);
   gap: 8px;
 }
+
 .checkbox-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
 .checkbox-indicator {
@@ -729,6 +788,7 @@ input.visually-hidden:checked + .followup-option-label {
   margin-top: 10px;
   transition: border-color 0.15s ease;
 }
+
 .other-text-input:focus {
   outline: none;
   border-color: var(--orange);
@@ -750,6 +810,7 @@ textarea {
   -webkit-user-select: text !important;
   user-select: text !important;
 }
+
 textarea:focus {
   outline: none;
   border-color: var(--orange);
@@ -765,6 +826,7 @@ textarea:focus {
   flex: 1;
   padding: 20px;
 }
+
 .checkmark-circle {
   width: 80px;
   height: 80px;
@@ -775,6 +837,7 @@ textarea:focus {
   align-items: center;
   justify-content: center;
 }
+
 .checkmark-icon {
   width: 44px;
   height: 44px;

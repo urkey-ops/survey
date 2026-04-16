@@ -1,19 +1,18 @@
 // FILE: data-util.js
-// PURPOSE: Survey questions definition and question renderers
-// VERSION: 5.1.0 - Grid centering + orphan fix + press feedback + readability bumps
-//   CHANGES FROM 3.3.0:
-//   - getGridCols() / getGridMaxWidth() helpers added
-//   - All option grids: grid-template-columns set dynamically via getGridCols()
-//   - All option grids: justify-content:center (CSS backs this up too)
-//   - All option <label> elements: option-label class added (press feedback)
-//   - Multi-line labels: <span class="block"> so line1/line2 stack centered
-//   - checkbox-group labels: items-start so indicator tops out on text wrap
-//   - followup option labels: followup-option-label class (0.9rem font)
-//   - followup panel heading: followup-panel-label class (0.95rem font)
+// VERSION: 5.2.0
+// FIXES:
+//   - emoji-radio: always 4 columns, single row (hardcoded, not getGridCols)
+//   - location/age grids: capped at 3 cols max for text options
+//   - two-line labels: <span class="block"> stacks lines centered
+//   - followup drawer: uses .followup-drawer + .followup-sub-grid classes
+//   - followup chips: pill-shaped .followup-option-label
+//   - checkbox labels: items-start so indicator tops out on wrap
+//   - radio-with-followup: container-scoped change listener (no global leak)
+//   - getGridCols: separate logic for text vs emoji vs number grids
 
 window.dataUtils = (function () {
 
-  // ─── Config ───────────────────────────────────────────────────────────────
+  // ─── Config ───────────────────────────────────────────────
   const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
   const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
 
@@ -23,58 +22,63 @@ window.dataUtils = (function () {
     autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; callback(); }, delay);
   }
 
-  // ─── GRID HELPERS ─────────────────────────────────────────────────────────
+  // Public: allow kiosk reset to clear pending timer
+  function clearAutoAdvance() {
+    if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
+  }
+
+  // ─── GRID HELPERS ─────────────────────────────────────────
 
   /**
-   * Returns ideal column count for n options.
-   * Avoids orphan-heavy layouts (e.g. 4 items → 2×2, not 3+1).
+   * Text option grids (radio, checkbox, followup main).
+   * Caps at 3 cols so text labels are readable.
+   * Avoids bad orphan splits.
    */
-  function getGridCols(n) {
+  function getTextGridCols(n) {
     if (n <= 1) return 1;
     if (n === 2) return 2;
     if (n === 3) return 3;
-    if (n === 4) return 2;
-    if (n === 5) return 5;
-    if (n === 6) return 3;
-    if (n === 7) return 4;
-    if (n === 8) return 4;
-    if (n === 9) return 3;
-    if (n === 10) return 5;
+    if (n === 4) return 2;   // 2×2 — clean
+    if (n === 5) return 3;   // 3+2 — acceptable, CSS centers orphan
+    if (n === 6) return 3;   // 3×2 — perfect
+    if (n === 7) return 3;   // 3+3+1
+    if (n === 8) return 3;   // 3+3+2 — better than 4+4
     return 3;
   }
 
   /**
-   * Constrains small grids so they don't stretch across the full card width.
+   * Constrains small grids so they don't stretch the full card width.
    */
   function getGridMaxWidth(n, cols) {
-    if (cols <= 2 && n <= 4) return 'max-width:320px; margin-left:auto; margin-right:auto;';
-    if (cols === 3 && n <= 3) return 'max-width:460px; margin-left:auto; margin-right:auto;';
+    if (cols === 1)           return 'max-width:340px; margin-left:auto; margin-right:auto;';
+    if (cols === 2 && n <= 4) return 'max-width:400px; margin-left:auto; margin-right:auto;';
+    if (cols === 3 && n <= 3) return 'max-width:500px; margin-left:auto; margin-right:auto;';
     return '';
   }
 
-  // ─── STYLE HELPERS ────────────────────────────────────────────────────────
+  // ─── STYLE HELPERS ────────────────────────────────────────
 
-  function applyRadioSelectedStyles(container, inputName) {
-    const labels = container.querySelectorAll('label');
-    labels.forEach(label => {
-      const forAttr = label.getAttribute('for');
-      const input   = forAttr ? document.getElementById(forAttr) : null;
+  function applyRadioSelectedStyles(container) {
+    container.querySelectorAll('label').forEach(label => {
+      const input = document.getElementById(label.getAttribute('for'));
       if (!input) return;
       if (input.checked) {
-        label.classList.add('bg-orange-500', 'text-white', 'border-orange-500');
-        label.classList.remove('bg-white', 'text-gray-700', 'border-gray-300', 'border-transparent', 'hover:bg-gray-50');
+        label.style.background   = 'var(--orange-light)';
+        label.style.borderColor  = 'var(--orange)';
+        label.style.color        = 'var(--orange-dark)';
+        label.style.borderWidth  = '2px';
       } else {
-        label.classList.remove('bg-orange-500', 'text-white', 'border-orange-500');
-        label.classList.add('bg-white', 'text-gray-700', 'border-gray-300', 'hover:bg-gray-50');
+        label.style.background   = '';
+        label.style.borderColor  = '';
+        label.style.color        = '';
+        label.style.borderWidth  = '';
       }
     });
   }
 
   function applyStarSelectedStyles(container, selectedValue) {
-    const labels = container.querySelectorAll('label.star');
-    labels.forEach(label => {
-      const forAttr = label.getAttribute('for');
-      const input   = forAttr ? document.getElementById(forAttr) : null;
+    container.querySelectorAll('label.star').forEach(label => {
+      const input = document.getElementById(label.getAttribute('for'));
       if (!input) return;
       const starVal = parseInt(input.value, 10);
       const selVal  = parseInt(selectedValue, 10);
@@ -241,10 +245,10 @@ window.dataUtils = (function () {
       type: 'radio-with-followup',
       question: 'Have you visited the Shayona Cafe and the Gift Shop today?',
       options: [
-        { value: 'Already visited',       label: 'Already visited',       followupLabel: null, followupOptions: [] },
-        { value: 'Going there now',       label: 'Going there now',       followupLabel: null, followupOptions: [] },
-        { value: 'Maybe next time',       label: 'Maybe next time',       followupLabel: 'What would help next time?', followupOptions: ["Better signs","More information","See what's offered","Campus map"] },
-        { value: "Didn't know about it",  label: "Didn't know about it",  followupLabel: 'What would help next time?', followupOptions: ["Better signs","More information","See what's offered","Campus map"] },
+        { value: 'Already visited',      label: 'Already visited',      followupLabel: null, followupOptions: [] },
+        { value: 'Going there now',      label: 'Going there now',      followupLabel: null, followupOptions: [] },
+        { value: 'Maybe next time',      label: 'Maybe next time',      followupLabel: 'What would help next time?', followupOptions: ["Better signs","More information","See what's offered","Campus map"] },
+        { value: "Didn't know about it", label: "Didn't know about it", followupLabel: 'What would help next time?', followupOptions: ["Better signs","More information","See what's offered","Campus map"] },
       ],
       required: true,
     },
@@ -254,8 +258,8 @@ window.dataUtils = (function () {
       type: 'radio-with-followup',
       question: 'Did your visit flow smoothly today?',
       options: [
-        { value: 'Yes everything was smooth',  label: 'Yes, everything was smooth', followupLabel: null, followupOptions: [] },
-        { value: 'A few things were unclear',  label: 'A few things were unclear',  followupLabel: 'What was unclear?', followupOptions: ['Darshan timing','Finding my way','Signs & directions','Parking'] },
+        { value: 'Yes everything was smooth', label: 'Yes, everything was smooth', followupLabel: null,              followupOptions: [] },
+        { value: 'A few things were unclear', label: 'A few things were unclear',  followupLabel: 'What was unclear?', followupOptions: ['Darshan timing','Finding my way','Signs & directions','Parking'] },
       ],
       required: true,
     },
@@ -269,27 +273,28 @@ window.dataUtils = (function () {
     },
   ];
 
-  // ─── Active question set resolver ─────────────────────────────────────────
+  // ─── Active question set resolver ─────────────────────────
   function getSurveyQuestions() {
     const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
     return activeType === 'type2' ? surveyQuestionsType2 : surveyQuestionsType1;
   }
 
-  // ─── Question Renderers ───────────────────────────────────────────────────
+  // ─── Question Renderers ───────────────────────────────────
   const questionRenderers = {
 
-    // ── TEXTAREA ─────────────────────────────────────────────────────────────
+    // ── TEXTAREA ───────────────────────────────────────────
     textarea: {
       render(q, data) {
         return `
           <label id="rotatingQuestion" for="${q.id}"
-            class="block text-gray-700 font-semibold mb-2" aria-live="polite">${q.question}</label>
-          <textarea id="${q.id}" name="${q.name}" rows="4"
-            class="shadow-sm resize-none appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="block font-semibold mb-2" aria-live="polite"
+            style="font-size:1.2rem; color:var(--text-primary);">${q.question}</label>
+          <textarea id="${q.id}" name="${q.name}" rows="5"
+            class="other-text-input"
+            style="min-height:130px; resize:none;"
             placeholder="${q.placeholder}"
-            ${q.required ? 'required' : ''}
-            data-${q.name}></textarea>
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden"></span>`;
+            ${q.required ? 'required' : ''}>${data[q.name] || ''}</textarea>
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
         const el = document.getElementById(q.id);
@@ -298,30 +303,30 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── EMOJI RADIO ──────────────────────────────────────────────────────────
+    // ── EMOJI RADIO — always 4 cols, single row ─────────────
     'emoji-radio': {
       render(q, data) {
-        const n    = q.options.length;
-        const cols = getGridCols(n);
-        const maxW = getGridMaxWidth(n, cols);
-
+        // Emoji always renders in ONE row — never use getTextGridCols here
         const opts = q.options.map(opt => `
-          <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+          <input type="radio"
+            id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
             name="${q.name}" value="${opt.value}"
             class="visually-hidden"
             ${data[q.name] === opt.value ? 'checked' : ''}>
           <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-            class="option-label flex flex-col items-center p-4 sm:p-6 border-2 rounded-full cursor-pointer transition-all duration-200 bg-white border-transparent hover:bg-gray-50 text-gray-700">
-            <span class="text-4xl sm:text-5xl mb-2" aria-hidden="true">${opt.emoji}</span>
-            <span class="text-sm font-medium">${opt.label}</span>
+            class="option-label">
+            <span style="font-size:2.2rem; line-height:1;">${opt.emoji}</span>
+            <span style="font-size:0.9rem; font-weight:500; text-align:center; line-height:1.2;">${opt.label}</span>
           </label>`).join('');
 
         return `
-          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); margin-bottom:4px; display:block;">
+            ${q.question}
+          </label>
           <div class="emoji-radio-group"
-            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
             role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
         const container = document.querySelector('.emoji-radio-group');
@@ -334,27 +339,31 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── NUMBER SCALE ─────────────────────────────────────────────────────────
+    // ── NUMBER SCALE ───────────────────────────────────────
     'number-scale': {
       render(q, data) {
         const btns = Array.from({ length: q.max }, (_, i) => i + 1).map(num => `
-          <input type="radio" id="${q.id}_${num}" name="${q.name}" value="${num}"
+          <input type="radio"
+            id="${q.id}_${num}" name="${q.name}" value="${num}"
             class="visually-hidden"
             ${String(data[q.name]) === String(num) ? 'checked' : ''}>
           <label for="${q.id}_${num}"
-            class="option-label flex items-center justify-center border-2 rounded-full font-bold cursor-pointer transition-all duration-200 w-12 h-12 sm:w-14 sm:h-14 text-lg bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+            class="option-label"
             role="radio" aria-label="Rating ${num}">
             <span>${num}</span>
           </label>`).join('');
 
         return `
-          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-          <div class="number-scale-group flex justify-around items-center"
-            role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${btns}</div>
-          <div class="flex justify-between text-sm mt-2 text-gray-500">
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:4px;">
+            ${q.question}
+          </label>
+          <div class="number-scale-group"
+            role="radiogroup" aria-labelledby="${q.id}Label">${btns}</div>
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; color:var(--text-muted); margin-top:6px;">
             <span>${q.labels.min}</span><span>${q.labels.max}</span>
           </div>
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
         const container = document.querySelector('.number-scale-group');
@@ -362,29 +371,33 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           updateData(q.name, e.target.value);
-          applyRadioSelectedStyles(container, q.name);
+          applyRadioSelectedStyles(container);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
       },
     },
 
-    // ── STAR RATING ──────────────────────────────────────────────────────────
+    // ── STAR RATING ────────────────────────────────────────
     'star-rating': {
       render(q, data) {
         const stars = Array.from({ length: q.max }, (_, i) => q.max - i).map(num => `
-          <input type="radio" id="${q.id}_${num}" name="${q.name}" value="${num}"
+          <input type="radio"
+            id="${q.id}_${num}" name="${q.name}" value="${num}"
             class="visually-hidden"
             ${String(data[q.name]) === String(num) ? 'checked' : ''}>
           <label for="${q.id}_${num}"
-            class="star option-label text-4xl sm:text-5xl pr-1 cursor-pointer transition-colors duration-150
-              ${parseInt(data[q.name]) >= num ? 'text-yellow-400' : 'text-gray-300'}"
+            class="star option-label"
+            style="font-size:2.6rem; padding:0 4px; color:${parseInt(data[q.name]) >= num ? '#FBBF24' : '#D1D5DB'};"
             role="radio" aria-label="${num} stars">★</label>`).join('');
 
         return `
-          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-          <div class="star-rating flex flex-row-reverse justify-center mt-2"
-            role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${stars}</div>
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:4px;">
+            ${q.question}
+          </label>
+          <div class="star-rating"
+            role="radiogroup" aria-labelledby="${q.id}Label">${stars}</div>
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
         const container = document.querySelector('.star-rating');
@@ -398,7 +411,7 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── RADIO WITH OTHER ─────────────────────────────────────────────────────
+    // ── RADIO WITH OTHER ───────────────────────────────────
     'radio-with-other': {
       render(q, data) {
         const savedVal  = data[q.name];
@@ -407,39 +420,44 @@ window.dataUtils = (function () {
         const showOther = mainVal === 'Other';
 
         const n    = q.options.length;
-        const cols = getGridCols(n);
+        const cols = getTextGridCols(n);
         const maxW = getGridMaxWidth(n, cols);
 
         const opts = q.options.map(opt => {
-          // v5.1.0: multi-line labels use <span class="block"> to stack centered
+          // Two-line label: each span is display:block, centered
           const labelHtml = typeof opt.label === 'object'
-            ? `<span class="block">${opt.label.line1}</span><span class="block">${opt.label.line2}</span>`
+            ? `<span style="display:block;text-align:center;">${opt.label.line1}</span>
+               <span style="display:block;text-align:center;">${opt.label.line2}</span>`
             : opt.label;
           const isSelected = mainVal === opt.value;
           return `
-            <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+            <input type="radio"
+              id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
               name="${q.name}" value="${opt.value}"
               class="visually-hidden" ${isSelected ? 'checked' : ''}>
             <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-              class="option-label px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
-                ${isSelected
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+              class="option-label location-radio-group-label"
+              style="${isSelected
+                ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
+                : ''}"
               role="radio">${labelHtml}</label>`;
         }).join('');
 
         return `
-          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:4px;">
+            ${q.question}
+          </label>
           <div class="location-radio-group"
-            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
-            role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
-          <div id="other-${q.id}-container" class="mt-4 ${showOther ? '' : 'hidden'}">
-            <input type="text" id="other-${q.id}-text" name="other-${q.id}"
-              class="shadow-sm border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700"
-              placeholder="Please specify" value="${otherVal || ''}">
-            <span id="other-${q.id}-textError" class="error-message text-red-500 text-sm hidden mt-1"></span>
+            style="grid-template-columns:repeat(${cols},1fr); ${maxW}"
+            role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
+          <div id="other-${q.id}-container" style="${showOther ? '' : 'display:none;'}">
+            <input type="text" id="other-${q.id}-text"
+              class="other-text-input"
+              placeholder="Please specify…"
+              value="${otherVal || ''}">
           </div>
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
         const container      = document.querySelector('.location-radio-group');
@@ -451,54 +469,52 @@ window.dataUtils = (function () {
           if (e.target.name !== q.name) return;
           const val = e.target.value;
           updateData(q.name, { main: val, other: val === 'Other' ? (otherInput?.value || '') : '' });
-          applyRadioSelectedStyles(container, q.name);
+          applyRadioSelectedStyles(container);
           if (otherContainer) {
-            if (val === 'Other') {
-              otherContainer.classList.remove('hidden');
-              otherInput?.focus();
-            } else {
-              otherContainer.classList.add('hidden');
-              if (otherInput) otherInput.value = '';
-            }
+            otherContainer.style.display = val === 'Other' ? '' : 'none';
+            if (val === 'Other') otherInput?.focus();
+            else if (otherInput) otherInput.value = '';
           }
           if (val !== 'Other') scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
 
-        if (otherInput) {
-          otherInput.addEventListener('input', e => {
-            updateData(q.name, { main: 'Other', other: e.target.value });
-          });
-        }
+        otherInput?.addEventListener('input', e => {
+          updateData(q.name, { main: 'Other', other: e.target.value });
+        });
       },
     },
 
-    // ── RADIO (Age, and any simple radio) ────────────────────────────────────
+    // ── RADIO (Age, simple) ────────────────────────────────
     radio: {
       render(q, data) {
         const n    = q.options.length;
-        const cols = getGridCols(n);
+        const cols = getTextGridCols(n);
         const maxW = getGridMaxWidth(n, cols);
 
         const opts = q.options.map(opt => {
           const isSelected = data[q.name] === opt.value;
           return `
-            <input type="radio" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+            <input type="radio"
+              id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
               name="${q.name}" value="${opt.value}"
               class="visually-hidden" ${isSelected ? 'checked' : ''}>
             <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-              class="option-label px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
-                ${isSelected
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+              class="option-label age-radio-group-label"
+              style="${isSelected
+                ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
+                : ''}"
               role="radio">${opt.label}</label>`;
         }).join('');
 
         return `
-          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:4px;">
+            ${q.question}
+          </label>
           <div class="age-radio-group"
-            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
-            role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+            style="grid-template-columns:repeat(${cols},1fr); ${maxW}"
+            role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
         const container = document.querySelector('.age-radio-group');
@@ -506,13 +522,13 @@ window.dataUtils = (function () {
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
           updateData(q.name, e.target.value);
-          applyRadioSelectedStyles(container, q.name);
+          applyRadioSelectedStyles(container);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
       },
     },
 
-    // ── RADIO WITH FOLLOWUP ───────────────────────────────────────────────────
+    // ── RADIO WITH FOLLOWUP ────────────────────────────────
     'radio-with-followup': {
       render(q, data) {
         const current      = data[q.name] || {};
@@ -520,81 +536,87 @@ window.dataUtils = (function () {
         const followupVals = Array.isArray(current.followup) ? current.followup : [];
 
         const n    = q.options.length;
-        const cols = getGridCols(n);
+        const cols = getTextGridCols(n);
         const maxW = getGridMaxWidth(n, cols);
 
         const opts = q.options.map(opt => {
           const isSelected = mainVal === opt.value;
           const optSlug    = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
           return `
-            <input type="radio" id="${q.id}_${optSlug}" name="${q.name}"
-              value="${opt.value}" class="visually-hidden" ${isSelected ? 'checked' : ''}>
+            <input type="radio"
+              id="${q.id}_${optSlug}" name="${q.name}"
+              value="${opt.value}" class="visually-hidden"
+              ${isSelected ? 'checked' : ''}>
             <label for="${q.id}_${optSlug}"
-              class="option-label px-3 py-3 text-center text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
-                ${isSelected
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+              class="option-label followup-radio-group-label"
+              style="${isSelected
+                ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
+                : ''}"
               role="radio">${opt.label}</label>`;
         }).join('');
 
-        const followupHtml = q.options.map(opt => {
+        // Dependent followup drawers
+        const drawers = q.options.map(opt => {
           if (!opt.followupLabel || !opt.followupOptions.length) return '';
           const optSlug = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
           const show    = mainVal === opt.value;
 
-          // Followup option cols
-          const fn    = opt.followupOptions.length;
-          const fcols = getGridCols(fn);
-          const fmaxW = getGridMaxWidth(fn, fcols);
-
-          const cbOptions = opt.followupOptions.map(fv => {
+          const chips = opt.followupOptions.map(fv => {
             const fvSlug  = fv.replace(/\s+/g,'_').replace(/'/g,'');
             const fid     = `${q.id}_fu_${optSlug}_${fvSlug}`;
             const checked = followupVals.includes(fv);
             return `
               <div class="checkbox-tab-wrapper">
-                <input type="checkbox" id="${fid}" name="${q.id}_followup_${optSlug}"
-                  value="${fv}" class="visually-hidden" ${checked ? 'checked' : ''}>
+                <input type="checkbox"
+                  id="${fid}"
+                  name="${q.id}_followup_${optSlug}"
+                  value="${fv}"
+                  class="visually-hidden"
+                  ${checked ? 'checked' : ''}>
                 <label for="${fid}"
-                  class="option-label followup-option-label inline-block px-4 py-2 font-medium border-2 rounded-lg cursor-pointer transition-all duration-200 select-none
-                    ${checked
-                      ? 'bg-orange-500 text-white border-orange-500'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}">
+                  class="followup-option-label"
+                  style="${checked
+                    ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
+                    : ''}">
                   ${fv}
                 </label>
               </div>`;
           }).join('');
 
           return `
-            <div id="${q.id}_followup_${optSlug}" class="mt-4 ${show ? '' : 'hidden'}">
+            <div id="${q.id}_drawer_${optSlug}"
+              class="followup-drawer"
+              style="${show ? '' : 'display:none;'}">
               <p class="followup-panel-label">${opt.followupLabel}</p>
-              <div class="followup-radio-group"
-                style="display:grid; grid-template-columns:repeat(${fcols},1fr); gap:8px; ${fmaxW}">
-                ${cbOptions}
-              </div>
+              <div class="followup-sub-grid">${chips}</div>
             </div>`;
         }).join('');
 
         return `
-          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:4px;">
+            ${q.question}
+          </label>
           <div class="followup-radio-group"
-            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
-            role="radiogroup" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
-          ${followupHtml}
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+            id="${q.id}_mainGrid"
+            style="grid-template-columns:repeat(${cols},1fr); ${maxW}"
+            role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
+          ${drawers}
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
 
       setupEvents(q, handleNextQuestion, updateData) {
-        const container = document.querySelector('.followup-radio-group');
+        // Use ID-scoped container — avoids targeting wrong grid on back/forward
+        const container = document.getElementById(`${q.id}_mainGrid`);
         if (!container) return;
 
         const getFollowupValues = () => {
-          const visiblePanel = Array.from(
-            document.querySelectorAll(`[id^="${q.id}_followup_"]`)
-          ).find(p => !p.classList.contains('hidden'));
-          if (!visiblePanel) return [];
+          const visibleDrawer = Array.from(
+            document.querySelectorAll(`[id^="${q.id}_drawer_"]`)
+          ).find(p => p.style.display !== 'none');
+          if (!visibleDrawer) return [];
           return Array.from(
-            visiblePanel.querySelectorAll('input[type="checkbox"]:checked')
+            visibleDrawer.querySelectorAll('input[type="checkbox"]:checked')
           ).map(cb => cb.value);
         };
 
@@ -602,15 +624,19 @@ window.dataUtils = (function () {
           updateData(q.name, { main: mainVal, followup: getFollowupValues() });
         };
 
+        // Main radio — scoped to this container only
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          const val = e.target.value;
-          applyRadioSelectedStyles(container, q.name);
+          const val     = e.target.value;
+          const optSlug = val.replace(/\s+/g,'_').replace(/'/g,'');
 
+          applyRadioSelectedStyles(container);
+
+          // Show matching drawer, hide all others
           q.options.forEach(opt => {
-            const slug  = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
-            const panel = document.getElementById(`${q.id}_followup_${slug}`);
-            if (panel) panel.classList.toggle('hidden', opt.value !== val);
+            const slug   = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
+            const drawer = document.getElementById(`${q.id}_drawer_${slug}`);
+            if (drawer) drawer.style.display = (opt.value === val && opt.followupOptions.length) ? '' : 'none';
           });
 
           saveData(val);
@@ -621,83 +647,105 @@ window.dataUtils = (function () {
           }
         });
 
-        document.addEventListener('change', e => {
-          if (!e.target.name?.startsWith(`${q.id}_followup_`)) return;
-          const mainVal = container.querySelector('input:checked')?.value || '';
-          saveData(mainVal);
+        // Followup chips — scoped to drawers of this question only
+        // No global document listener — avoids accumulation on back/forward
+        q.options.forEach(opt => {
+          if (!opt.followupOptions.length) return;
+          const optSlug = opt.value.replace(/\s+/g,'_').replace(/'/g,'');
+          const drawer  = document.getElementById(`${q.id}_drawer_${optSlug}`);
+          if (!drawer) return;
 
-          const lbl = document.querySelector(`label[for="${e.target.id}"]`);
-          if (!lbl) return;
-          if (e.target.checked) {
-            lbl.classList.add('bg-orange-500', 'text-white', 'border-orange-500');
-            lbl.classList.remove('bg-white', 'text-gray-700', 'border-gray-300', 'hover:bg-gray-50');
-          } else {
-            lbl.classList.remove('bg-orange-500', 'text-white', 'border-orange-500');
-            lbl.classList.add('bg-white', 'text-gray-700', 'border-gray-300', 'hover:bg-gray-50');
-          }
+          drawer.addEventListener('change', e => {
+            if (!e.target.name?.startsWith(`${q.id}_followup_`)) return;
+            const mainVal = container.querySelector('input:checked')?.value || '';
+            saveData(mainVal);
+
+            const lbl = drawer.querySelector(`label[for="${e.target.id}"]`);
+            if (!lbl) return;
+            if (e.target.checked) {
+              lbl.style.background  = 'var(--orange-light)';
+              lbl.style.borderColor = 'var(--orange)';
+              lbl.style.color       = 'var(--orange-dark)';
+              lbl.style.borderWidth = '2px';
+            } else {
+              lbl.style.background  = '';
+              lbl.style.borderColor = '';
+              lbl.style.color       = '';
+              lbl.style.borderWidth = '';
+            }
+          });
         });
       },
     },
 
-    // ── CHECKBOX WITH OTHER ──────────────────────────────────────────────────
+    // ── CHECKBOX WITH OTHER ────────────────────────────────
     'checkbox-with-other': {
       render(q, data) {
         const selectedValues = Array.isArray(data[q.name]) ? data[q.name] : [];
         const otherVal       = data['other' + q.id] || '';
 
         const n    = q.options.length;
-        const cols = getGridCols(n);
+        const cols = getTextGridCols(n);
         const maxW = getGridMaxWidth(n, cols);
 
         const opts = q.options.map(opt => {
           const isSelected = selectedValues.includes(opt.value);
           return `
             <div class="checkbox-tab-wrapper">
-              <input type="checkbox" id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
+              <input type="checkbox"
+                id="${q.id}_${opt.value.replace(/\s+/g,'_')}"
                 name="${q.name}" value="${opt.value}"
                 class="visually-hidden" ${isSelected ? 'checked' : ''}>
               <label for="${q.id}_${opt.value.replace(/\s+/g,'_')}"
-                class="option-label flex items-start px-3 py-3 text-sm sm:text-base font-medium border-2 rounded-lg cursor-pointer transition-all duration-200
+                class="option-label checkbox-group-label"
+                style="${isSelected
+                  ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
+                  : ''}">
+                <span class="checkbox-indicator"
+                  style="${isSelected ? 'border-color:#fff;' : ''}">
                   ${isSelected
-                    ? 'bg-orange-500 text-white border-orange-500'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}">
-                <span class="checkbox-indicator w-5 h-5 mr-2 border-2 rounded flex items-center justify-center flex-shrink-0
-                  ${isSelected ? 'border-white bg-white' : 'border-gray-400 bg-white'}">
-                  ${isSelected
-                    ? `<svg class="w-3 h-3 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    ? `<svg style="width:12px;height:12px;color:var(--orange);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
                        </svg>`
                     : ''}
                 </span>
-                <span class="flex-1">${opt.label}</span>
+                <span style="flex:1;">${opt.label}</span>
               </label>
             </div>`;
         }).join('');
 
         return `
-          <label id="${q.id}Label" class="block text-gray-700 font-semibold mb-2">${q.question}</label>
-          <p class="text-sm text-gray-600 mb-3 italic">You can select more than one option</p>
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:4px;">
+            ${q.question}
+          </label>
+          <p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">
+            You can select more than one option
+          </p>
           <div class="checkbox-group"
-            style="display:grid; grid-template-columns:repeat(${cols},1fr); gap:8px; ${maxW}"
-            role="group" aria-labelledby="${q.id}Label" data-question-name="${q.name}">${opts}</div>
-          <div id="other-${q.id}-container" class="mt-4 ${selectedValues.includes('Other') ? '' : 'hidden'}">
-            <input type="text" id="other-${q.id}-text" name="other-${q.id}"
-              class="shadow-sm border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700"
-              placeholder="Please specify" value="${otherVal}">
-            <span id="other-${q.id}-textError" class="error-message text-red-500 text-sm hidden mt-1"></span>
+            id="${q.id}_checkboxGrid"
+            style="grid-template-columns:repeat(${cols},1fr); ${maxW}"
+            role="group" aria-labelledby="${q.id}Label">${opts}</div>
+          <div id="other-${q.id}-container" style="${selectedValues.includes('Other') ? '' : 'display:none;'}">
+            <input type="text" id="other-${q.id}-text"
+              class="other-text-input"
+              placeholder="Please specify…"
+              value="${otherVal}">
           </div>
-          <span id="${q.id}Error" class="error-message text-red-500 text-sm hidden mt-2 block"></span>`;
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
 
       setupEvents(q, handleNextQuestion, updateData) {
-        const container      = document.querySelector('.checkbox-group');
+        // Scoped to this question's grid — no class-based querySelector
+        const container      = document.getElementById(`${q.id}_checkboxGrid`);
         const otherContainer = document.getElementById(`other-${q.id}-container`);
         const otherInput     = document.getElementById(`other-${q.id}-text`);
         if (!container) return;
 
         const save = () => {
-          const checked = container.querySelectorAll(`input[name="${q.name}"]:checked`);
-          const values  = Array.from(checked).map(cb => cb.value);
+          const values = Array.from(
+            container.querySelectorAll(`input[name="${q.name}"]:checked`)
+          ).map(cb => cb.value);
           updateData(q.name, values);
           updateData('other' + q.id, values.includes('Other') ? (otherInput?.value || '') : '');
         };
@@ -706,49 +754,51 @@ window.dataUtils = (function () {
           if (e.target.name !== q.name) return;
           save();
 
-          container.querySelectorAll('label').forEach(label => {
-            const checkbox  = document.getElementById(label.getAttribute('for'));
-            const indicator = label.querySelector('.checkbox-indicator');
-            if (!checkbox || !indicator) return;
-            if (checkbox.checked) {
-              label.classList.add('bg-orange-500', 'text-white', 'border-orange-500');
-              label.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-50', 'border-gray-300');
-              indicator.classList.add('border-white', 'bg-white');
-              indicator.classList.remove('border-gray-400');
-              indicator.innerHTML = `<svg class="w-3 h-3 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
-              </svg>`;
-            } else {
-              label.classList.remove('bg-orange-500', 'text-white', 'border-orange-500');
-              label.classList.add('bg-white', 'text-gray-700', 'hover:bg-gray-50', 'border-gray-300');
-              indicator.classList.remove('border-white', 'bg-white');
-              indicator.classList.add('border-gray-400');
-              indicator.innerHTML = '';
-            }
-          });
+          // Update visual state for the toggled label only
+          const lbl       = container.querySelector(`label[for="${e.target.id}"]`);
+          const indicator = lbl?.querySelector('.checkbox-indicator');
+          if (!lbl || !indicator) return;
+
+          if (e.target.checked) {
+            lbl.style.background  = 'var(--orange-light)';
+            lbl.style.borderColor = 'var(--orange)';
+            lbl.style.color       = 'var(--orange-dark)';
+            lbl.style.borderWidth = '2px';
+            indicator.style.borderColor = '#fff';
+            indicator.innerHTML = `<svg style="width:12px;height:12px;color:var(--orange);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+            </svg>`;
+          } else {
+            lbl.style.background  = '';
+            lbl.style.borderColor = '';
+            lbl.style.color       = '';
+            lbl.style.borderWidth = '';
+            indicator.style.borderColor = '';
+            indicator.innerHTML = '';
+          }
 
           if (otherContainer) {
             const values = Array.from(
               container.querySelectorAll(`input[name="${q.name}"]:checked`)
             ).map(cb => cb.value);
-            if (values.includes('Other')) {
-              otherContainer.classList.remove('hidden');
-              otherInput?.focus();
-            } else {
-              otherContainer.classList.add('hidden');
-              if (otherInput) otherInput.value = '';
-            }
+            otherContainer.style.display = values.includes('Other') ? '' : 'none';
+            if (values.includes('Other')) otherInput?.focus();
+            else if (otherInput) otherInput.value = '';
           }
         });
 
-        if (otherInput) {
-          otherInput.addEventListener('input', () => save());
-        }
+        otherInput?.addEventListener('input', () => save());
       },
     },
 
   }; // end questionRenderers
 
-  return { surveyQuestions: surveyQuestionsType1, getSurveyQuestions, questionRenderers, kioskId };
+  return {
+    surveyQuestions: surveyQuestionsType1,
+    getSurveyQuestions,
+    questionRenderers,
+    kioskId,
+    clearAutoAdvance,
+  };
 
 })();

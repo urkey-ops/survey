@@ -106,7 +106,7 @@
     <!-- ═══════════════════════════════════════════════════════════════
          START SCREEN
          ═══════════════════════════════════════════════════════════════ -->
-    <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
+    <div id="kioskStartScreen" class="flex flex-col items-center justify-center" aria-hidden="false">
 
         <div class="mb-8 content">
             <h2 class="text-3xl font-bold text-center text-white animate-pulse">
@@ -149,7 +149,7 @@
         -->
         <header>
 
-            <h1 id="mainTitle">Share Your Visit Experience</h1>
+            <h1 id="mainTitle" data-admin-unlock="true">Share Your Visit Experience</h1>
 
             <div id="adminControls">
                 <div class="admin-status-row">
@@ -311,19 +311,6 @@
         if (e.touches && e.touches.length > 1) e.preventDefault();
       }, { passive: false });
 
-      /* ── Visual feedback on admin title tap ── */
-      const mainTitle = document.getElementById('mainTitle');
-      if (mainTitle) {
-        mainTitle.addEventListener('touchstart', function(e) {
-          e.stopPropagation();
-          this.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
-        }, { passive: false });
-        mainTitle.addEventListener('touchend', function(e) {
-          e.stopPropagation();
-          setTimeout(() => { this.style.backgroundColor = ''; }, 100);
-        }, { passive: false });
-      }
-
       /* ── Visual Viewport API: keyboard height → CSS variable ── */
       if (window.visualViewport) {
         function updateKeyboardHeight() {
@@ -345,8 +332,6 @@
         window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
       }
     </script>
-
-
 
 </body>
 </html>

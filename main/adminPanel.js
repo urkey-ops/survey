@@ -1,6 +1,6 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel optimized for offline-first iPad kiosk PWA
-// VERSION: 7.4.0 - delegated unlock listener for post-reset DOM changes
+// VERSION: 7.5.0 - delegated unlock + safe re-init after inactivity reset
 // DEPENDENCIES: window.globals, window.dataHandlers, window.CONSTANTS, window.KIOSK_CONFIG
 
 const CLEAR_PASSWORD = '8765';
@@ -28,6 +28,7 @@ let handleTitleClick = null;
 let unlockTapCount = 0;
 let unlockTapTimeout = null;
 let unlockLastTapTime = 0;
+let adminHandlersBound = false;
 
 function isClearLocalLocked() {
   if (!lockoutUntil) return false;
@@ -105,7 +106,7 @@ function verifyClearPassword() {
 
   if (failedAttempts >= MAX_ATTEMPTS) {
     lockClearLocal();
-    alert(`❌ Incorrect password.\n\nToo many failed attempts.\n\n🔒 Clear Local is now LOCKED for 1 hour.`);
+    alert('❌ Incorrect password.\n\nToo many failed attempts.\n\n🔒 Clear Local is now LOCKED for 1 hour.');
   } else {
     const remaining = MAX_ATTEMPTS - failedAttempts;
     alert(`❌ Incorrect password.\n\nYou have ${remaining} attempt${remaining > 1 ? 's' : ''} remaining.`);
@@ -115,15 +116,21 @@ function verifyClearPassword() {
 }
 
 function vibrateSuccess() {
-  try { if (navigator.vibrate) navigator.vibrate([50]); } catch (e) {}
+  try {
+    if (navigator.vibrate) navigator.vibrate([50]);
+  } catch (e) {}
 }
 
 function vibrateError() {
-  try { if (navigator.vibrate) navigator.vibrate([100, 50, 100]); } catch (e) {}
+  try {
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+  } catch (e) {}
 }
 
 function vibrateTap() {
-  try { if (navigator.vibrate) navigator.vibrate(10); } catch (e) {}
+  try {
+    if (navigator.vibrate) navigator.vibrate(10);
+  } catch (e) {}
 }
 
 function trackAdminEvent(eventType, metadata = {}) {
@@ -174,8 +181,14 @@ function updateCountdown() {
 }
 
 function startAutoHideTimer() {
-  if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
-  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  if (autoHideTimer) {
+    clearTimeout(autoHideTimer);
+    autoHideTimer = null;
+  }
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
 
   autoHideStartTime = Date.now();
 
@@ -202,8 +215,14 @@ function hideAdminPanel() {
     adminPanelVisible = false;
   }
 
-  if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
-  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  if (autoHideTimer) {
+    clearTimeout(autoHideTimer);
+    autoHideTimer = null;
+  }
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
 
   autoHideStartTime = null;
 
@@ -258,6 +277,7 @@ function updateAllButtonStates() {
 function updateSyncButtonState(isOnline) {
   const syncButton = window.globals?.syncButton;
   if (!syncButton) return;
+
   const shouldDisable = !isOnline || syncInProgress;
   syncButton.disabled = shouldDisable;
   syncButton.setAttribute('aria-busy', syncInProgress ? 'true' : 'false');
@@ -287,6 +307,7 @@ function updateSyncButtonState(isOnline) {
 function updateAnalyticsButtonState(isOnline) {
   const syncAnalyticsButton = window.globals?.syncAnalyticsButton;
   if (!syncAnalyticsButton) return;
+
   const shouldDisable = !isOnline || analyticsInProgress;
   syncAnalyticsButton.disabled = shouldDisable;
   syncAnalyticsButton.setAttribute('aria-busy', analyticsInProgress ? 'true' : 'false');
@@ -316,6 +337,7 @@ function updateAnalyticsButtonState(isOnline) {
 function updateCheckUpdateButtonState(isOnline) {
   const checkUpdateButton = window.globals?.checkUpdateButton;
   if (!checkUpdateButton) return;
+
   checkUpdateButton.disabled = !isOnline;
   checkUpdateButton.setAttribute('aria-disabled', !isOnline ? 'true' : 'false');
 
@@ -337,6 +359,7 @@ function updateCheckUpdateButtonState(isOnline) {
 function updateFixVideoButtonState() {
   const fixVideoButton = window.globals?.fixVideoButton;
   if (!fixVideoButton) return;
+
   fixVideoButton.disabled = false;
   fixVideoButton.style.opacity = '1';
   fixVideoButton.style.cursor = 'pointer';
@@ -553,7 +576,6 @@ function bindAdminUnlock() {
 
   handleTitleClick = (e) => {
     const target = e.target;
-
     if (!isAdminTitleTapTarget(target)) return;
 
     const now = Date.now();
@@ -574,6 +596,7 @@ function bindAdminUnlock() {
       showAdminPanel();
       unlockTapCount = 0;
       if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
+      unlockTapTimeout = null;
     }
   };
 
@@ -584,7 +607,7 @@ function bindAdminUnlock() {
   console.log('[ADMIN] ✅ Delegated unlock listener attached');
 }
 
-window.inspectAdminHitTarget = function() {
+window.inspectAdminHitTarget = function () {
   const x = Math.round(window.innerWidth / 2);
   const y = 24;
   const el = document.elementFromPoint(x, y);
@@ -609,6 +632,9 @@ export function setupAdminPanel() {
     return;
   }
 
+  if (onlineHandler) window.removeEventListener('online', onlineHandler);
+  if (offlineHandler) window.removeEventListener('offline', offlineHandler);
+
   if (!document.getElementById('adminCountdown')) {
     const statusRow = document.createElement('div');
     statusRow.className = 'admin-status-row';
@@ -628,339 +654,348 @@ export function setupAdminPanel() {
 
   restoreLockoutState();
   adminControls.classList.add('hidden');
+  document.body.classList.remove('admin-active');
   adminPanelVisible = false;
 
   const resetTimer = () => resetAutoHideTimer();
   buildSurveyTypeSwitcher(adminControls, resetTimer);
   bindAdminUnlock();
 
-  if (hideAdminButton) {
-    hideAdminButton.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('[ADMIN] 🔘 Hide button clicked');
-      hideAdminPanel();
-      trackAdminEvent('admin_manually_hidden');
-    });
-    console.log('[ADMIN] ✅ Hide button handler attached');
-  } else {
-    console.warn('[ADMIN] ⚠️ Hide button not found');
-  }
+  if (!adminHandlersBound) {
+    if (hideAdminButton) {
+      hideAdminButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[ADMIN] 🔘 Hide button clicked');
+        hideAdminPanel();
+        trackAdminEvent('admin_manually_hidden');
+      });
+      console.log('[ADMIN] ✅ Hide button handler attached');
+    } else {
+      console.warn('[ADMIN] ⚠️ Hide button not found');
+    }
 
-  if (adminClearButton) {
-    adminClearButton.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('[ADMIN] 🔘 Clear Local button clicked');
-      resetTimer();
+    if (adminClearButton) {
+      adminClearButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[ADMIN] 🔘 Clear Local button clicked');
+        resetTimer();
 
-      if (!verifyClearPassword()) {
-        console.log('[ADMIN] Password verification failed');
-        updateClearButtonState();
-        return;
-      }
-
-      if (syncInProgress || analyticsInProgress) {
-        console.warn('[ADMIN] Clear blocked — sync in progress');
-        alert('⚠️ Cannot clear while sync is in progress.\n\nPlease wait for sync to complete.');
-        return;
-      }
-
-      const queueSize = window.dataHandlers?.countUnsyncedRecords?.() || 0;
-      const confirmMsg = queueSize > 0
-        ? `⚠️ WARNING: Delete ${queueSize} unsynced survey${queueSize > 1 ? 's' : ''}?\n\nThis CANNOT be undone!`
-        : 'Clear all local data?';
-
-      if (confirm(confirmMsg)) {
-        console.log('[ADMIN] ✅ User confirmed clear — proceeding...');
-        try {
-          const CONSTANTS = window.CONSTANTS;
-          if (!CONSTANTS) {
-            console.error('[ADMIN] ❌ window.CONSTANTS not available — aborting clear');
-            alert('❌ Configuration not loaded yet.\n\nPlease wait a moment and try again.');
-            return;
-          }
-
-          const keysToClear = [
-            CONSTANTS.STORAGE_KEY_QUEUE,
-            CONSTANTS.STORAGE_KEY_QUEUE_V2,
-            CONSTANTS.STORAGE_KEY_ANALYTICS,
-            CONSTANTS.STORAGE_KEY_STATE,
-            CONSTANTS.STORAGE_KEY_LAST_SYNC,
-            CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC,
-          ].filter(Boolean);
-
-          keysToClear.forEach(key => localStorage.removeItem(key));
-
-          trackAdminEvent('local_storage_cleared', { queueSize });
-          console.log('[ADMIN] ✅ Storage cleared successfully (all queues)');
-
-          const syncStatusMessage = window.globals?.syncStatusMessage;
-          if (syncStatusMessage) syncStatusMessage.textContent = '✅ Storage cleared';
-
-          setTimeout(() => {
-            console.log('[ADMIN] Reloading page...');
-            location.reload();
-          }, 1500);
-        } catch (error) {
-          console.error('[ADMIN] ❌ Error clearing storage:', error);
-          alert('❌ Error clearing storage. Check console for details.');
-        }
-      } else {
-        console.log('[ADMIN] User cancelled clear operation');
-      }
-    });
-    console.log('[ADMIN] ✅ Clear Local button handler attached');
-  } else {
-    console.warn('[ADMIN] ⚠️ Clear Local button not found');
-  }
-
-  if (syncButton) {
-    syncButton.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('[ADMIN] 🔘 Sync Data button clicked');
-      resetTimer();
-
-      if (!navigator.onLine) {
-        console.warn('[ADMIN] Sync blocked — offline');
-        alert('📡 Cannot sync — device is offline.\n\nData will sync automatically when connection is restored.');
-        trackAdminEvent('sync_blocked_offline');
-        return;
-      }
-
-      if (syncInProgress) {
-        console.warn('[ADMIN] Sync already in progress');
-        return;
-      }
-
-      console.log('[ADMIN] ✅ Starting manual sync (both queues)...');
-      syncInProgress = true;
-      syncStartedAt = Date.now();
-      updateSyncButtonState(true);
-      trackAdminEvent('manual_sync_triggered');
-
-      try {
-        if (window.dataHandlers?.syncData) {
-          await window.dataHandlers.syncData(true, { syncBothQueues: true });
-          console.log('[ADMIN] ✅ Sync completed (both queues)');
-        } else {
-          console.error('[ADMIN] ❌ syncData function not found');
-          alert('❌ Sync function not available');
-        }
-      } catch (error) {
-        console.error('[ADMIN] ❌ Sync failed:', error);
-        alert('❌ Sync failed. Check console for details.');
-      } finally {
-        syncInProgress = false;
-        syncStartedAt = null;
-        updateSyncButtonState(navigator.onLine);
-      }
-    });
-    console.log('[ADMIN] ✅ Sync Data button handler attached');
-  } else {
-    console.warn('[ADMIN] ⚠️ Sync Data button not found');
-  }
-
-  if (syncAnalyticsButton) {
-    syncAnalyticsButton.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('[ADMIN] 🔘 Sync Analytics button clicked');
-      resetTimer();
-
-      if (!navigator.onLine) {
-        console.warn('[ADMIN] Analytics sync blocked — offline');
-        alert('📡 Cannot sync analytics — device is offline.\n\nAnalytics will sync automatically when connection is restored.');
-        trackAdminEvent('analytics_sync_blocked_offline');
-        return;
-      }
-
-      if (analyticsInProgress) {
-        console.warn('[ADMIN] Analytics sync already in progress');
-        return;
-      }
-
-      console.log('[ADMIN] ✅ Starting analytics sync...');
-      analyticsInProgress = true;
-      analyticsStartedAt = Date.now();
-      updateAnalyticsButtonState(true);
-      trackAdminEvent('manual_analytics_sync_triggered');
-
-      try {
-        if (window.dataHandlers?.syncAnalytics) {
-          await window.dataHandlers.syncAnalytics(true);
-          console.log('[ADMIN] ✅ Analytics sync completed');
-        } else {
-          console.error('[ADMIN] ❌ syncAnalytics function not found');
-          alert('❌ Analytics sync function not available');
-        }
-      } catch (error) {
-        console.error('[ADMIN] ❌ Analytics sync failed:', error);
-        alert('❌ Analytics sync failed. Check console for details.');
-      } finally {
-        analyticsInProgress = false;
-        analyticsStartedAt = null;
-        updateAnalyticsButtonState(navigator.onLine);
-      }
-    });
-    console.log('[ADMIN] ✅ Sync Analytics button handler attached');
-  } else {
-    console.warn('[ADMIN] ⚠️ Sync Analytics button not found');
-  }
-
-  if (checkUpdateButton) {
-    checkUpdateButton.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('[ADMIN] 🔘 Check Update button clicked');
-      resetTimer();
-
-      if (!navigator.onLine) {
-        console.warn('[ADMIN] Update check blocked — offline');
-        alert('📡 Cannot check for updates — device is offline.\n\nPlease connect to WiFi to check for updates.');
-        trackAdminEvent('update_check_blocked_offline');
-        return;
-      }
-
-      const syncStatusMessage = window.globals?.syncStatusMessage;
-
-      if (!window.pwaUpdateManager) {
-        console.error('[ADMIN] ❌ PWA Update Manager not found');
-        if (syncStatusMessage) {
-          syncStatusMessage.textContent = '❌ Update manager not available';
-          setTimeout(() => { syncStatusMessage.textContent = ''; }, 4000);
-        }
-        alert('❌ PWA Update Manager not loaded.\n\nThe update system may not be initialized yet.\n\nTry refreshing the page.');
-        return;
-      }
-
-      console.log('[ADMIN] ✅ Starting update check...');
-      trackAdminEvent('update_check_triggered');
-      if (syncStatusMessage) syncStatusMessage.textContent = '🔍 Checking for updates...';
-
-      try {
-        await window.pwaUpdateManager.forceUpdate();
-        console.log('[ADMIN] ✅ Update check completed');
-        if (syncStatusMessage) syncStatusMessage.textContent = '✅ Update check complete';
-      } catch (error) {
-        console.error('[ADMIN] ❌ Update check failed:', error);
-        if (syncStatusMessage) {
-          syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
-        }
-        alert(`❌ Update check failed:\n\n${error.message}`);
-      }
-
-      setTimeout(() => {
-        if (syncStatusMessage) syncStatusMessage.textContent = '';
-      }, 4000);
-    });
-    console.log('[ADMIN] ✅ Check Update button handler attached');
-  } else {
-    console.warn('[ADMIN] ⚠️ Check Update button not found');
-  }
-
-  if (fixVideoButton) {
-    fixVideoButton.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('[ADMIN] 🔘 Fix Video button clicked');
-      resetTimer();
-      trackAdminEvent('video_fix_triggered');
-
-      let kioskVideo = window.globals?.kioskVideo;
-      if (!kioskVideo) kioskVideo = document.getElementById('kioskVideo');
-      if (!kioskVideo) kioskVideo = document.querySelector('video');
-
-      if (!kioskVideo) {
-        console.error('[ADMIN] ❌ Video element not found anywhere in DOM');
-        alert('❌ Video element not found.\n\nThe video may not be loaded yet, or the element ID has changed.');
-        return;
-      }
-
-      fixVideoButton.disabled = true;
-      const originalText = fixVideoButton.textContent;
-      fixVideoButton.textContent = 'Fixing...';
-
-      try {
-        if (kioskVideo._fallbackHandler) {
-          kioskVideo.removeEventListener('error', kioskVideo._fallbackHandler);
-          kioskVideo._fallbackHandler = null;
-        }
-
-        const videoPlayerModule = await import('../ui/navigation/videoPlayer.js');
-        const { nuclearVideoReload, setupVideoEventListeners } = videoPlayerModule;
-
-        nuclearVideoReload(kioskVideo);
-
-        const repairedVideo = window.globals?.kioskVideo || document.getElementById('kioskVideo');
-        if (!repairedVideo) {
-          alert('❌ Video reload failed.\n\nThe kiosk may need a full restart.');
+        if (!verifyClearPassword()) {
+          console.log('[ADMIN] Password verification failed');
+          updateClearButtonState();
           return;
         }
 
-        setupVideoEventListeners(repairedVideo);
-
-        const waitForReady = () => new Promise((resolve, reject) => {
-          if (repairedVideo.readyState >= 3) {
-            resolve(true);
-            return;
-          }
-
-          let timeoutId;
-
-          const onReady = () => {
-            clearTimeout(timeoutId);
-            repairedVideo.removeEventListener('canplaythrough', onReady);
-            repairedVideo.removeEventListener('loadeddata', onReady);
-            resolve(true);
-          };
-
-          timeoutId = setTimeout(() => {
-            repairedVideo.removeEventListener('canplaythrough', onReady);
-            repairedVideo.removeEventListener('loadeddata', onReady);
-            reject(new Error('Ready timeout'));
-          }, 5000);
-
-          repairedVideo.addEventListener('canplaythrough', onReady, { once: true });
-          repairedVideo.addEventListener('loadeddata', onReady, { once: true });
-        });
-
-        try {
-          await waitForReady();
-        } catch (err) {
-          console.warn('[ADMIN] Video not ready in time:', err.message);
+        if (syncInProgress || analyticsInProgress) {
+          console.warn('[ADMIN] Clear blocked — sync in progress');
+          alert('⚠️ Cannot clear while sync is in progress.\n\nPlease wait for sync to complete.');
+          return;
         }
 
-        try {
-          const playPromise = repairedVideo.play();
-          if (playPromise && typeof playPromise.then === 'function') {
-            await playPromise;
+        const queueSize = window.dataHandlers?.countUnsyncedRecords?.() || 0;
+        const confirmMsg = queueSize > 0
+          ? `⚠️ WARNING: Delete ${queueSize} unsynced survey${queueSize > 1 ? 's' : ''}?\n\nThis CANNOT be undone!`
+          : 'Clear all local data?';
+
+        if (confirm(confirmMsg)) {
+          console.log('[ADMIN] ✅ User confirmed clear — proceeding...');
+          try {
+            const CONSTANTS = window.CONSTANTS;
+            if (!CONSTANTS) {
+              console.error('[ADMIN] ❌ window.CONSTANTS not available — aborting clear');
+              alert('❌ Configuration not loaded yet.\n\nPlease wait a moment and try again.');
+              return;
+            }
+
+            const keysToClear = [
+              CONSTANTS.STORAGE_KEY_QUEUE,
+              CONSTANTS.STORAGE_KEY_QUEUE_V2,
+              CONSTANTS.STORAGE_KEY_ANALYTICS,
+              CONSTANTS.STORAGE_KEY_STATE,
+              CONSTANTS.STORAGE_KEY_LAST_SYNC,
+              CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC,
+            ].filter(Boolean);
+
+            keysToClear.forEach(key => localStorage.removeItem(key));
+
+            trackAdminEvent('local_storage_cleared', { queueSize });
+            console.log('[ADMIN] ✅ Storage cleared successfully (all queues)');
+
+            const syncStatusMessage = window.globals?.syncStatusMessage;
+            if (syncStatusMessage) syncStatusMessage.textContent = '✅ Storage cleared';
+
+            setTimeout(() => {
+              console.log('[ADMIN] Reloading page...');
+              location.reload();
+            }, 1500);
+          } catch (error) {
+            console.error('[ADMIN] ❌ Error clearing storage:', error);
+            alert('❌ Error clearing storage. Check console for details.');
           }
-        } catch (playErr) {
-          console.warn('[ADMIN] Repaired video could not auto-play:', playErr.message);
+        } else {
+          console.log('[ADMIN] User cancelled clear operation');
+        }
+      });
+      console.log('[ADMIN] ✅ Clear Local button handler attached');
+    } else {
+      console.warn('[ADMIN] ⚠️ Clear Local button not found');
+    }
+
+    if (syncButton) {
+      syncButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[ADMIN] 🔘 Sync Data button clicked');
+        resetTimer();
+
+        if (!navigator.onLine) {
+          console.warn('[ADMIN] Sync blocked — offline');
+          alert('📡 Cannot sync — device is offline.\n\nData will sync automatically when connection is restored.');
+          trackAdminEvent('sync_blocked_offline');
+          return;
+        }
+
+        if (syncInProgress) {
+          console.warn('[ADMIN] Sync already in progress');
+          return;
+        }
+
+        console.log('[ADMIN] ✅ Starting manual sync (both queues)...');
+        syncInProgress = true;
+        syncStartedAt = Date.now();
+        updateSyncButtonState(true);
+        trackAdminEvent('manual_sync_triggered');
+
+        try {
+          if (window.dataHandlers?.syncData) {
+            await window.dataHandlers.syncData(true, { syncBothQueues: true });
+            console.log('[ADMIN] ✅ Sync completed (both queues)');
+          } else {
+            console.error('[ADMIN] ❌ syncData function not found');
+            alert('❌ Sync function not available');
+          }
+        } catch (error) {
+          console.error('[ADMIN] ❌ Sync failed:', error);
+          alert('❌ Sync failed. Check console for details.');
+        } finally {
+          syncInProgress = false;
+          syncStartedAt = null;
+          updateSyncButtonState(navigator.onLine);
+        }
+      });
+      console.log('[ADMIN] ✅ Sync Data button handler attached');
+    } else {
+      console.warn('[ADMIN] ⚠️ Sync Data button not found');
+    }
+
+    if (syncAnalyticsButton) {
+      syncAnalyticsButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[ADMIN] 🔘 Sync Analytics button clicked');
+        resetTimer();
+
+        if (!navigator.onLine) {
+          console.warn('[ADMIN] Analytics sync blocked — offline');
+          alert('📡 Cannot sync analytics — device is offline.\n\nAnalytics will sync automatically when connection is restored.');
+          trackAdminEvent('analytics_sync_blocked_offline');
+          return;
+        }
+
+        if (analyticsInProgress) {
+          console.warn('[ADMIN] Analytics sync already in progress');
+          return;
+        }
+
+        console.log('[ADMIN] ✅ Starting analytics sync...');
+        analyticsInProgress = true;
+        analyticsStartedAt = Date.now();
+        updateAnalyticsButtonState(true);
+        trackAdminEvent('manual_analytics_sync_triggered');
+
+        try {
+          if (window.dataHandlers?.syncAnalytics) {
+            await window.dataHandlers.syncAnalytics(true);
+            console.log('[ADMIN] ✅ Analytics sync completed');
+          } else {
+            console.error('[ADMIN] ❌ syncAnalytics function not found');
+            alert('❌ Analytics sync function not available');
+          }
+        } catch (error) {
+          console.error('[ADMIN] ❌ Analytics sync failed:', error);
+          alert('❌ Analytics sync failed. Check console for details.');
+        } finally {
+          analyticsInProgress = false;
+          analyticsStartedAt = null;
+          updateAnalyticsButtonState(navigator.onLine);
+        }
+      });
+      console.log('[ADMIN] ✅ Sync Analytics button handler attached');
+    } else {
+      console.warn('[ADMIN] ⚠️ Sync Analytics button not found');
+    }
+
+    if (checkUpdateButton) {
+      checkUpdateButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[ADMIN] 🔘 Check Update button clicked');
+        resetTimer();
+
+        if (!navigator.onLine) {
+          console.warn('[ADMIN] Update check blocked — offline');
+          alert('📡 Cannot check for updates — device is offline.\n\nPlease connect to WiFi to check for updates.');
+          trackAdminEvent('update_check_blocked_offline');
+          return;
         }
 
         const syncStatusMessage = window.globals?.syncStatusMessage;
-        if (syncStatusMessage) {
-          syncStatusMessage.textContent = '✅ Video reset attempted';
-          setTimeout(() => { syncStatusMessage.textContent = ''; }, 3000);
+
+        if (!window.pwaUpdateManager) {
+          console.error('[ADMIN] ❌ PWA Update Manager not found');
+          if (syncStatusMessage) {
+            syncStatusMessage.textContent = '❌ Update manager not available';
+            setTimeout(() => {
+              syncStatusMessage.textContent = '';
+            }, 4000);
+          }
+          alert('❌ PWA Update Manager not loaded.\n\nThe update system may not be initialized yet.\n\nTry refreshing the page.');
+          return;
         }
 
-        alert('✅ Video reset has been attempted.\n\nIf you now see video playing on the home screen, the fix worked.\nIf not, the kiosk may need a full restart.');
-      } catch (error) {
-        console.error('[ADMIN] ❌ Video nuclear reload failed:', error);
-        alert(`❌ Video reload failed:\n\n${error.message}`);
-      } finally {
+        console.log('[ADMIN] ✅ Starting update check...');
+        trackAdminEvent('update_check_triggered');
+        if (syncStatusMessage) syncStatusMessage.textContent = '🔍 Checking for updates...';
+
+        try {
+          await window.pwaUpdateManager.forceUpdate();
+          console.log('[ADMIN] ✅ Update check completed');
+          if (syncStatusMessage) syncStatusMessage.textContent = '✅ Update check complete';
+        } catch (error) {
+          console.error('[ADMIN] ❌ Update check failed:', error);
+          if (syncStatusMessage) {
+            syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
+          }
+          alert(`❌ Update check failed:\n\n${error.message}`);
+        }
+
         setTimeout(() => {
-          fixVideoButton.disabled = false;
-          fixVideoButton.textContent = originalText;
-        }, 2000);
-      }
-    });
-    console.log('[ADMIN] ✅ Fix Video button handler attached (nuclear-ready)');
-  } else {
-    console.warn('[ADMIN] ⚠️ Fix Video button not found');
+          if (syncStatusMessage) syncStatusMessage.textContent = '';
+        }, 4000);
+      });
+      console.log('[ADMIN] ✅ Check Update button handler attached');
+    } else {
+      console.warn('[ADMIN] ⚠️ Check Update button not found');
+    }
+
+    if (fixVideoButton) {
+      fixVideoButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[ADMIN] 🔘 Fix Video button clicked');
+        resetTimer();
+        trackAdminEvent('video_fix_triggered');
+
+        let kioskVideo = window.globals?.kioskVideo;
+        if (!kioskVideo) kioskVideo = document.getElementById('kioskVideo');
+        if (!kioskVideo) kioskVideo = document.querySelector('video');
+
+        if (!kioskVideo) {
+          console.error('[ADMIN] ❌ Video element not found anywhere in DOM');
+          alert('❌ Video element not found.\n\nThe video may not be loaded yet, or the element ID has changed.');
+          return;
+        }
+
+        fixVideoButton.disabled = true;
+        const originalText = fixVideoButton.textContent;
+        fixVideoButton.textContent = 'Fixing...';
+
+        try {
+          if (kioskVideo._fallbackHandler) {
+            kioskVideo.removeEventListener('error', kioskVideo._fallbackHandler);
+            kioskVideo._fallbackHandler = null;
+          }
+
+          const videoPlayerModule = await import('../ui/navigation/videoPlayer.js');
+          const { nuclearVideoReload, setupVideoEventListeners } = videoPlayerModule;
+
+          nuclearVideoReload(kioskVideo);
+
+          const repairedVideo = window.globals?.kioskVideo || document.getElementById('kioskVideo');
+          if (!repairedVideo) {
+            alert('❌ Video reload failed.\n\nThe kiosk may need a full restart.');
+            return;
+          }
+
+          setupVideoEventListeners(repairedVideo);
+
+          const waitForReady = () => new Promise((resolve, reject) => {
+            if (repairedVideo.readyState >= 3) {
+              resolve(true);
+              return;
+            }
+
+            let timeoutId;
+
+            const onReady = () => {
+              clearTimeout(timeoutId);
+              repairedVideo.removeEventListener('canplaythrough', onReady);
+              repairedVideo.removeEventListener('loadeddata', onReady);
+              resolve(true);
+            };
+
+            timeoutId = setTimeout(() => {
+              repairedVideo.removeEventListener('canplaythrough', onReady);
+              repairedVideo.removeEventListener('loadeddata', onReady);
+              reject(new Error('Ready timeout'));
+            }, 5000);
+
+            repairedVideo.addEventListener('canplaythrough', onReady, { once: true });
+            repairedVideo.addEventListener('loadeddata', onReady, { once: true });
+          });
+
+          try {
+            await waitForReady();
+          } catch (err) {
+            console.warn('[ADMIN] Video not ready in time:', err.message);
+          }
+
+          try {
+            const playPromise = repairedVideo.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+              await playPromise;
+            }
+          } catch (playErr) {
+            console.warn('[ADMIN] Repaired video could not auto-play:', playErr.message);
+          }
+
+          const syncStatusMessage = window.globals?.syncStatusMessage;
+          if (syncStatusMessage) {
+            syncStatusMessage.textContent = '✅ Video reset attempted';
+            setTimeout(() => {
+              syncStatusMessage.textContent = '';
+            }, 3000);
+          }
+
+          alert('✅ Video reset has been attempted.\n\nIf you now see video playing on the home screen, the fix worked.\nIf not, the kiosk may need a full restart.');
+        } catch (error) {
+          console.error('[ADMIN] ❌ Video nuclear reload failed:', error);
+          alert(`❌ Video reload failed:\n\n${error.message}`);
+        } finally {
+          setTimeout(() => {
+            fixVideoButton.disabled = false;
+            fixVideoButton.textContent = originalText;
+          }, 2000);
+        }
+      });
+      console.log('[ADMIN] ✅ Fix Video button handler attached (nuclear-ready)');
+    } else {
+      console.warn('[ADMIN] ⚠️ Fix Video button not found');
+    }
+
+    adminHandlersBound = true;
   }
 
   onlineHandler = () => {
@@ -978,12 +1013,13 @@ export function setupAdminPanel() {
   window.addEventListener('online', onlineHandler);
   window.addEventListener('offline', offlineHandler);
 
+  window.setupAdminPanel = setupAdminPanel;
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.4.0 — delegated unlock)');
+  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.5.0 — safe delegated unlock)');
   console.log('═══════════════════════════════════════════════════════');
-  console.log(` Mode:           Offline-First iPad Kiosk PWA`);
+  console.log(' Mode:           Offline-First iPad Kiosk PWA');
   console.log(` Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
   console.log(` Active Survey:  ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
   console.log(` Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
@@ -1020,10 +1056,14 @@ export function cleanupAdminPanel() {
   syncStartedAt = null;
   analyticsStartedAt = null;
 
+  const adminControls = window.globals?.adminControls;
+  if (adminControls) adminControls.classList.add('hidden');
+  document.body.classList.remove('admin-active');
+
   console.log('[ADMIN] 🧹 Cleaned up all resources (flags + listeners reset)');
 }
 
-window.inspectQueue = function() {
+window.inspectQueue = function () {
   const CONSTANTS = window.CONSTANTS;
   if (!CONSTANTS) {
     console.error('[ADMIN] window.CONSTANTS not available');
@@ -1058,7 +1098,7 @@ window.inspectQueue = function() {
   return { type1: queue1, type2: queue2 };
 };
 
-window.systemStatus = function() {
+window.systemStatus = function () {
   const CONSTANTS = window.CONSTANTS;
   if (!CONSTANTS) {
     console.error('[ADMIN] window.CONSTANTS not available');

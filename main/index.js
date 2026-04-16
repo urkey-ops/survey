@@ -255,19 +255,58 @@ function initialize() {
     setupTypewriterVisibilityHandler();
     console.log('[INIT] ✅ Typewriter visibility handler active');
 
-    // Step 12: Start periodic sync
+       // Step 12: Start periodic sync
     startPeriodicSync();
     console.log('[INIT] ✅ Periodic sync started (stable interval)');
 
     // Step 13: Start heartbeat
-  startHeartbeat();
-  console.log('[INIT] ✅ Heartbeat started (15 min, hidden-aware)');
+    startHeartbeat();
+    console.log('[INIT] ✅ Heartbeat started (15 min, hidden-aware)');
 
-  console.log('[INIT] ✅ Initialization complete');
-  console.log('═══════════════════════════════════════════════════════════');
+    initializationCompleted = true;
+    initializationStarted = false;
+
+    console.log('[INIT] ✅ Initialization complete');
+    console.log('═══════════════════════════════════════════════════════════');
+  } catch (error) {
+    initializationStarted = false;
+    console.error('[INIT] ❌ Initialization failed:', error);
+    showCriticalError([error.message || 'Unknown initialization error']);
+  }
 }
 
-document.addEventListener('DOMContentLoaded', initialize);
+// ── Ready-state-safe boot ─────────────────────────────────────────────────────
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initialize, { once: true });
+} else {
+  initialize();
+}
+
+// Optional cleanup hook for hot reload / re-init scenarios
+export function cleanupMainInitialization() {
+  clearPendingDataHandlersPoll();
+
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  }
+
+  if (storageMonitorIntervalId) {
+    clearInterval(storageMonitorIntervalId);
+    storageMonitorIntervalId = null;
+  }
+
+  if (emergencyOnlineHandler) {
+    window.removeEventListener('online', emergencyOnlineHandler);
+    emergencyOnlineHandler = null;
+  }
+
+  initializationStarted = false;
+  initializationCompleted = false;
+
+  console.log('[INIT] Cleanup complete');
+}
 
 export { initialize };
-export default { initialize };
+export default { initialize, cleanupMainInitialization };

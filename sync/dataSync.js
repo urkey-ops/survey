@@ -1,12 +1,14 @@
 // FILE: sync/dataSync.js
 // PURPOSE: Core data synchronization - offline-first, queue-based, retry-safe
-// VERSION: 3.2.0
+// VERSION: 3.3.1
 // FIXES:
 //   - syncs both survey queues when needed, not just active type
 //   - serializes sync operations safely via promise queue
 //   - prevents duplicate online/offline listeners and startup timers
 //   - handles partial success by removing only confirmed IDs
 //   - keeps manual/admin status messaging safe and non-fatal
+//   - filters blank/metadata-only submissions before sync
+//   - removes second-pass invalid blank rows from local queue too
 // DEPENDENCIES: storageUtils.js, queueManager.js, analyticsManager.js, networkHandler.js
 
 import {
@@ -138,6 +140,82 @@ function getTotalUnsyncedAcrossQueues() {
   }, 0);
 }
 
+function hasMeaningfulResponse(record = {}) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return false;
+  }
+
+  const technicalKeys = new Set([
+    'id',
+    'submissionId',
+    'sessionId',
+    'timestamp',
+    'completedAt',
+    'submittedAt',
+    'abandonedAt',
+    'abandonedReason',
+    'surveyStartTime',
+    'surveyType',
+    'kioskId',
+    'sync_status',
+    'syncStatus',
+    'questionTimeSpent',
+    'questionStartTimes',
+    'completionTimeSeconds',
+    'currentQuestionIndex',
+    'isPartial'
+  ]);
+
+  return Object.entries(record).some(([key, value]) => {
+    if (technicalKeys.has(key)) return false;
+    if (value == null) return false;
+
+    if (typeof value === 'string') {
+      return value.trim() !== '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === 'object') {
+      if ('main' in value || 'other' in value || 'followup' in value) {
+        const main = typeof value.main === 'string' ? value.main.trim() : value.main;
+        const other = typeof value.other === 'string' ? value.other.trim() : value.other;
+        const followup = Array.isArray(value.followup) ? value.followup : [];
+        return Boolean(main) || Boolean(other) || followup.length > 0;
+      }
+
+      return Object.keys(value).length > 0;
+    }
+
+    return true;
+  });
+}
+
+function removeMeaninglessRecords(queue = [], surveyType = 'unknown') {
+  if (!Array.isArray(queue) || queue.length === 0) {
+    return { meaningful: [], dropped: [] };
+  }
+
+  const meaningful = [];
+  const dropped = [];
+
+  queue.forEach((record) => {
+    if (hasMeaningfulResponse(record)) {
+      meaningful.push(record);
+    } else {
+      dropped.push(record);
+    }
+  });
+
+  if (dropped.length > 0) {
+    console.warn(`[DATA SYNC] Dropping ${dropped.length} blank/metadata-only record(s) from ${surveyType}`);
+  }
+
+  return { meaningful, dropped };
+}
+
 // ═══════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════
@@ -155,13 +233,6 @@ let offlineHandlerRef = null;
 // SURVEY DATA SYNC
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Public entry point for syncing survey data.
- * Queues sync operations so they never run concurrently.
- * @param {boolean} isManual - true = triggered from admin panel
- * @param {object} options
- * @param {boolean} options.syncBothQueues - sync all queues with data, default true
- */
 export function syncData(isManual = false, options = {}) {
   const { syncBothQueues = true } = options;
 
@@ -176,10 +247,6 @@ export function syncData(isManual = false, options = {}) {
   return syncQueue;
 }
 
-/**
- * Internal sync implementation.
- * Can sync one queue or all queues with data.
- */
 async function doSyncData(isManual = false, { syncBothQueues = true } = {}) {
   if (syncInProgress) {
     console.log('[DATA SYNC] Skipped - sync already in progress');
@@ -328,9 +395,81 @@ async function syncSingleQueue(target, isManual = false) {
     };
   }
 
+  const { meaningful: cleanedQueue, dropped: blankRecords } = removeMeaninglessRecords(submissionQueue, surveyType);
+
+  if (blankRecords.length > 0) {
+    const blankIds = blankRecords
+      .map(record => record?.id)
+      .filter(Boolean);
+
+    if (blankIds.length > 0) {
+      removeFromQueue(blankIds, queueKey);
+      console.log(`[DATA SYNC] Removed ${blankIds.length} blank/metadata-only record(s) from "${queueKey}" before sync`);
+    }
+
+    try {
+      recordAnalytics('blank_records_filtered_before_sync', {
+        surveyType,
+        queueKey,
+        droppedCount: blankRecords.length,
+        manual: isManual
+      });
+    } catch (e) {
+      // non-critical
+    }
+  }
+
+  if (cleanedQueue.length === 0) {
+    console.warn(`[DATA SYNC] No meaningful submissions remain for ${surveyType} after filtering`);
+
+    if (isManual) {
+      updateSyncStatus(`No valid ${surveyType} records to sync ✅`);
+      clearSyncStatusLater(3000);
+    }
+
+    return {
+      ok: true,
+      surveyType,
+      queueKey,
+      successfulCount: 0,
+      remainingCount: 0
+    };
+  }
+
   const { valid: validSubmissions, invalid: invalidSubmissions } = validateQueue(queueKey);
 
-  if (!Array.isArray(validSubmissions) || validSubmissions.length === 0) {
+  const secondPassDropped = [];
+  const filteredValidSubmissions = Array.isArray(validSubmissions)
+    ? validSubmissions.filter((record) => {
+        const keep = hasMeaningfulResponse(record);
+        if (!keep) secondPassDropped.push(record);
+        return keep;
+      })
+    : [];
+
+  if (secondPassDropped.length > 0) {
+    const secondPassIds = secondPassDropped
+      .map(record => record?.id)
+      .filter(Boolean);
+
+    if (secondPassIds.length > 0) {
+      removeFromQueue(secondPassIds, queueKey);
+      console.log(`[DATA SYNC] Removed ${secondPassIds.length} second-pass blank record(s) from "${queueKey}"`);
+    }
+
+    try {
+      recordAnalytics('blank_records_filtered_second_pass', {
+        surveyType,
+        queueKey,
+        droppedCount: secondPassDropped.length,
+        manual: isManual
+      });
+    } catch (e) {
+      // non-critical
+    }
+  }
+
+  if (!Array.isArray(filteredValidSubmissions) || filteredValidSubmissions.length === 0) {
     console.error(`[DATA SYNC] No valid submissions found for ${surveyType}`);
 
     if (invalidSubmissions?.length > 0) {
@@ -346,7 +485,7 @@ async function syncSingleQueue(target, isManual = false) {
       surveyType,
       queueKey,
       successfulCount: 0,
-      remainingCount: submissionQueue.length
+      remainingCount: countUnsyncedRecords(queueKey)
     };
   }
 
@@ -354,13 +493,14 @@ async function syncSingleQueue(target, isManual = false) {
     console.warn(`[DATA SYNC] ${invalidSubmissions.length} invalid record(s) filtered out for ${surveyType}`);
   }
 
- const payload = {
-  submissions: validSubmissions,
-  surveyType,
-  sheetName,
-  kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
-  timestamp: new Date().toISOString()
-};
+  const payload = {
+    submissions: filteredValidSubmissions,
+    surveyType,
+    sheetName,
+    kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+    timestamp: new Date().toISOString()
+  };
+
   try {
     const syncResult = await sendRequest(SYNC_ENDPOINT, payload);
     console.log(`[DATA SYNC] Server response for ${surveyType}:`, syncResult);
@@ -408,9 +548,6 @@ async function syncSingleQueue(target, isManual = false) {
 // AUTO SYNC
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Runs on a timer - syncs survey data AND analytics silently.
- */
 export function autoSync() {
   console.log('[AUTO SYNC] Periodic sync triggered');
   syncData(false, { syncBothQueues: true });
@@ -421,10 +558,6 @@ export function autoSync() {
 // PERIODIC SYNC SCHEDULER
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Start the periodic background sync timers.
- * Call once from main/index.js after app init.
- */
 export function startPeriodicSync() {
   const SYNC_INTERVAL = window.CONSTANTS?.SYNC_INTERVAL_MS || 300000;
   const ANALYTICS_INTERVAL = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS || 600000;
@@ -458,9 +591,6 @@ export function startPeriodicSync() {
   console.log(`[PERIODIC SYNC] ✅ Timers started — survey every ${SYNC_INTERVAL / 60000}min, analytics every ${ANALYTICS_INTERVAL / 60000}min`);
 }
 
-/**
- * Stop the periodic sync timers.
- */
 export function stopPeriodicSync() {
   if (periodicSyncTimer) {
     clearInterval(periodicSyncTimer);
@@ -508,10 +638,6 @@ export async function checkAndWarnStorageQuota() {
 // ONLINE / OFFLINE EVENT HANDLERS
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Set up window online/offline listeners once.
- * When connection is restored, attempt sync automatically.
- */
 export function setupNetworkListeners() {
   if (networkListenersBound) {
     console.log('[NETWORK] Listeners already registered - skipping duplicate bind');
@@ -570,13 +696,11 @@ export function cleanupNetworkListeners() {
 // ═══════════════════════════════════════════════════════════
 
 window.dataHandlers = {
-  // Storage utils
   generateUUID,
   safeSetLocalStorage,
   safeGetLocalStorage,
   checkStorageQuota,
 
-  // Queue management
   getSubmissionQueue,
   countUnsyncedRecords,
   updateAdminCount,
@@ -584,13 +708,11 @@ window.dataHandlers = {
   removeFromQueue,
   clearQueue,
 
-  // Analytics
   recordAnalytics,
   syncAnalytics,
   checkAndSyncAnalytics,
   shouldSyncAnalytics,
 
-  // Sync
   syncData,
   autoSync,
   startPeriodicSync,
@@ -624,7 +746,7 @@ const _bootSurveyType = getActiveSurveyType();
 const _bootSurveyConfig = getQueueConfigByType(_bootSurveyType);
 
 console.log('═══════════════════════════════════════════════════════');
-console.log('🔄 DATA SYNC MODULE LOADED (v3.2.0)');
+console.log('🔄 DATA SYNC MODULE LOADED (v3.3.1)');
 console.log('═══════════════════════════════════════════════════════');
 console.log(`  Active Survey : ${_bootSurveyType}`);
 console.log(`  Queue Key     : ${_bootSurveyConfig.queueKey}`);

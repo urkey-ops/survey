@@ -58,8 +58,7 @@
       }
 
       .animate-pulse {
-        animation: subtle-pulse 6s infinite ease-in-out !important;
-        will-change: transform;
+        animation: subtle-pulse 6s 3 ease-in-out !important;
       }
 
       .active-press {
@@ -95,7 +94,7 @@
       window.globals = {};
     </script>
 
-    <div id="kioskStartScreen" class="flex flex-col items-center justify-center" aria-hidden="false">
+    <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
         <div class="mb-8 content">
             <h2 class="text-3xl font-bold text-center text-white animate-pulse">
                 Share Your Visit Experience

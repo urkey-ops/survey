@@ -1,25 +1,18 @@
 /* FILE: custom.css
-   VERSION: 5.4.0
-   FIXES:
-   - Header CSS Grid: row1 = title + admin card, row2 = progress bar
-   - Admin panel redesigned as minimal utility card
-   - Emoji row always 4 columns, single line
-   - Location/age grids capped at 3 cols max for text options
-   - Two-line labels stack vertically inside box
-   - Followup drawer centered, consistent padding
-   - surveyContent max-height accounts for keyboard
-   - buttonContainer always visible, never pushed off screen
-   - stepCounter repositioned (no overlap)
-   - Checkbox indicator tops out on text wrap
-   - followup-sub-grid separate from main grid class
-   - iPad/PWA tap fix: start screen fully non-interactive when hidden
-   - iPad/PWA tap fix: header/title elevated above overlapping layers
+   VERSION: 5.7.0
+   CHANGES FROM 5.6.0:
+   - Progress bar height 8px → 12px
+   - #stepCounter font-size 0.875rem → 1rem, top offset adjusted for taller bar
+   - #nextBtn box-shadow boosted, min-width 200px
+   - scale(1.03) added to all selected option labels (global + per-component)
+   - Scroll fade ::after gradient added to #surveyContent
 */
 
 :root {
   --orange:          #E86000;
   --orange-dark:     #C45200;
-  --orange-light:    #FFF3EB;
+  --orange-darker:   #8B3A00;
+  --orange-light:    #FFE5CC;
   --orange-mid:      #FFD4B0;
   --bg:              #EDEBE7;
   --card-bg:         #FFFFFF;
@@ -28,15 +21,16 @@
   --card-shadow:     0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
   --text-primary:    #111827;
   --text-secondary:  #4B5563;
-  --text-muted:      #9CA3AF;
+  --text-muted:      #5A6270;
   --border-default:  1.5px solid #D1D5DB;
-  --border-selected: 2px solid var(--orange);
+  --border-selected: 3px solid var(--orange);
   --radius-sm:       8px;
   --radius-md:       10px;
   --radius-lg:       14px;
-  --min-tap:         52px;
-  --font-option:     1rem;
+  --min-tap:         60px;
+  --font-option:     1.125rem;
   --gap-grid:        8px;
+  --gap-question:    20px;
   --transition:      background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
   --card-gap:        10px;
   --page-h-pad:      20px;
@@ -68,6 +62,7 @@ label {
   touch-action: manipulation;
 }
 
+/* ── Start screen ── */
 #kioskStartScreen {
   position: fixed !important;
   inset: 0;
@@ -110,6 +105,7 @@ label {
   text-align: center;
 }
 
+/* ── Main shell ── */
 main {
   position: fixed !important;
   inset: 0;
@@ -125,6 +121,7 @@ main {
 
 main:not(.hidden) { display: flex !important; }
 
+/* ── Header card ── */
 header {
   position: relative;
   z-index: 200;
@@ -136,7 +133,7 @@ header {
   box-shadow: var(--card-shadow);
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: auto 8px;
+  grid-template-rows: auto 12px;
   align-items: start;
   column-gap: 16px;
   row-gap: 10px;
@@ -169,6 +166,7 @@ header {
 
 #mainTitle:active { background: rgba(232,96,0,0.10); }
 
+/* ── Admin controls ── */
 #adminControls {
   position: relative;
   z-index: 205;
@@ -283,7 +281,7 @@ header {
 }
 
 .survey-type-pills button {
-  min-height: 42px;
+  min-height: 48px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(2,132,199,0.22);
@@ -304,7 +302,7 @@ header {
 }
 
 .admin-actions-grid button {
-  min-height: 44px;
+  min-height: 48px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(15,23,42,0.10);
@@ -362,13 +360,14 @@ header {
   text-align: right;
 }
 
+/* ── Progress bar — height raised to 12px ── */
 #progressBarContainer {
   grid-column: 1 / -1;
   grid-row: 2;
   width: calc(100% + 40px);
   margin-left: -20px;
   margin-right: -20px;
-  height: 8px;
+  height: 12px;
   background: #D1D5DB;
   position: relative;
   overflow: hidden;
@@ -383,11 +382,12 @@ header {
   min-width: 0;
 }
 
+/* stepCounter — font raised to 1rem, top offset adjusted for 12px bar */
 #stepCounter {
   position: absolute;
   right: 20px;
-  top: -22px;
-  font-size: 0.8rem;
+  top: -26px;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
@@ -395,6 +395,7 @@ header {
   pointer-events: none;
 }
 
+/* ── Question fade transitions ── */
 #questionContainer.question-fade-out {
   opacity: 0;
   transition: opacity 0.12s ease;
@@ -405,6 +406,7 @@ header {
   transition: opacity 0.15s ease;
 }
 
+/* ── Survey content card — scroll fade hint ── */
 #surveyContent {
   width: 100%;
   max-width: var(--col-max);
@@ -420,8 +422,24 @@ header {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 80px - var(--keyboard-height, 0px));
+  position: relative;
 }
 
+/* Fade gradient at bottom signals scrollable content to kiosk users */
+#surveyContent::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: linear-gradient(to bottom, transparent, var(--card-bg));
+  display: block;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* ── Question container — 2-tier gap system ── */
 #questionContainer {
   width: 100%;
   flex: 1 1 auto;
@@ -429,37 +447,40 @@ header {
   flex-direction: column;
   justify-content: flex-start;
   align-items: stretch;
-  gap: 14px;
+  gap: var(--gap-grid);
   padding-bottom: 8px;
   background: transparent;
 }
 
+/* Question label — 22px, explicit bottom margin creates question→options gap */
 #questionContainer > label,
 #questionContainer label.block,
 .question-text,
 label[id$="Label"] {
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-size: 1.375rem;
+  font-weight: 700;
   color: var(--text-primary);
   line-height: 1.4;
-  margin: 0 0 4px;
+  margin: 0 0 var(--gap-question);
   text-align: left;
   width: 100%;
 }
 
+/* Hint text — 16px, readable in italic at kiosk distance */
 #questionContainer p.text-sm,
 #questionContainer p.italic {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin: -8px 0 0;
+  font-size: 1rem;
+  color: #374151;
+  margin: -14px 0 var(--gap-question);
   font-style: italic;
 }
 
+/* ── Button container ── */
 #buttonContainer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 14px;
+  padding-top: 20px;
   margin-top: auto;
   flex-shrink: 0;
   gap: 12px;
@@ -470,6 +491,7 @@ label[id$="Label"] {
   padding-bottom: 4px;
 }
 
+/* Back button */
 #prevBtn {
   height: var(--min-tap);
   padding: 0 1.5rem;
@@ -477,7 +499,7 @@ label[id$="Label"] {
   color: var(--text-secondary);
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 1.125rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
@@ -488,38 +510,44 @@ label[id$="Label"] {
 #prevBtn:hover  { background: #F9F8F6; border-color: #9CA3AF; }
 #prevBtn:active { transform: scale(0.97); }
 
+/* Next button — boosted shadow + min-width for dominance */
 #nextBtn {
   height: var(--min-tap);
   padding: 0 2.25rem;
-  background: var(--orange);
+  background: var(--orange-dark);
   color: #FFFFFF;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 1.125rem;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
-  min-width: 160px;
+  min-width: 200px;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(232,96,0,0.30);
+  box-shadow: 0 4px 14px rgba(196,82,0,0.45);
 }
 
-#nextBtn:hover  { background: var(--orange-dark); box-shadow: 0 3px 12px rgba(232,96,0,0.38); }
+#nextBtn:hover  { background: #A34400; box-shadow: 0 6px 18px rgba(196,82,0,0.52); }
 #nextBtn:active { transform: scale(0.97); }
 
 #nextBtn:disabled,
 #prevBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
+/* ── Option tap states ── */
 .option-label { -webkit-tap-highlight-color: transparent; }
 .option-label:active {
   transform: scale(0.96) !important;
   transition: transform 0.05s ease-out !important;
 }
 
+/* ── Global selected state — 3px border, glow, scale, darker text ── */
 input.visually-hidden:checked + label {
   background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
-  color:        var(--orange-dark) !important;
+  border-width: 3px !important;
+  color:        var(--orange-darker) !important;
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
 .visually-hidden {
@@ -532,6 +560,7 @@ input.visually-hidden:checked + label {
   border: 0;
 }
 
+/* ── Emoji radio ── */
 .emoji-radio-group {
   display: grid !important;
   grid-template-columns: repeat(4, 1fr) !important;
@@ -544,7 +573,7 @@ input.visually-hidden:checked + label {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 14px 8px 10px;
+  padding: 14px 16px 12px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-md);
   background: #FAFAFA;
@@ -565,24 +594,26 @@ input.visually-hidden:checked + label {
 }
 
 .emoji-radio-group label > span:last-child {
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--text-secondary);
   text-align: center;
   line-height: 1.2;
 }
 
 .emoji-radio-group input.visually-hidden:checked + label {
-  background: var(--orange-light) !important;
+  background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
-  border-width: 2px !important;
-  transform: scale(1.04);
+  border-width: 3px !important;
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
 .emoji-radio-group input.visually-hidden:checked + label > span:last-child {
-  color: var(--orange-dark) !important;
+  color: var(--orange-darker) !important;
 }
 
+/* ── Number scale ── */
 .number-scale-group {
   display: flex !important;
   flex-wrap: nowrap !important;
@@ -598,12 +629,12 @@ input.visually-hidden:checked + label {
   transition: var(--transition);
   cursor: pointer;
   flex: 1 1 0;
-  min-width: 48px;
-  min-height: 48px;
+  min-width: 52px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 1.125rem;
   font-weight: 700;
   color: var(--text-secondary);
 }
@@ -611,11 +642,15 @@ input.visually-hidden:checked + label {
 .number-scale-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
 .number-scale-group input.visually-hidden:checked + label {
-  background: var(--orange-light) !important;
+  background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
-  color: var(--orange-dark) !important;
+  border-width: 3px !important;
+  color:        var(--orange-darker) !important;
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
+/* ── Star rating ── */
 .star-rating {
   display: flex;
   flex-direction: row-reverse;
@@ -624,6 +659,7 @@ input.visually-hidden:checked + label {
   margin-top: 8px;
 }
 
+/* ── Location / Age grids ── */
 .location-radio-group,
 .age-radio-group {
   display: grid;
@@ -639,14 +675,14 @@ input.visually-hidden:checked + label {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 12px 10px;
+  padding: 14px 16px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
   background: #FAFAFA;
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1.125rem;
+  font-weight: 600;
   line-height: 1.3;
   color: var(--text-secondary);
   transition: var(--transition);
@@ -662,6 +698,7 @@ input.visually-hidden:checked + label {
   width: 100%;
 }
 
+/* ── Followup radio ── */
 .followup-radio-group {
   display: grid;
   gap: var(--gap-grid);
@@ -673,20 +710,21 @@ input.visually-hidden:checked + label {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 12px 10px;
+  padding: 14px 16px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
   background: #FAFAFA;
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1.125rem;
+  font-weight: 600;
   color: var(--text-secondary);
   transition: var(--transition);
 }
 
 .followup-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
+/* ── Followup drawer ── */
 .followup-drawer {
   margin-top: 12px;
   padding: 14px 16px;
@@ -697,7 +735,7 @@ input.visually-hidden:checked + label {
 }
 
 .followup-panel-label {
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 10px;
@@ -714,12 +752,13 @@ input.visually-hidden:checked + label {
   flex: 0 0 auto;
 }
 
+/* Followup option pill */
 .followup-option-label {
   display: inline-flex;
   align-items: center;
-  padding: 9px 16px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  padding: 10px 18px;
+  font-size: 1rem;
+  font-weight: 600;
   border: 1.5px solid #D1D5DB;
   border-radius: 999px;
   background: #FFFFFF;
@@ -732,12 +771,15 @@ input.visually-hidden:checked + label {
 .followup-option-label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
 input.visually-hidden:checked + .followup-option-label {
-  background: var(--orange-light) !important;
+  background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
-  color: var(--orange-dark) !important;
-  border-width: 2px !important;
+  border-width: 3px !important;
+  color:        var(--orange-darker) !important;
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
+/* ── Checkbox group ── */
 .checkbox-group {
   display: grid;
   gap: var(--gap-grid);
@@ -747,17 +789,17 @@ input.visually-hidden:checked + .followup-option-label {
 .checkbox-group label {
   display: flex;
   align-items: flex-start;
-  padding: 12px 10px;
+  padding: 14px 16px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
   background: #FAFAFA;
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1.125rem;
+  font-weight: 600;
   color: var(--text-secondary);
   transition: var(--transition);
-  gap: 8px;
+  gap: 10px;
 }
 
 .checkbox-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
@@ -773,10 +815,11 @@ input.visually-hidden:checked + .followup-option-label {
   justify-content: center;
   flex-shrink: 0;
   align-self: flex-start;
-  margin-top: 1px;
+  margin-top: 2px;
   transition: var(--transition);
 }
 
+/* ── Text inputs ── */
 .other-text-input {
   width: 100%;
   border: 1.5px solid #D1D5DB;
@@ -817,6 +860,7 @@ textarea:focus {
   background: #fff;
 }
 
+/* ── Checkmark / Thank you screen ── */
 .checkmark-container {
   display: flex;
   flex-direction: column;
@@ -848,13 +892,15 @@ textarea:focus {
   fill: none;
 }
 
+/* ── Error ── */
 .error-message { display: none; }
 .error-message.visible { display: block; }
 
+/* ── Tablet portrait narrow fallback ── */
 @media (max-width: 720px) {
   header {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 8px;
+    grid-template-rows: auto auto 12px;
   }
 
   #mainTitle {
@@ -899,5 +945,52 @@ textarea:focus {
 
   #surveyContent {
     max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 110px - var(--keyboard-height, 0px));
+  }
+}
+
+/* ── iPad landscape kiosk — primary target ── */
+@media (orientation: landscape) and (min-width: 900px) {
+
+  :root {
+    --page-v-pad: 12px;
+    --page-h-pad: 24px;
+    --card-gap:   8px;
+  }
+
+  header {
+    row-gap: 8px;
+    padding: 10px 20px 0;
+  }
+
+  #mainTitle {
+    font-size: 1.05rem;
+    min-height: 32px;
+  }
+
+  #surveyContent {
+    max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 72px - var(--keyboard-height, 0px));
+  }
+
+  .emoji-radio-group {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 12px;
+  }
+
+  .location-radio-group,
+  .age-radio-group {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .number-scale-group label {
+    min-width: 56px;
+    min-height: 56px;
+  }
+
+  #buttonContainer {
+    padding-top: 20px;
+  }
+
+  #nextBtn {
+    min-width: 200px;
   }
 }

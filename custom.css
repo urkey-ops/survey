@@ -1,17 +1,11 @@
 /* FILE: custom.css
-   VERSION: 5.6.0
-   CHANGES FROM 5.5.0:
-   - 2-tier gap system: 20px question-to-options, 8px between options
-   - Question label explicit margin-bottom 20px
-   - Option tile padding 12px 10px → 14px 16px (all option types)
-   - #buttonContainer padding-top 14px → 20px
-   - #nextBtn base color → --orange-dark (#C45200) for better contrast
-   - Selected tile border → 3px + box-shadow glow
-   - Selected text color → #8B3A00 (passes contrast on --orange-light)
-   - --orange-light tint darkened #FFF3EB → #FFE5CC
-   - Hint/italic text color → #374151
-   - --text-muted deepened #6B7280 → #5A6270
-   - Followup panel label font-size raised to 1rem
+   VERSION: 5.7.0
+   CHANGES FROM 5.6.0:
+   - Progress bar height 8px → 12px
+   - #stepCounter font-size 0.875rem → 1rem, top offset adjusted for taller bar
+   - #nextBtn box-shadow boosted, min-width 200px
+   - scale(1.03) added to all selected option labels (global + per-component)
+   - Scroll fade ::after gradient added to #surveyContent
 */
 
 :root {
@@ -139,7 +133,7 @@ header {
   box-shadow: var(--card-shadow);
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: auto 8px;
+  grid-template-rows: auto 12px;
   align-items: start;
   column-gap: 16px;
   row-gap: 10px;
@@ -366,14 +360,14 @@ header {
   text-align: right;
 }
 
-/* ── Progress bar ── */
+/* ── Progress bar — height raised to 12px ── */
 #progressBarContainer {
   grid-column: 1 / -1;
   grid-row: 2;
   width: calc(100% + 40px);
   margin-left: -20px;
   margin-right: -20px;
-  height: 8px;
+  height: 12px;
   background: #D1D5DB;
   position: relative;
   overflow: hidden;
@@ -388,11 +382,12 @@ header {
   min-width: 0;
 }
 
+/* stepCounter — font raised to 1rem, top offset adjusted for 12px bar */
 #stepCounter {
   position: absolute;
   right: 20px;
-  top: -24px;
-  font-size: 0.875rem;
+  top: -26px;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
@@ -411,7 +406,7 @@ header {
   transition: opacity 0.15s ease;
 }
 
-/* ── Survey content card ── */
+/* ── Survey content card — scroll fade hint ── */
 #surveyContent {
   width: 100%;
   max-width: var(--col-max);
@@ -427,6 +422,21 @@ header {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 80px - var(--keyboard-height, 0px));
+  position: relative;
+}
+
+/* Fade gradient at bottom signals scrollable content to kiosk users */
+#surveyContent::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: linear-gradient(to bottom, transparent, var(--card-bg));
+  display: block;
+  pointer-events: none;
+  flex-shrink: 0;
 }
 
 /* ── Question container — 2-tier gap system ── */
@@ -442,7 +452,7 @@ header {
   background: transparent;
 }
 
-/* Question label — 22px, explicit bottom margin creates the large question→options gap */
+/* Question label — 22px, explicit bottom margin creates question→options gap */
 #questionContainer > label,
 #questionContainer label.block,
 .question-text,
@@ -456,7 +466,7 @@ label[id$="Label"] {
   width: 100%;
 }
 
-/* Hint text — 16px, dark enough to read in italic at kiosk distance */
+/* Hint text — 16px, readable in italic at kiosk distance */
 #questionContainer p.text-sm,
 #questionContainer p.italic {
   font-size: 1rem;
@@ -500,7 +510,7 @@ label[id$="Label"] {
 #prevBtn:hover  { background: #F9F8F6; border-color: #9CA3AF; }
 #prevBtn:active { transform: scale(0.97); }
 
-/* Next button — base is --orange-dark for better contrast on white text */
+/* Next button — boosted shadow + min-width for dominance */
 #nextBtn {
   height: var(--min-tap);
   padding: 0 2.25rem;
@@ -512,12 +522,12 @@ label[id$="Label"] {
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
-  min-width: 160px;
+  min-width: 200px;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(196,82,0,0.32);
+  box-shadow: 0 4px 14px rgba(196,82,0,0.45);
 }
 
-#nextBtn:hover  { background: #A34400; box-shadow: 0 3px 12px rgba(196,82,0,0.42); }
+#nextBtn:hover  { background: #A34400; box-shadow: 0 6px 18px rgba(196,82,0,0.52); }
 #nextBtn:active { transform: scale(0.97); }
 
 #nextBtn:disabled,
@@ -530,13 +540,14 @@ label[id$="Label"] {
   transition: transform 0.05s ease-out !important;
 }
 
-/* ── Global selected state — stronger border, glow, darker text ── */
+/* ── Global selected state — 3px border, glow, scale, darker text ── */
 input.visually-hidden:checked + label {
   background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
   border-width: 3px !important;
   color:        var(--orange-darker) !important;
   box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
 .visually-hidden {
@@ -591,11 +602,11 @@ input.visually-hidden:checked + label {
 }
 
 .emoji-radio-group input.visually-hidden:checked + label {
-  background: var(--orange-light) !important;
+  background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
   border-width: 3px !important;
-  box-shadow: 0 0 0 3px rgba(232,96,0,0.15) !important;
-  transform: scale(1.04);
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
 .emoji-radio-group input.visually-hidden:checked + label > span:last-child {
@@ -631,11 +642,12 @@ input.visually-hidden:checked + label {
 .number-scale-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
 .number-scale-group input.visually-hidden:checked + label {
-  background: var(--orange-light) !important;
+  background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
   border-width: 3px !important;
-  color: var(--orange-darker) !important;
-  box-shadow: 0 0 0 3px rgba(232,96,0,0.15) !important;
+  color:        var(--orange-darker) !important;
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
 /* ── Star rating ── */
@@ -759,11 +771,12 @@ input.visually-hidden:checked + label {
 .followup-option-label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
 input.visually-hidden:checked + .followup-option-label {
-  background: var(--orange-light) !important;
+  background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
   border-width: 3px !important;
-  color: var(--orange-darker) !important;
-  box-shadow: 0 0 0 3px rgba(232,96,0,0.15) !important;
+  color:        var(--orange-darker) !important;
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  transform:    scale(1.03) !important;
 }
 
 /* ── Checkbox group ── */
@@ -887,7 +900,7 @@ textarea:focus {
 @media (max-width: 720px) {
   header {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 8px;
+    grid-template-rows: auto auto 12px;
   }
 
   #mainTitle {
@@ -975,5 +988,9 @@ textarea:focus {
 
   #buttonContainer {
     padding-top: 20px;
+  }
+
+  #nextBtn {
+    min-width: 200px;
   }
 }

@@ -1,13 +1,10 @@
 // FILE: ui/navigation/core.js
 // PURPOSE: Core navigation functions (goNext, goPrev, showQuestion)
-// VERSION: 5.4.0
-// CHANGES FROM 5.3.0:
-//   - safe storage key resolution via _getStorageKey()
-//   - active-survey-aware getQuestions() via config helpers
-//   - cleanupInputFocusScroll() prevents duplicate listeners
-//   - updateAdminCount() now reflects both queues
-//   - preserves all your render-generation guards + fade logic
-// DEPENDENCIES: window.dataUtils, window.appState
+// VERSION: 5.5.0
+// CHANGES FROM 5.4.0:
+//   - FIX: resume index clamped to valid question bounds in showQuestion()
+//   - FIX: safeGetLocalStorage / safeSetLocalStorage resolved via window.dataHandlers
+//   - no other logic changes
 
 // ─── Module-level render-cancellation state ───────────────────────────────────
 let _pendingRenderTimer = null;
@@ -221,8 +218,21 @@ function _cancelPendingRender() {
 }
 
 export function showQuestion(index) {
-  const { globals } = getDependencies();
+  const { globals, appState } = getDependencies();
   const questionContainer = globals?.questionContainer;
+
+  // ── FIX: clamp resume index to valid bounds ──────────────────────────────
+  const questions = getQuestions();
+  if (questions.length > 0 && index >= questions.length) {
+    console.warn(
+      `[NAV] Resume index ${index} out of bounds ` +
+      `(survey has ${questions.length} questions) — clamping to 0`
+    );
+    index = 0;
+    appState.currentQuestionIndex = 0;
+    saveState();
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   _cancelPendingRender();
 
@@ -244,7 +254,7 @@ export function showQuestion(index) {
 }
 
 function _renderQuestion(index, generation) {
-  const { globals, appState, typewriterManager, dataUtils } = getDependencies();
+  const { globals, appState, typewriterManager, dataUtils, dataHandlers } = getDependencies();
   const questionContainer = globals?.questionContainer;
   const nextBtn = globals?.nextBtn;
   const prevBtn = globals?.prevBtn;
@@ -318,20 +328,27 @@ function _renderQuestion(index, generation) {
 
     if (generation !== _renderGeneration) return;
 
+    // ── FIX: resolve storage helpers via window.dataHandlers ───────────────
     try {
+      const { dataHandlers } = getDependencies();
       const questions = getQuestions();
-      const errorLog = JSON.parse(safeGetLocalStorage('errorLog') || '[]');
-      errorLog.push({
-        timestamp: new Date().toISOString(),
-        error: error.message,
-        stack: error.stack,
-        questionIndex: index,
-        questionId: questions[index]?.id,
-      });
-      safeSetLocalStorage('errorLog', JSON.stringify(errorLog.slice(-20)));
+
+      if (dataHandlers?.safeGetLocalStorage && dataHandlers?.safeSetLocalStorage) {
+        const raw = dataHandlers.safeGetLocalStorage('errorLog');
+        const errorLog = Array.isArray(raw) ? raw : [];
+        errorLog.push({
+          timestamp: new Date().toISOString(),
+          error: error.message,
+          stack: error.stack,
+          questionIndex: index,
+          questionId: questions[index]?.id,
+        });
+        dataHandlers.safeSetLocalStorage('errorLog', errorLog.slice(-20));
+      }
     } catch (e) {
       console.error('Could not log error:', e);
     }
+    // ────────────────────────────────────────────────────────────────────────
 
     if (nextBtn) nextBtn.disabled = true;
     if (prevBtn) prevBtn.disabled = true;

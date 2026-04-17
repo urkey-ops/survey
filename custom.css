@@ -1,19 +1,19 @@
 /* FILE: custom.css
-   VERSION: 5.4.0
-   FIXES:
-   - Header CSS Grid: row1 = title + admin card, row2 = progress bar
-   - Admin panel redesigned as minimal utility card
-   - Emoji row always 4 columns, single line
-   - Location/age grids capped at 3 cols max for text options
-   - Two-line labels stack vertically inside box
-   - Followup drawer centered, consistent padding
-   - surveyContent max-height accounts for keyboard
-   - buttonContainer always visible, never pushed off screen
-   - stepCounter repositioned (no overlap)
-   - Checkbox indicator tops out on text wrap
-   - followup-sub-grid separate from main grid class
-   - iPad/PWA tap fix: start screen fully non-interactive when hidden
-   - iPad/PWA tap fix: header/title elevated above overlapping layers
+   VERSION: 5.5.0
+   CHANGES FROM 5.4.0:
+   - --min-tap raised 52px → 60px for landscape kiosk standing-distance use
+   - --text-muted darkened #9CA3AF → #6B7280 for readable contrast at arm's length
+   - Question label font-size raised 1.2rem → 1.375rem (22px)
+   - Option labels (emoji, location, age, followup, checkbox) raised 0.9rem → 1.125rem (18px)
+   - Option label font-weight raised 500 → 600 across all types
+   - Hint/italic text raised 0.85rem → 1rem (16px)
+   - Button text raised 0.95rem → 1.125rem (18px)
+   - Step counter raised 0.8rem → 0.875rem (14px)
+   - Emoji sub-label raised 0.9rem → 1rem (16px)
+   - prevBtn font-weight raised to 600
+   - Admin action buttons min-height raised 44px → 48px
+   - will-change removed from .animate-pulse (animation now finite, no pinning needed)
+   - Added landscape @media block for iPad-specific layout tuning
 */
 
 :root {
@@ -28,14 +28,14 @@
   --card-shadow:     0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
   --text-primary:    #111827;
   --text-secondary:  #4B5563;
-  --text-muted:      #9CA3AF;
+  --text-muted:      #6B7280;
   --border-default:  1.5px solid #D1D5DB;
   --border-selected: 2px solid var(--orange);
   --radius-sm:       8px;
   --radius-md:       10px;
   --radius-lg:       14px;
-  --min-tap:         52px;
-  --font-option:     1rem;
+  --min-tap:         60px;
+  --font-option:     1.125rem;
   --gap-grid:        8px;
   --transition:      background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
   --card-gap:        10px;
@@ -283,7 +283,7 @@ header {
 }
 
 .survey-type-pills button {
-  min-height: 42px;
+  min-height: 48px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(2,132,199,0.22);
@@ -304,7 +304,7 @@ header {
 }
 
 .admin-actions-grid button {
-  min-height: 44px;
+  min-height: 48px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(15,23,42,0.10);
@@ -386,8 +386,8 @@ header {
 #stepCounter {
   position: absolute;
   right: 20px;
-  top: -22px;
-  font-size: 0.8rem;
+  top: -24px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
@@ -434,12 +434,13 @@ header {
   background: transparent;
 }
 
+/* Question label — raised to 22px for kiosk reading distance */
 #questionContainer > label,
 #questionContainer label.block,
 .question-text,
 label[id$="Label"] {
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-size: 1.375rem;
+  font-weight: 700;
   color: var(--text-primary);
   line-height: 1.4;
   margin: 0 0 4px;
@@ -447,9 +448,10 @@ label[id$="Label"] {
   width: 100%;
 }
 
+/* Hint text — raised to 16px */
 #questionContainer p.text-sm,
 #questionContainer p.italic {
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--text-secondary);
   margin: -8px 0 0;
   font-style: italic;
@@ -477,7 +479,7 @@ label[id$="Label"] {
   color: var(--text-secondary);
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 1.125rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
@@ -495,7 +497,7 @@ label[id$="Label"] {
   color: #FFFFFF;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 1.125rem;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
@@ -532,6 +534,7 @@ input.visually-hidden:checked + label {
   border: 0;
 }
 
+/* ── Emoji radio ── */
 .emoji-radio-group {
   display: grid !important;
   grid-template-columns: repeat(4, 1fr) !important;
@@ -564,9 +567,10 @@ input.visually-hidden:checked + label {
   justify-content: center;
 }
 
+/* Emoji sub-label — raised to 16px, weight to 600 */
 .emoji-radio-group label > span:last-child {
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--text-secondary);
   text-align: center;
   line-height: 1.2;
@@ -583,6 +587,7 @@ input.visually-hidden:checked + label {
   color: var(--orange-dark) !important;
 }
 
+/* ── Number scale ── */
 .number-scale-group {
   display: flex !important;
   flex-wrap: nowrap !important;
@@ -598,12 +603,12 @@ input.visually-hidden:checked + label {
   transition: var(--transition);
   cursor: pointer;
   flex: 1 1 0;
-  min-width: 48px;
-  min-height: 48px;
+  min-width: 52px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 1.125rem;
   font-weight: 700;
   color: var(--text-secondary);
 }
@@ -616,6 +621,7 @@ input.visually-hidden:checked + label {
   color: var(--orange-dark) !important;
 }
 
+/* ── Star rating ── */
 .star-rating {
   display: flex;
   flex-direction: row-reverse;
@@ -624,6 +630,7 @@ input.visually-hidden:checked + label {
   margin-top: 8px;
 }
 
+/* ── Location / Age grids — option labels raised to 18px, weight to 600 ── */
 .location-radio-group,
 .age-radio-group {
   display: grid;
@@ -645,8 +652,8 @@ input.visually-hidden:checked + label {
   background: #FAFAFA;
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1.125rem;
+  font-weight: 600;
   line-height: 1.3;
   color: var(--text-secondary);
   transition: var(--transition);
@@ -662,6 +669,7 @@ input.visually-hidden:checked + label {
   width: 100%;
 }
 
+/* ── Followup radio — raised to 18px, weight to 600 ── */
 .followup-radio-group {
   display: grid;
   gap: var(--gap-grid);
@@ -679,8 +687,8 @@ input.visually-hidden:checked + label {
   background: #FAFAFA;
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1.125rem;
+  font-weight: 600;
   color: var(--text-secondary);
   transition: var(--transition);
 }
@@ -697,7 +705,7 @@ input.visually-hidden:checked + label {
 }
 
 .followup-panel-label {
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 10px;
@@ -714,12 +722,13 @@ input.visually-hidden:checked + label {
   flex: 0 0 auto;
 }
 
+/* Followup option pill — raised to 16px, weight to 600 */
 .followup-option-label {
   display: inline-flex;
   align-items: center;
-  padding: 9px 16px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  padding: 10px 18px;
+  font-size: 1rem;
+  font-weight: 600;
   border: 1.5px solid #D1D5DB;
   border-radius: 999px;
   background: #FFFFFF;
@@ -738,6 +747,7 @@ input.visually-hidden:checked + .followup-option-label {
   border-width: 2px !important;
 }
 
+/* ── Checkbox group — raised to 18px, weight to 600 ── */
 .checkbox-group {
   display: grid;
   gap: var(--gap-grid);
@@ -753,8 +763,8 @@ input.visually-hidden:checked + .followup-option-label {
   background: #FAFAFA;
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1.125rem;
+  font-weight: 600;
   color: var(--text-secondary);
   transition: var(--transition);
   gap: 8px;
@@ -777,6 +787,7 @@ input.visually-hidden:checked + .followup-option-label {
   transition: var(--transition);
 }
 
+/* ── Text inputs ── */
 .other-text-input {
   width: 100%;
   border: 1.5px solid #D1D5DB;
@@ -817,6 +828,7 @@ textarea:focus {
   background: #fff;
 }
 
+/* ── Checkmark / Thank you screen ── */
 .checkmark-container {
   display: flex;
   flex-direction: column;
@@ -848,9 +860,11 @@ textarea:focus {
   fill: none;
 }
 
+/* ── Error ── */
 .error-message { display: none; }
 .error-message.visible { display: block; }
 
+/* ── Tablet portrait narrow fallback ── */
 @media (max-width: 720px) {
   header {
     grid-template-columns: 1fr;
@@ -899,5 +913,53 @@ textarea:focus {
 
   #surveyContent {
     max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 110px - var(--keyboard-height, 0px));
+  }
+}
+
+/* ── iPad landscape kiosk — primary target ── */
+@media (orientation: landscape) and (min-width: 900px) {
+
+  :root {
+    --page-v-pad: 12px;
+    --page-h-pad: 24px;
+    --card-gap:   8px;
+  }
+
+  header {
+    row-gap: 8px;
+    padding: 10px 20px 0;
+  }
+
+  #mainTitle {
+    font-size: 1.05rem;
+    min-height: 32px;
+  }
+
+  /* Tighten survey content to use full remaining landscape height */
+  #surveyContent {
+    max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 72px - var(--keyboard-height, 0px));
+  }
+
+  /* Emoji grid fits comfortably in landscape width */
+  .emoji-radio-group {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 12px;
+  }
+
+  /* Location / age grids can expand to 4 columns in landscape */
+  .location-radio-group,
+  .age-radio-group {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* Number scale circles slightly larger in landscape */
+  .number-scale-group label {
+    min-width: 56px;
+    min-height: 56px;
+  }
+
+  /* Button container breathing room */
+  #buttonContainer {
+    padding-top: 12px;
   }
 }

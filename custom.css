@@ -1,25 +1,24 @@
 /* FILE: custom.css
-   VERSION: 5.5.0
-   CHANGES FROM 5.4.0:
-   - --min-tap raised 52px → 60px for landscape kiosk standing-distance use
-   - --text-muted darkened #9CA3AF → #6B7280 for readable contrast at arm's length
-   - Question label font-size raised 1.2rem → 1.375rem (22px)
-   - Option labels (emoji, location, age, followup, checkbox) raised 0.9rem → 1.125rem (18px)
-   - Option label font-weight raised 500 → 600 across all types
-   - Hint/italic text raised 0.85rem → 1rem (16px)
-   - Button text raised 0.95rem → 1.125rem (18px)
-   - Step counter raised 0.8rem → 0.875rem (14px)
-   - Emoji sub-label raised 0.9rem → 1rem (16px)
-   - prevBtn font-weight raised to 600
-   - Admin action buttons min-height raised 44px → 48px
-   - will-change removed from .animate-pulse (animation now finite, no pinning needed)
-   - Added landscape @media block for iPad-specific layout tuning
+   VERSION: 5.6.0
+   CHANGES FROM 5.5.0:
+   - 2-tier gap system: 20px question-to-options, 8px between options
+   - Question label explicit margin-bottom 20px
+   - Option tile padding 12px 10px → 14px 16px (all option types)
+   - #buttonContainer padding-top 14px → 20px
+   - #nextBtn base color → --orange-dark (#C45200) for better contrast
+   - Selected tile border → 3px + box-shadow glow
+   - Selected text color → #8B3A00 (passes contrast on --orange-light)
+   - --orange-light tint darkened #FFF3EB → #FFE5CC
+   - Hint/italic text color → #374151
+   - --text-muted deepened #6B7280 → #5A6270
+   - Followup panel label font-size raised to 1rem
 */
 
 :root {
   --orange:          #E86000;
   --orange-dark:     #C45200;
-  --orange-light:    #FFF3EB;
+  --orange-darker:   #8B3A00;
+  --orange-light:    #FFE5CC;
   --orange-mid:      #FFD4B0;
   --bg:              #EDEBE7;
   --card-bg:         #FFFFFF;
@@ -28,15 +27,16 @@
   --card-shadow:     0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
   --text-primary:    #111827;
   --text-secondary:  #4B5563;
-  --text-muted:      #6B7280;
+  --text-muted:      #5A6270;
   --border-default:  1.5px solid #D1D5DB;
-  --border-selected: 2px solid var(--orange);
+  --border-selected: 3px solid var(--orange);
   --radius-sm:       8px;
   --radius-md:       10px;
   --radius-lg:       14px;
   --min-tap:         60px;
   --font-option:     1.125rem;
   --gap-grid:        8px;
+  --gap-question:    20px;
   --transition:      background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
   --card-gap:        10px;
   --page-h-pad:      20px;
@@ -68,6 +68,7 @@ label {
   touch-action: manipulation;
 }
 
+/* ── Start screen ── */
 #kioskStartScreen {
   position: fixed !important;
   inset: 0;
@@ -110,6 +111,7 @@ label {
   text-align: center;
 }
 
+/* ── Main shell ── */
 main {
   position: fixed !important;
   inset: 0;
@@ -125,6 +127,7 @@ main {
 
 main:not(.hidden) { display: flex !important; }
 
+/* ── Header card ── */
 header {
   position: relative;
   z-index: 200;
@@ -169,6 +172,7 @@ header {
 
 #mainTitle:active { background: rgba(232,96,0,0.10); }
 
+/* ── Admin controls ── */
 #adminControls {
   position: relative;
   z-index: 205;
@@ -362,6 +366,7 @@ header {
   text-align: right;
 }
 
+/* ── Progress bar ── */
 #progressBarContainer {
   grid-column: 1 / -1;
   grid-row: 2;
@@ -395,6 +400,7 @@ header {
   pointer-events: none;
 }
 
+/* ── Question fade transitions ── */
 #questionContainer.question-fade-out {
   opacity: 0;
   transition: opacity 0.12s ease;
@@ -405,6 +411,7 @@ header {
   transition: opacity 0.15s ease;
 }
 
+/* ── Survey content card ── */
 #surveyContent {
   width: 100%;
   max-width: var(--col-max);
@@ -422,6 +429,7 @@ header {
   max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 80px - var(--keyboard-height, 0px));
 }
 
+/* ── Question container — 2-tier gap system ── */
 #questionContainer {
   width: 100%;
   flex: 1 1 auto;
@@ -429,12 +437,12 @@ header {
   flex-direction: column;
   justify-content: flex-start;
   align-items: stretch;
-  gap: 14px;
+  gap: var(--gap-grid);
   padding-bottom: 8px;
   background: transparent;
 }
 
-/* Question label — raised to 22px for kiosk reading distance */
+/* Question label — 22px, explicit bottom margin creates the large question→options gap */
 #questionContainer > label,
 #questionContainer label.block,
 .question-text,
@@ -443,25 +451,26 @@ label[id$="Label"] {
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.4;
-  margin: 0 0 4px;
+  margin: 0 0 var(--gap-question);
   text-align: left;
   width: 100%;
 }
 
-/* Hint text — raised to 16px */
+/* Hint text — 16px, dark enough to read in italic at kiosk distance */
 #questionContainer p.text-sm,
 #questionContainer p.italic {
   font-size: 1rem;
-  color: var(--text-secondary);
-  margin: -8px 0 0;
+  color: #374151;
+  margin: -14px 0 var(--gap-question);
   font-style: italic;
 }
 
+/* ── Button container ── */
 #buttonContainer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 14px;
+  padding-top: 20px;
   margin-top: auto;
   flex-shrink: 0;
   gap: 12px;
@@ -472,6 +481,7 @@ label[id$="Label"] {
   padding-bottom: 4px;
 }
 
+/* Back button */
 #prevBtn {
   height: var(--min-tap);
   padding: 0 1.5rem;
@@ -490,10 +500,11 @@ label[id$="Label"] {
 #prevBtn:hover  { background: #F9F8F6; border-color: #9CA3AF; }
 #prevBtn:active { transform: scale(0.97); }
 
+/* Next button — base is --orange-dark for better contrast on white text */
 #nextBtn {
   height: var(--min-tap);
   padding: 0 2.25rem;
-  background: var(--orange);
+  background: var(--orange-dark);
   color: #FFFFFF;
   border: none;
   border-radius: var(--radius-sm);
@@ -503,25 +514,29 @@ label[id$="Label"] {
   transition: var(--transition);
   min-width: 160px;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(232,96,0,0.30);
+  box-shadow: 0 2px 8px rgba(196,82,0,0.32);
 }
 
-#nextBtn:hover  { background: var(--orange-dark); box-shadow: 0 3px 12px rgba(232,96,0,0.38); }
+#nextBtn:hover  { background: #A34400; box-shadow: 0 3px 12px rgba(196,82,0,0.42); }
 #nextBtn:active { transform: scale(0.97); }
 
 #nextBtn:disabled,
 #prevBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
+/* ── Option tap states ── */
 .option-label { -webkit-tap-highlight-color: transparent; }
 .option-label:active {
   transform: scale(0.96) !important;
   transition: transform 0.05s ease-out !important;
 }
 
+/* ── Global selected state — stronger border, glow, darker text ── */
 input.visually-hidden:checked + label {
   background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
-  color:        var(--orange-dark) !important;
+  border-width: 3px !important;
+  color:        var(--orange-darker) !important;
+  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
 }
 
 .visually-hidden {
@@ -547,7 +562,7 @@ input.visually-hidden:checked + label {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 14px 8px 10px;
+  padding: 14px 16px 12px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-md);
   background: #FAFAFA;
@@ -567,7 +582,6 @@ input.visually-hidden:checked + label {
   justify-content: center;
 }
 
-/* Emoji sub-label — raised to 16px, weight to 600 */
 .emoji-radio-group label > span:last-child {
   font-size: 1rem;
   font-weight: 600;
@@ -579,12 +593,13 @@ input.visually-hidden:checked + label {
 .emoji-radio-group input.visually-hidden:checked + label {
   background: var(--orange-light) !important;
   border-color: var(--orange) !important;
-  border-width: 2px !important;
+  border-width: 3px !important;
+  box-shadow: 0 0 0 3px rgba(232,96,0,0.15) !important;
   transform: scale(1.04);
 }
 
 .emoji-radio-group input.visually-hidden:checked + label > span:last-child {
-  color: var(--orange-dark) !important;
+  color: var(--orange-darker) !important;
 }
 
 /* ── Number scale ── */
@@ -618,7 +633,9 @@ input.visually-hidden:checked + label {
 .number-scale-group input.visually-hidden:checked + label {
   background: var(--orange-light) !important;
   border-color: var(--orange) !important;
-  color: var(--orange-dark) !important;
+  border-width: 3px !important;
+  color: var(--orange-darker) !important;
+  box-shadow: 0 0 0 3px rgba(232,96,0,0.15) !important;
 }
 
 /* ── Star rating ── */
@@ -630,7 +647,7 @@ input.visually-hidden:checked + label {
   margin-top: 8px;
 }
 
-/* ── Location / Age grids — option labels raised to 18px, weight to 600 ── */
+/* ── Location / Age grids ── */
 .location-radio-group,
 .age-radio-group {
   display: grid;
@@ -646,7 +663,7 @@ input.visually-hidden:checked + label {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 12px 10px;
+  padding: 14px 16px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
   background: #FAFAFA;
@@ -669,7 +686,7 @@ input.visually-hidden:checked + label {
   width: 100%;
 }
 
-/* ── Followup radio — raised to 18px, weight to 600 ── */
+/* ── Followup radio ── */
 .followup-radio-group {
   display: grid;
   gap: var(--gap-grid);
@@ -681,7 +698,7 @@ input.visually-hidden:checked + label {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 12px 10px;
+  padding: 14px 16px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
   background: #FAFAFA;
@@ -695,6 +712,7 @@ input.visually-hidden:checked + label {
 
 .followup-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
 
+/* ── Followup drawer ── */
 .followup-drawer {
   margin-top: 12px;
   padding: 14px 16px;
@@ -722,7 +740,7 @@ input.visually-hidden:checked + label {
   flex: 0 0 auto;
 }
 
-/* Followup option pill — raised to 16px, weight to 600 */
+/* Followup option pill */
 .followup-option-label {
   display: inline-flex;
   align-items: center;
@@ -743,11 +761,12 @@ input.visually-hidden:checked + label {
 input.visually-hidden:checked + .followup-option-label {
   background: var(--orange-light) !important;
   border-color: var(--orange) !important;
-  color: var(--orange-dark) !important;
-  border-width: 2px !important;
+  border-width: 3px !important;
+  color: var(--orange-darker) !important;
+  box-shadow: 0 0 0 3px rgba(232,96,0,0.15) !important;
 }
 
-/* ── Checkbox group — raised to 18px, weight to 600 ── */
+/* ── Checkbox group ── */
 .checkbox-group {
   display: grid;
   gap: var(--gap-grid);
@@ -757,7 +776,7 @@ input.visually-hidden:checked + .followup-option-label {
 .checkbox-group label {
   display: flex;
   align-items: flex-start;
-  padding: 12px 10px;
+  padding: 14px 16px;
   border: 1.5px solid #D1D5DB;
   border-radius: var(--radius-sm);
   background: #FAFAFA;
@@ -767,7 +786,7 @@ input.visually-hidden:checked + .followup-option-label {
   font-weight: 600;
   color: var(--text-secondary);
   transition: var(--transition);
-  gap: 8px;
+  gap: 10px;
 }
 
 .checkbox-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
@@ -783,7 +802,7 @@ input.visually-hidden:checked + .followup-option-label {
   justify-content: center;
   flex-shrink: 0;
   align-self: flex-start;
-  margin-top: 1px;
+  margin-top: 2px;
   transition: var(--transition);
 }
 
@@ -935,31 +954,26 @@ textarea:focus {
     min-height: 32px;
   }
 
-  /* Tighten survey content to use full remaining landscape height */
   #surveyContent {
     max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 72px - var(--keyboard-height, 0px));
   }
 
-  /* Emoji grid fits comfortably in landscape width */
   .emoji-radio-group {
     grid-template-columns: repeat(4, 1fr) !important;
     gap: 12px;
   }
 
-  /* Location / age grids can expand to 4 columns in landscape */
   .location-radio-group,
   .age-radio-group {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  /* Number scale circles slightly larger in landscape */
   .number-scale-group label {
     min-width: 56px;
     min-height: 56px;
   }
 
-  /* Button container breathing room */
   #buttonContainer {
-    padding-top: 12px;
+    padding-top: 20px;
   }
 }

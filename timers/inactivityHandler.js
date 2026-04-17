@@ -1,15 +1,12 @@
 // FILE: timers/inactivityHandler.js
 // PURPOSE: Handle user inactivity detection and auto-reset
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 3.3.0
-// CHANGES FROM 3.2.0:
-//   - adds window.focus listener alongside visibilitychange
-//     because some iPad PWA resumptions do not reliably fire visibilitychange
-//   - guards setupInactivityVisibilityHandler against duplicate binds
-//   - getQuestions() now reads active survey type consistently
-//   - performKioskReset() uses safeRemoveLocalStorage
-//   - clears throttleTimeout in removeInactivityListeners and on reset
-//   - periodic sync timer cleanup added to full teardown path
+// VERSION: 3.4.0
+// CHANGES FROM 3.3.0:
+//   - adds cleanupVideoLoop() call in performKioskReset()
+//   - dedupes focus + visibilitychange with shared handleAppVisible()
+//   - guards against duplicate binds more explicitly
+//   - uses timerManager consistently for inactivity/sync cleanup
 
 let boundResetInactivityTimer = null;
 let throttleTimeout = null;
@@ -286,6 +283,14 @@ export function resumeInactivityTimer() {
   resetInactivityTimer();
 }
 
+// ── Shared visible handler ────────────────────────────────────────────────────
+
+function handleAppVisible() {
+  console.log('[INACTIVITY] App visible — restoring listeners and restarting timer');
+  addInactivityListeners();
+  resetInactivityTimer();
+}
+
 // ── Visibility handler ────────────────────────────────────────────────────────
 
 function handleInactivityVisibilityChange() {
@@ -294,9 +299,7 @@ function handleInactivityVisibilityChange() {
     pauseInactivityTimer();
     removeInactivityListeners();
   } else {
-    console.log('[INACTIVITY] Visible — restoring listeners and restarting timer');
-    addInactivityListeners();
-    resetInactivityTimer();
+    handleAppVisible();
   }
 }
 
@@ -305,8 +308,7 @@ function handleInactivityVisibilityChange() {
 function handleWindowFocus() {
   if (!document.hidden) {
     console.log('[INACTIVITY] window.focus — restoring listeners and restarting timer');
-    addInactivityListeners();
-    resetInactivityTimer();
+    handleAppVisible();
   }
 }
 
@@ -347,6 +349,7 @@ export function performKioskReset() {
 
   const { appState, dataHandlers } = getDependencies();
 
+  // Cleanup UI listeners
   if (window.uiHandlers?.cleanupStartScreenListeners) {
     window.uiHandlers.cleanupStartScreenListeners();
   }
@@ -356,6 +359,19 @@ export function performKioskReset() {
   if (window.uiHandlers?.cleanupIntervals) {
     window.uiHandlers.cleanupIntervals();
   }
+
+  // Cleanup video loop to prevent stacking on reset
+  try {
+    if (typeof window.cleanupVideoLoop === 'function') {
+      window.cleanupVideoLoop();
+      console.log('[INACTIVITY] ✅ Video loop cleaned up on reset');
+    }
+  } catch (videoErr) {
+    console.warn('[INACTIVITY] Video loop cleanup failed (non-fatal):', videoErr);
+  }
+
+  // Cleanup visibility/focus handlers to prevent duplicate binds on re-init
+  cleanupInactivityVisibilityHandler();
 
   _safeRemoveStorageKey();
 
@@ -384,6 +400,7 @@ export function performKioskReset() {
   if (nextBtn) nextBtn.disabled = true;
   if (prevBtn) prevBtn.disabled = true;
 
+  // Re-init admin panel after short delay
   setTimeout(() => {
     try {
       if (typeof window.setupAdminPanel === 'function') {
@@ -393,6 +410,10 @@ export function performKioskReset() {
     } catch (err) {
       console.warn('[INACTIVITY] Admin panel re-init failed:', err);
     }
+
+    // Re-bind visibility/focus handlers after reset
+    setupInactivityVisibilityHandler();
+    console.log('[INACTIVITY] ✅ Visibility handlers re-bound after reset');
   }, 150);
 }
 
@@ -439,7 +460,9 @@ function stopQuestionTimer(questionId) {
 
 export function isInactivityTimerActive() {
   const { appState, timerManager } = getDependencies();
-  return timerManager ? timerManager.hasInactivityTimer?.() : appState.inactivityTimer !== null;
+  return timerManager
+    ? timerManager.hasInactivityTimer?.()
+    : appState.inactivityTimer !== null;
 }
 
 export function getInactivityTimeRemaining() {

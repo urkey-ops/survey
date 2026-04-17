@@ -1,6 +1,6 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.4.0
+// VERSION: 3.5.0
 // FIXES:
 //   - reads active survey type and correct queue key
 //   - includes surveyType in submissionData for API routing
@@ -8,6 +8,7 @@
 //   - prevents duplicate submit/reset countdown chains
 //   - clears pending auto-advance timer before completion
 //   - never throws during completion UI / reset flow
+//   - prevents blank/metadata-only submissions from being queued
 // DEPENDENCIES: core.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -44,7 +45,6 @@ function normalizeSubmissionPayload(formData, questions) {
       normalized[q.name] = { main, other };
       normalized[`other_${q.name}`] = other;
 
-      // Backward-compatible legacy mirror for any existing downstream readers
       normalized['other' + q.id] = other;
       return;
     }
@@ -68,7 +68,6 @@ function normalizeSubmissionPayload(formData, questions) {
       normalized[q.name] = selected;
       normalized[`other_${q.name}`] = selected.includes('Other') ? otherValue : '';
 
-      // Backward-compatible legacy mirror
       normalized['other' + q.id] = normalized[`other_${q.name}`];
       return;
     }
@@ -92,6 +91,64 @@ function normalizeSubmissionPayload(formData, questions) {
 }
 
 /**
+ * Returns true only if payload contains at least one real survey answer.
+ * Excludes metadata/technical fields so blank sessions are never queued.
+ */
+function hasMeaningfulResponse(formData = {}) {
+  if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
+    return false;
+  }
+
+  const technicalKeys = new Set([
+    'id',
+    'submissionId',
+    'sessionId',
+    'timestamp',
+    'completedAt',
+    'submittedAt',
+    'abandonedAt',
+    'abandonedReason',
+    'surveyStartTime',
+    'surveyType',
+    'kioskId',
+    'sync_status',
+    'syncStatus',
+    'questionTimeSpent',
+    'questionStartTimes',
+    'completionTimeSeconds',
+    'currentQuestionIndex',
+  ]);
+
+  return Object.entries(formData).some(([key, value]) => {
+    if (technicalKeys.has(key)) return false;
+
+    if (value == null) return false;
+
+    if (typeof value === 'string') {
+      return value.trim() !== '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === 'object') {
+      if ('main' in value || 'other' in value || 'followup' in value) {
+        const main = typeof value.main === 'string' ? value.main.trim() : value.main;
+        const other = typeof value.other === 'string' ? value.other.trim() : value.other;
+        const followup = Array.isArray(value.followup) ? value.followup : [];
+
+        return Boolean(main) || Boolean(other) || followup.length > 0;
+      }
+
+      return Object.keys(value).length > 0;
+    }
+
+    return true;
+  });
+}
+
+/**
  * Submit the completed survey.
  * Called from core.js → goNext() via window.navigationHandler.submitSurvey
  */
@@ -112,7 +169,6 @@ export function submitSurvey() {
     const nextBtn = globals?.nextBtn;
     const progressBar = globals?.progressBar;
 
-    // ── 1. Clear all running timers ────────────────────────────
     if (window.uiHandlers?.clearAllTimers) {
       window.uiHandlers.clearAllTimers();
     }
@@ -121,7 +177,6 @@ export function submitSurvey() {
       dataUtils.clearAutoAdvance();
     }
 
-    // ── 2. Stop timer for last question ────────────────────────
     const questions = dataUtils.getSurveyQuestions
       ? dataUtils.getSurveyQuestions()
       : dataUtils.surveyQuestions;
@@ -129,12 +184,10 @@ export function submitSurvey() {
     const lastQuestion = questions[appState.currentQuestionIndex];
     if (lastQuestion) stopQuestionTimer(lastQuestion.id);
 
-    // ── 3. Total survey time ────────────────────────────────────
     const totalTimeSeconds = window.uiHandlers?.getTotalSurveyTime
       ? window.uiHandlers.getTotalSurveyTime()
       : 0;
 
-    // ── 4. Resolve active survey type and correct queue key ────
     const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
     const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
     const queueKey = surveyConfig?.storageKey ||
@@ -147,10 +200,30 @@ export function submitSurvey() {
     console.log(`[SUBMIT] Queue key   : "${queueKey}"`);
     console.log(`[SUBMIT] Submission  : ${appState.formData.id || '(no id yet)'}`);
 
-    // ── 5. Normalize + build submission object ─────────────────
     const normalizedFormData = normalizeSubmissionPayload(appState.formData, questions);
+    const hasAnswers = hasMeaningfulResponse(normalizedFormData);
 
-    const submissionData = {
+    if (!hasAnswers) {
+      console.warn('[SUBMIT] No meaningful responses found — skipping queue write');
+      try {
+        dataHandlers.recordAnalytics('survey_submit_skipped_blank', {
+          surveyType,
+          questionIndex: appState.currentQuestionIndex,
+          totalTimeSeconds,
+          reason: 'no_meaningful_answers',
+        });
+      } catch (analyticsErr) {
+        console.warn('[ANALYTICS] Failed to record blank-submit skip:', analyticsErr);
+      }
+
+      if (progressBar) progressBar.style.width = '100%';
+      _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
+      return;
+    }
+
+   
+
+          const submissionData = {
       ...normalizedFormData,
       id: normalizedFormData.id || dataHandlers.generateUUID(),
       surveyType,
@@ -160,7 +233,6 @@ export function submitSurvey() {
       sync_status: 'unsynced',
     };
 
-    // ── 6. Atomic queue add ─────────────────────────────────────
     const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
     let submissionQueue = dataHandlers.getSubmissionQueue(queueKey);
 
@@ -177,11 +249,9 @@ export function submitSurvey() {
     dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
     console.log(`[QUEUE] Added to "${queueKey}" (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
 
-    // ── 7. Persist normalized app state too ────────────────────
     appState.formData = { ...submissionData };
     if (typeof saveState === 'function') saveState();
 
-    // ── 8. Record analytics — never crash survey flow ──────────
     try {
       dataHandlers.recordAnalytics('survey_completed', {
         surveyId: submissionData.id,
@@ -194,12 +264,10 @@ export function submitSurvey() {
       console.warn('[ANALYTICS] Failed to record completion:', analyticsErr);
     }
 
-    // ── 9. Progress bar to 100% ─────────────────────────────────
     if (progressBar) progressBar.style.width = '100%';
 
     console.log('[SUBMIT] About to display checkmark...');
 
-    // ── 10. Show completion screen ──────────────────────────────
     _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
 
     console.log('[SUBMIT] Survey submission complete');

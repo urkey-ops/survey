@@ -1,6 +1,6 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel optimized for offline-first iPad kiosk PWA
-// VERSION: 7.6.0 - pointer-only delegated unlock + safe listener teardown
+// VERSION: 7.7.0 - pointer-only delegated unlock + safe listener teardown + meaningful partial-save guard
 // DEPENDENCIES: window.globals, window.dataHandlers, window.CONSTANTS, window.KIOSK_CONFIG
 
 const CLEAR_PASSWORD = '8765';
@@ -178,6 +178,54 @@ function trackAdminEvent(eventType, metadata = {}) {
   } catch (error) {
     console.warn('[ADMIN] Analytics tracking failed (offline safe):', error.message);
   }
+}
+
+/**
+ * Returns true only if formData contains at least one real survey answer.
+ * Excludes metadata/technical fields so blank sessions are not queued.
+ */
+function hasMeaningfulResponse(formData = {}) {
+  if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
+    return false;
+  }
+
+  const technicalKeys = new Set([
+    'id',
+    'submissionId',
+    'sessionId',
+    'timestamp',
+    'submittedAt',
+    'abandonedAt',
+    'abandonedReason',
+    'surveyStartTime',
+    'surveyType',
+    'kioskId',
+    'sync_status',
+    'syncStatus',
+    'questionTimeSpent',
+    'questionStartTimes',
+    'currentQuestionIndex',
+  ]);
+
+  return Object.entries(formData).some(([key, value]) => {
+    if (technicalKeys.has(key)) return false;
+
+    if (value == null) return false;
+
+    if (typeof value === 'string') {
+      return value.trim() !== '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === 'object') {
+      return Object.keys(value).length > 0;
+    }
+
+    return true;
+  });
 }
 
 function resetStuckFlagsIfNeeded() {
@@ -479,8 +527,8 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
 
       try {
         const currentSurveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
-        const partialData = window.appState?.formData;
-        const hasPartialData = partialData && Object.keys(partialData).length > 1;
+        const partialData = window.appState?.formData || {};
+        const hasPartialData = hasMeaningfulResponse(partialData);
 
         if (hasPartialData) {
           const queueKey =
@@ -503,6 +551,7 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
               surveyType: currentSurveyType,
               abandonedAt: new Date().toISOString(),
               abandonedReason: 'survey_type_switch',
+              isPartial: true,
               sync_status: 'unsynced_partial',
             });
 
@@ -511,6 +560,8 @@ function buildSurveyTypeSwitcher(adminControls, resetTimer) {
           } else {
             console.warn('[ADMIN] Queue full — partial data not saved before type switch');
           }
+        } else {
+          console.log('[ADMIN] No meaningful survey answers found — skipping partial save before type switch');
         }
       } catch (saveErr) {
         console.warn('[ADMIN] Could not save partial data before type switch:', saveErr);
@@ -1123,7 +1174,7 @@ export function setupAdminPanel() {
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.6.0 — pointer-only unlock)');
+  console.log('🎛️ ADMIN PANEL CONFIGURED (v7.7.0 — pointer-only unlock + meaningful partial guard)');
   console.log('═══════════════════════════════════════════════════════');
   console.log(' Mode:           Offline-First iPad Kiosk PWA');
   console.log(` Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);

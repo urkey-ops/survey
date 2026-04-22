@@ -3,8 +3,8 @@
 // VERSION: 9.5.0
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v22';
-const RUNTIME_CACHE = 'kiosk-runtime-v22';
+const CACHE_NAME = 'kiosk-survey-v24';
+const RUNTIME_CACHE = 'kiosk-runtime-v24';
 const MEDIA_CACHE = 'kiosk-media-v1'; // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation

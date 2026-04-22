@@ -1,14 +1,14 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.5.0
-// FIXES:
-//   - reads active survey type and correct queue key
-//   - includes surveyType in submissionData for API routing
-//   - normalizes payload before queueing so nested answer shapes are sync-safe
-//   - prevents duplicate submit/reset countdown chains
-//   - clears pending auto-advance timer before completion
-//   - never throws during completion UI / reset flow
-//   - prevents blank/metadata-only submissions from being queued
+// VERSION: 3.6.0
+// CHANGES FROM 3.5.0:
+//   - normalizeSubmissionPayload: handles selector-textarea { category, text } shape
+//     Flattens to two flat fields for sheet compatibility:
+//       final_thoughts_category  (string | '')
+//       final_thoughts_text      (string | '')
+//     Original nested key is removed from payload after flattening.
+//   - hasMeaningfulResponse: handles selector-textarea { category, text } shape
+//     (previously fell through to generic object branch — same fix as dataSync.js)
 // DEPENDENCIES: core.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -19,6 +19,13 @@ let resetTriggered = false;
 /**
  * Convert UI-captured values into a stable queue/API-safe payload.
  * Keeps original field names but normalizes nested values consistently.
+ *
+ * selector-textarea is the only type that changes its key structure:
+ *   IN:  { final_thoughts: { category: 'thank_you', text: 'Thank you for...' } }
+ *   OUT: { final_thoughts_category: 'thank_you', final_thoughts_text: 'Thank you for...' }
+ *        (original final_thoughts key removed)
+ *
+ * This keeps the Google Sheet columns clean and avoids a JSON blob in one cell.
  */
 function normalizeSubmissionPayload(formData, questions) {
   const normalized = { ...formData };
@@ -26,6 +33,27 @@ function normalizeSubmissionPayload(formData, questions) {
   questions.forEach((q) => {
     const rawValue = normalized[q.name];
 
+    // ── selector-textarea ──────────────────────────────────────────────────
+    // Flatten { category, text } → two separate flat fields.
+    // The nested key is deleted so it never reaches the sheet as a JSON string.
+    if (q.type === 'selector-textarea') {
+      const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
+        ? rawValue
+        : { category: null, text: typeof rawValue === 'string' ? rawValue : '' };
+
+      const category = valueObj.category ? String(valueObj.category).trim() : '';
+      const text     = typeof valueObj.text === 'string' ? valueObj.text.trim() : '';
+
+      // Flat sheet columns
+      normalized[`${q.name}_category`] = category;
+      normalized[`${q.name}_text`]     = text;
+
+      // Remove the nested object — sheet should never receive it
+      delete normalized[q.name];
+      return;
+    }
+
+    // ── number-scale ───────────────────────────────────────────────────────
     if (q.type === 'number-scale') {
       if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
         const parsed = Number(rawValue);
@@ -34,54 +62,58 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
+    // ── radio-with-other ───────────────────────────────────────────────────
     if (q.type === 'radio-with-other') {
       const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
         ? rawValue
         : { main: rawValue || '', other: normalized[`other_${q.name}`] || '' };
 
-      const main = valueObj.main || '';
+      const main  = valueObj.main || '';
       const other = main === 'Other' ? (valueObj.other || '') : '';
 
-      normalized[q.name] = { main, other };
+      normalized[q.name]            = { main, other };
       normalized[`other_${q.name}`] = other;
-
-      normalized['other' + q.id] = other;
+      normalized['other' + q.id]    = other; // legacy compat
       return;
     }
 
+    // ── radio-with-followup ────────────────────────────────────────────────
     if (q.type === 'radio-with-followup') {
       const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
         ? rawValue
         : { main: rawValue || '', followup: [] };
 
       normalized[q.name] = {
-        main: valueObj.main || '',
+        main:     valueObj.main || '',
         followup: Array.isArray(valueObj.followup) ? [...valueObj.followup] : []
       };
       return;
     }
 
+    // ── checkbox-with-other ────────────────────────────────────────────────
     if (q.type === 'checkbox-with-other') {
-      const selected = Array.isArray(rawValue) ? [...rawValue] : [];
+      const selected   = Array.isArray(rawValue) ? [...rawValue] : [];
       const otherValue = normalized[`other_${q.name}`] || normalized['other' + q.id] || '';
 
-      normalized[q.name] = selected;
+      normalized[q.name]            = selected;
       normalized[`other_${q.name}`] = selected.includes('Other') ? otherValue : '';
-
-      normalized['other' + q.id] = normalized[`other_${q.name}`];
+      normalized['other' + q.id]    = normalized[`other_${q.name}`]; // legacy compat
       return;
     }
 
+    // ── checkbox ───────────────────────────────────────────────────────────
     if (q.type === 'checkbox') {
       normalized[q.name] = Array.isArray(rawValue) ? [...rawValue] : [];
       return;
     }
 
+    // ── textarea ───────────────────────────────────────────────────────────
     if (q.type === 'textarea') {
       normalized[q.name] = typeof rawValue === 'string' ? rawValue.trim() : (rawValue || '');
       return;
     }
 
+    // ── radio / emoji-radio / star-rating ──────────────────────────────────
     if (q.type === 'radio' || q.type === 'emoji-radio' || q.type === 'star-rating') {
       normalized[q.name] = rawValue ?? '';
     }
@@ -93,6 +125,13 @@ function normalizeSubmissionPayload(formData, questions) {
 /**
  * Returns true only if payload contains at least one real survey answer.
  * Excludes metadata/technical fields so blank sessions are never queued.
+ *
+ * After normalizeSubmissionPayload runs, selector-textarea data exists as
+ * flat string fields (final_thoughts_category, final_thoughts_text) so the
+ * plain string branch handles them automatically — no special case needed here.
+ *
+ * This function is also called PRE-normalization in the blank-guard check,
+ * so we also handle the raw { category, text } shape defensively.
  */
 function hasMeaningfulResponse(formData = {}) {
   if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
@@ -121,11 +160,14 @@ function hasMeaningfulResponse(formData = {}) {
 
   return Object.entries(formData).some(([key, value]) => {
     if (technicalKeys.has(key)) return false;
-
-    if (value == null) return false;
+    if (value == null)           return false;
 
     if (typeof value === 'string') {
       return value.trim() !== '';
+    }
+
+    if (typeof value === 'number') {
+      return true; // 0 is a valid rating
     }
 
     if (Array.isArray(value)) {
@@ -133,11 +175,18 @@ function hasMeaningfulResponse(formData = {}) {
     }
 
     if (typeof value === 'object') {
-      if ('main' in value || 'other' in value || 'followup' in value) {
-        const main = typeof value.main === 'string' ? value.main.trim() : value.main;
-        const other = typeof value.other === 'string' ? value.other.trim() : value.other;
-        const followup = Array.isArray(value.followup) ? value.followup : [];
+      // selector-textarea raw shape (pre-normalization defensive guard)
+      if ('category' in value || 'text' in value) {
+        const hasCategory = value.category != null && String(value.category).trim() !== '';
+        const hasText     = typeof value.text === 'string' && value.text.trim() !== '';
+        return hasCategory || hasText;
+      }
 
+      // radio-with-other / radio-with-followup
+      if ('main' in value || 'other' in value || 'followup' in value) {
+        const main     = typeof value.main    === 'string' ? value.main.trim()    : value.main;
+        const other    = typeof value.other   === 'string' ? value.other.trim()   : value.other;
+        const followup = Array.isArray(value.followup)     ? value.followup       : [];
         return Boolean(main) || Boolean(other) || followup.length > 0;
       }
 
@@ -165,9 +214,9 @@ export function submitSurvey() {
     const { globals, appState, dataUtils, dataHandlers } = getDependencies();
 
     const questionContainer = globals?.questionContainer;
-    const prevBtn = globals?.prevBtn;
-    const nextBtn = globals?.nextBtn;
-    const progressBar = globals?.progressBar;
+    const prevBtn           = globals?.prevBtn;
+    const nextBtn           = globals?.nextBtn;
+    const progressBar       = globals?.progressBar;
 
     if (window.uiHandlers?.clearAllTimers) {
       window.uiHandlers.clearAllTimers();
@@ -177,7 +226,7 @@ export function submitSurvey() {
       dataUtils.clearAutoAdvance();
     }
 
-    const questions = dataUtils.getSurveyQuestions
+    const questions    = dataUtils.getSurveyQuestions
       ? dataUtils.getSurveyQuestions()
       : dataUtils.surveyQuestions;
 
@@ -188,9 +237,9 @@ export function submitSurvey() {
       ? window.uiHandlers.getTotalSurveyTime()
       : 0;
 
-    const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+    const surveyType   = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
     const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
-    const queueKey = surveyConfig?.storageKey ||
+    const queueKey     = surveyConfig?.storageKey ||
       (surveyType === 'type2'
         ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
         : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
@@ -200,17 +249,18 @@ export function submitSurvey() {
     console.log(`[SUBMIT] Queue key   : "${queueKey}"`);
     console.log(`[SUBMIT] Submission  : ${appState.formData.id || '(no id yet)'}`);
 
+    // Normalize first — selector-textarea becomes flat string fields here
     const normalizedFormData = normalizeSubmissionPayload(appState.formData, questions);
-    const hasAnswers = hasMeaningfulResponse(normalizedFormData);
+    const hasAnswers         = hasMeaningfulResponse(normalizedFormData);
 
     if (!hasAnswers) {
       console.warn('[SUBMIT] No meaningful responses found — skipping queue write');
       try {
         dataHandlers.recordAnalytics('survey_submit_skipped_blank', {
           surveyType,
-          questionIndex: appState.currentQuestionIndex,
+          questionIndex:    appState.currentQuestionIndex,
           totalTimeSeconds,
-          reason: 'no_meaningful_answers',
+          reason:           'no_meaningful_answers',
         });
       } catch (analyticsErr) {
         console.warn('[ANALYTICS] Failed to record blank-submit skip:', analyticsErr);
@@ -221,20 +271,18 @@ export function submitSurvey() {
       return;
     }
 
-   
-
-          const submissionData = {
+    const submissionData = {
       ...normalizedFormData,
-      id: normalizedFormData.id || dataHandlers.generateUUID(),
+      id:                    normalizedFormData.id || dataHandlers.generateUUID(),
       surveyType,
-      questionTimeSpent: { ...appState.questionTimeSpent },
+      questionTimeSpent:     { ...appState.questionTimeSpent },
       completionTimeSeconds: totalTimeSeconds,
-      completedAt: new Date().toISOString(),
-      sync_status: 'unsynced',
+      completedAt:           new Date().toISOString(),
+      sync_status:           'unsynced',
     };
 
     const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
-    let submissionQueue = dataHandlers.getSubmissionQueue(queueKey);
+    let submissionQueue  = dataHandlers.getSubmissionQueue(queueKey);
 
     if (!Array.isArray(submissionQueue)) {
       submissionQueue = [];
@@ -249,14 +297,20 @@ export function submitSurvey() {
     dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
     console.log(`[QUEUE] Added to "${queueKey}" (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
 
+    // Log flattened final_thoughts fields if present (type2 only)
+    if (submissionData.final_thoughts_category !== undefined || submissionData.final_thoughts_text !== undefined) {
+      console.log(`[SUBMIT] final_thoughts_category : "${submissionData.final_thoughts_category || ''}"`);
+      console.log(`[SUBMIT] final_thoughts_text     : "${submissionData.final_thoughts_text     || ''}"`);
+    }
+
     appState.formData = { ...submissionData };
     if (typeof saveState === 'function') saveState();
 
     try {
       dataHandlers.recordAnalytics('survey_completed', {
-        surveyId: submissionData.id,
+        surveyId:              submissionData.id,
         surveyType,
-        questionIndex: appState.currentQuestionIndex,
+        questionIndex:         appState.currentQuestionIndex,
         totalTimeSeconds,
         completedAllQuestions: true,
       });
@@ -267,10 +321,9 @@ export function submitSurvey() {
     if (progressBar) progressBar.style.width = '100%';
 
     console.log('[SUBMIT] About to display checkmark...');
-
     _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
-
     console.log('[SUBMIT] Survey submission complete');
+
   } catch (error) {
     console.error('[SUBMIT] Submission failed unexpectedly:', error);
     completionInProgress = false;
@@ -343,9 +396,7 @@ function _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appSt
 // Never throws — always resets one way or another
 // ─────────────────────────────────────────────────────────────
 function _doReset() {
-  if (resetTriggered) {
-    return;
-  }
+  if (resetTriggered) return;
 
   resetTriggered = true;
   console.log('[RESET] Performing kiosk reset...');

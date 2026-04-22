@@ -293,9 +293,9 @@ window.dataUtils = (function () {
       subLabel: 'Optional — Select one to begin',
       options: [
         { value: 'thank_you',  label: 'A thank you note',       emoji: '🙏', placeholder: 'Thank you for…'               },
-        { value: 'reflection', label: 'A thought or reflection', emoji: '💭', placeholder: 'Today I felt…'               },
+        { value: 'reflection', label: 'A thought or reflection', emoji: '💭', placeholder: 'Today I experienced…'               },
         { value: 'prayer',     label: 'A prayer or wish',        emoji: '✨', placeholder: 'May…'                        },
-        { value: 'feedback',   label: 'Feedback',                emoji: '📝', placeholder: 'One thing we could improve…' },
+        { value: 'feedback',   label: 'Feedback',                emoji: '📝', placeholder: 'Any suggestions or thoughts…' },
       ],
       defaultPlaceholder: 'Share your thought, prayer, or thank you note here…',
       required: false,

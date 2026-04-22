@@ -23,7 +23,7 @@ const ANALYTICS_DETAIL_COLUMNS = [
     'questionId',
     'questionIndex',
     'totalTimeSeconds',
-    'reason'
+    'reason',
     'surveyType',        // ← type1 / type2 split for funnel
   'questionTimeSpent'  // ← JSON string of per-question durations
 ];
@@ -120,7 +120,7 @@ export default async function handler(request, response) {
             try {
                 await sheets.spreadsheets.values.append({
                     spreadsheetId: SPREADSHEET_ID,
-                    range: `${ANALYTICS_DETAIL_SHEET_NAME}!A:I`,
+                    range: `${ANALYTICS_DETAIL_SHEET_NAME}!A:K`,
                     valueInputOption: 'USER_ENTERED',
                     resource: {
                         values: detailRows

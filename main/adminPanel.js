@@ -1,9 +1,10 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel shell — show/hide, unlock gesture, auto-hide, online indicator, orchestration
-// VERSION: 8.0.0 - split into adminPanel + adminSurveyControls + adminMaintenance + adminState
-// DEPENDENCIES: adminState.js, adminSurveyControls.js, adminMaintenance.js
+// VERSION: 8.1.0 - vibrateSuccess/vibrateTap from adminUtils, resetAdminState from adminState
+// DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js
 
-import { adminState } from './adminState.js';
+import { adminState, resetAdminState } from './adminState.js';
+import { trackAdminEvent, vibrateSuccess, vibrateTap } from './adminUtils.js';
 
 import {
   buildSurveyTypeSwitcher,
@@ -27,6 +28,7 @@ import {
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
+const VERSION = 'v8.1.0';
 const AUTO_HIDE_DELAY = 20000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
 const STUCK_FLAG_TIMEOUT_MS = 60000;
@@ -45,36 +47,6 @@ let onlineHandler = null;
 let offlineHandler = null;
 let hideAdminButtonHandler = null;
 let boundHideAdminButton = null;
-
-// ─────────────────────────────────────────────────────────────
-// VIBRATION HELPERS
-// ─────────────────────────────────────────────────────────────
-
-function vibrateSuccess() {
-  try { if (navigator.vibrate) navigator.vibrate([50]); } catch (_) {}
-}
-
-function vibrateTap() {
-  try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) {}
-}
-
-// ─────────────────────────────────────────────────────────────
-// ANALYTICS
-// ─────────────────────────────────────────────────────────────
-
-function trackAdminEvent(eventType, metadata = {}) {
-  try {
-    if (window.dataHandlers?.trackAnalytics) {
-      window.dataHandlers.trackAnalytics(eventType, {
-        ...metadata,
-        source: 'admin_panel',
-        online: navigator.onLine,
-      });
-    }
-  } catch (error) {
-    console.warn('[ADMIN] Analytics tracking failed (offline safe):', error.message);
-  }
-}
 
 // ─────────────────────────────────────────────────────────────
 // STUCK FLAG RESET
@@ -188,7 +160,7 @@ function showAdminPanel() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON STATE — online indicator + hide button + delegates
+// BUTTON STATES
 // ─────────────────────────────────────────────────────────────
 
 function updateOnlineIndicator() {
@@ -305,7 +277,7 @@ function unbindAdminUnlock() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SETUP / CLEANUP — public API (unchanged from outside)
+// SETUP / CLEANUP
 // ─────────────────────────────────────────────────────────────
 
 export function setupAdminPanel() {
@@ -379,7 +351,7 @@ export function setupAdminPanel() {
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('🎛️ ADMIN PANEL CONFIGURED (v8.0.0 — modular split)');
+  console.log(`🎛️ ADMIN PANEL CONFIGURED (${VERSION} — modular split)`);
   console.log('═══════════════════════════════════════════════════════');
   console.log('  Mode:           Offline-First iPad Kiosk PWA');
   console.log(`  Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
@@ -407,12 +379,8 @@ export function cleanupAdminPanel() {
   cleanupSurveyControls();
   cleanupMaintenanceHandlers();
 
-  adminState.adminPanelVisible = false;
-  adminState.autoHideStartTime = null;
-  adminState.syncInProgress = false;
-  adminState.syncStartedAt = null;
-  adminState.analyticsInProgress = false;
-  adminState.analyticsStartedAt = null;
+  // Single call resets all shared flags — no risk of missing one
+  resetAdminState();
 
   const adminControls = window.globals?.adminControls;
   if (adminControls) adminControls.classList.add('hidden');

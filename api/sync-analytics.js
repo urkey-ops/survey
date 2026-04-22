@@ -24,6 +24,8 @@ const ANALYTICS_DETAIL_COLUMNS = [
     'questionIndex',
     'totalTimeSeconds',
     'reason'
+    'surveyType',        // ← type1 / type2 split for funnel
+  'questionTimeSpent'  // ← JSON string of per-question durations
 ];
 
 export default async function handler(request, response) {
@@ -99,17 +101,21 @@ export default async function handler(request, response) {
 
         // --- 3. OPTIONAL: APPEND DETAILED EVENTS ---
         if (analyticsData.rawEvents && analyticsData.rawEvents.length > 0) {
-            const detailRows = analyticsData.rawEvents.map(event => [
-                event.timestamp || '',
-                event.kioskId || kioskId,
-                event.sessionId || event.surveyId || '', // Fallback to surveyId if sessionId missing
-                event.eventType || '',
-                event.surveyId || '',
-                event.questionId || '',
-                event.questionIndex !== undefined ? event.questionIndex : '',
-                event.totalTimeSeconds || '',
-                event.reason || ''
-            ]);
+           const detailRows = analyticsData.rawEvents.map(event => [
+  event.timestamp                                          || '',
+  event.kioskId                                            || kioskId,
+  event.sessionId || event.surveyId                        || '',
+  event.eventType                                          || '',
+  event.surveyId                                           || '',
+  event.questionId                                         || '',
+  event.questionIndex !== undefined ? event.questionIndex  : '',
+  event.totalTimeSeconds                                   || '',
+  event.reason                                             || '',
+  event.surveyType                                         || '',
+  event.questionTimeSpent
+    ? JSON.stringify(event.questionTimeSpent)
+    : ''
+]);
 
             try {
                 await sheets.spreadsheets.values.append({

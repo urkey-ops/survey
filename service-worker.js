@@ -1,10 +1,10 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS KIOSK SAFE)
-// UPDATED: Safer cache matching, quieter background refresh, better offline fallback handling
-// VERSION: 9.4.0
+// UPDATED: Added adminUtils.js to CRITICAL_CACHE for modular admin panel split
+// VERSION: 9.5.0
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v23';
-const RUNTIME_CACHE = 'kiosk-runtime-v23';
+const CACHE_NAME = 'kiosk-survey-v24';
+const RUNTIME_CACHE = 'kiosk-runtime-v24';
 const MEDIA_CACHE = 'kiosk-media-v1'; // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation
@@ -28,6 +28,10 @@ const CRITICAL_CACHE = [
   // Main modules
   '/main/index.js',
   '/main/adminPanel.js',
+  '/main/adminState.js',
+  '/main/adminUtils.js',
+  '/main/adminSurveyControls.js',
+  '/main/adminMaintenance.js',
   '/main/navigationSetup.js',
   '/main/networkStatus.js',
   '/main/uiElements.js',
@@ -76,9 +80,9 @@ const MEDIA_FILES = [
 
 // BATTERY OPTIMIZATION: Throttled background updates
 const recentlyUpdated = new Map();
-const THROTTLE_MS = 300000;   // 5 minutes
+const THROTTLE_MS = 300000;    // 5 minutes
 const CLEANUP_INTERVAL = 600000; // 10 minutes
-const CLEANUP_AGE = 3600000;  // 1 hour
+const CLEANUP_AGE = 3600000;   // 1 hour
 
 let cleanupStarted = false;
 
@@ -86,7 +90,7 @@ let cleanupStarted = false;
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v9.4 with complete module cache...');
+  console.log('[SW] Installing v9.5 with complete module cache...');
 
   event.waitUntil(
     (async () => {
@@ -143,7 +147,7 @@ self.addEventListener('install', event => {
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v9.4 (complete module cache)');
+      console.log('[SW] ✅ Installed v9.5 (complete module cache)');
     })()
   );
 });
@@ -152,7 +156,7 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v9.4...');
+  console.log('[SW] Activating v9.5...');
 
   event.waitUntil(
     (async () => {
@@ -174,10 +178,10 @@ self.addEventListener('activate', event => {
 
       const clients = await self.clients.matchAll({ type: 'window' });
       clients.forEach(client => {
-        client.postMessage({ type: 'SW_ACTIVATED', version: '9.4' });
+        client.postMessage({ type: 'SW_ACTIVATED', version: '9.5' });
       });
 
-      console.log('[SW] ✅ Activated v9.4 (battery optimized, complete cache)');
+      console.log('[SW] ✅ Activated v9.5 (battery optimized, complete cache)');
     })()
   );
 });

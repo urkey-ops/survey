@@ -366,18 +366,24 @@ async function doSyncData(isManual = false, { syncBothQueues = true } = {}) {
 
     console.log(`[DATA SYNC] Done. Success=${totalSuccessful}, Remaining=${totalRemaining}, FailedQueues=${syncSummary.filter(r => !r.ok).length}`);
 
+    
     try {
-      recordAnalytics(hadAnyFailure ? 'sync_partial_or_failed' : 'sync_completed', {
-        activeSurveyType: getActiveSurveyType(),
-        synced:           totalSuccessful,
-        remaining:        totalRemaining,
-        queuesProcessed:  syncSummary.length,
-        failedQueues:     syncSummary.filter(r => !r.ok).length,
-        manual:           isManual
-      });
-    } catch (e) {
-      console.warn('[DATA SYNC] Analytics record failed (safe to ignore):', e.message);
-    }
+  // Only record sync_completed if records were actually sent
+  if (totalSuccessful > 0 || totalRemaining > 0) {
+    recordAnalytics(hadAnyFailure ? 'sync_partial_or_failed' : 'sync_completed', {
+      activeSurveyType: getActiveSurveyType(),
+      synced:           totalSuccessful,
+      remaining:        totalRemaining,
+      queuesProcessed:  syncSummary.length,
+      failedQueues:     syncSummary.filter(r => !r.ok).length,
+      manual:           isManual
+    });
+  }
+} catch (e) {
+  console.warn('[DATA SYNC] Analytics record failed (safe to ignore):', e.message);
+}
+    
+    
 
     return hadAnySuccess || totalRemaining === 0;
   } catch (error) {

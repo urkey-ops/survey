@@ -1,26 +1,28 @@
 // FILE: data-util.js
-// VERSION: 5.3.0
-// CHANGES FROM 5.2.0:
-//   - radio-with-other: stores { main, other } object shape consistently
-//   - radio-with-followup: stores { main, followup[] } object shape consistently
-//   - checkbox-with-other (Type 2 "experiences"): enforces max 3 selections
-//   - companion "other" field normalized to `other_${q.name}` (was `other${q.id}`)
-//   - number-scale: value stored as Number, not string
-//   - star-rating: value stored as Number, not string
-//   - clearAutoAdvance exposed for kiosk reset paths
+// VERSION: 5.4.0
+// CHANGES FROM 5.3.0:
+//   - New question type: selector-textarea (category pill selector + dynamic placeholder textarea)
+//   - Type 2 final_thoughts replaced with selector-textarea (4 category prompts)
+//   - selector-textarea stores { category, text } shape
+//   - surveyQuestions export is now a getter (fixes static type1 snapshot bug)
+//   - kioskId removed from this file (unused here — belongs in submit.js)
 
 window.dataUtils = (function () {
 
   // ─── Config ───────────────────────────────────────────────
-  const kioskId = window.KIOSK_CONFIG?.KIOSK_ID || 'KIOSK-GWINNETT-001';
   const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
 
   // Max selections for checkbox questions that have a cap
+  // Per-question maxSelections field is the authoritative cap;
+  // CHECKBOX_MAX_SELECTIONS is the default used when building type2 experiences.
   const CHECKBOX_MAX_SELECTIONS = 3;
 
   let autoAdvanceTimer = null;
   function scheduleAutoAdvance(callback, delay) {
-    if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+    if (autoAdvanceTimer) {
+      console.warn('[DATA-UTIL] scheduleAutoAdvance: cancelling existing timer');
+      clearTimeout(autoAdvanceTimer);
+    }
     autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; callback(); }, delay);
   }
 
@@ -29,6 +31,8 @@ window.dataUtils = (function () {
   }
 
   // ─── GRID HELPERS ─────────────────────────────────────────
+  // Max cols intentionally capped at 3 — no question currently exceeds 8 options.
+  // If a future question needs 4 cols, extend this function explicitly.
 
   function getTextGridCols(n) {
     if (n <= 1) return 1;
@@ -69,6 +73,20 @@ window.dataUtils = (function () {
     });
   }
 
+  function applyChipSelectedStyle(label, isSelected) {
+    if (isSelected) {
+      label.style.background  = 'var(--orange-light)';
+      label.style.borderColor = 'var(--orange)';
+      label.style.color       = 'var(--orange-dark)';
+      label.style.borderWidth = '2px';
+    } else {
+      label.style.background  = '';
+      label.style.borderColor = '';
+      label.style.color       = '';
+      label.style.borderWidth = '';
+    }
+  }
+
   function applyStarSelectedStyles(container, selectedValue) {
     container.querySelectorAll('label.star').forEach(label => {
       const input = document.getElementById(label.getAttribute('for'));
@@ -86,7 +104,7 @@ window.dataUtils = (function () {
   }
 
   // ─── Companion "other" key — normalized, name-based ───────
-  // IMPORTANT: validator and submit.js must use the same helper
+  // IMPORTANT: validation.js and submit.js must use the same helper
   function otherKey(qName) {
     return `other_${qName}`;
   }
@@ -222,7 +240,7 @@ window.dataUtils = (function () {
         { value: 'Volunteers & Service', label: 'Volunteers & Service' },
         { value: 'Time with Family',     label: 'Time with Family' },
       ],
-      maxSelections: CHECKBOX_MAX_SELECTIONS, // enforced in setupEvents
+      maxSelections: CHECKBOX_MAX_SELECTIONS,
       required: true,
     },
     {
@@ -259,17 +277,27 @@ window.dataUtils = (function () {
       type: 'radio-with-followup',
       question: 'Did your visit flow smoothly today?',
       options: [
-        { value: 'Yes everything was smooth', label: 'Yes, everything was smooth', followupLabel: null,               followupOptions: [] },
+        { value: 'Yes everything was smooth', label: 'Yes, everything was smooth', followupLabel: null,                followupOptions: [] },
         { value: 'A few things were unclear', label: 'A few things were unclear',  followupLabel: 'What was unclear?', followupOptions: ['Darshan timing','Finding my way','Signs & directions','Parking'] },
       ],
       required: true,
     },
     {
+      // selector-textarea: category pill selector + dynamic placeholder textarea
+      // Stores { category, text } — submit.js flattens to two sheet columns:
+      //   final_thoughts_category, final_thoughts_text
       id: 'final_thoughts',
       name: 'final_thoughts',
-      type: 'textarea',
-      question: 'Would you like to share a thought, reflection, or prayer?',
-      placeholder: 'Type your thoughts here...',
+      type: 'selector-textarea',
+      question: 'What would you like to share today?',
+      subLabel: 'Optional — Select one to begin',
+      options: [
+        { value: 'thank_you',  label: 'A thank you note',       emoji: '🙏', placeholder: 'Thank you for…'               },
+        { value: 'reflection', label: 'A thought or reflection', emoji: '💭', placeholder: 'Today I felt…'               },
+        { value: 'prayer',     label: 'A prayer or wish',        emoji: '✨', placeholder: 'May…'                        },
+        { value: 'feedback',   label: 'Feedback',                emoji: '📝', placeholder: 'One thing we could improve…' },
+      ],
+      defaultPlaceholder: 'Share your thought, prayer, or thank you note here…',
       required: false,
     },
   ];
@@ -304,6 +332,104 @@ window.dataUtils = (function () {
       },
     },
 
+    // ── SELECTOR TEXTAREA ──────────────────────────────────
+    // Renders 4 emoji+label category pills, then a textarea whose
+    // placeholder swaps based on which pill is selected.
+    // Stores: { category: string|null, text: string }
+    // submit.js flattens to: final_thoughts_category + final_thoughts_text
+    'selector-textarea': {
+      render(q, data) {
+        const saved    = data[q.name] || {};
+        const selCat   = typeof saved === 'object' ? (saved.category || '') : '';
+        const savedTxt = typeof saved === 'object' ? (saved.text     || '') : (saved || '');
+
+        const activePlaceholder = selCat
+          ? (q.options.find(o => o.value === selCat)?.placeholder || q.defaultPlaceholder)
+          : q.defaultPlaceholder;
+
+        const pills = q.options.map(opt => {
+          const isSelected = selCat === opt.value;
+          return `
+            <div class="checkbox-tab-wrapper">
+              <input type="radio"
+                id="${q.id}_cat_${opt.value}"
+                name="${q.id}_category"
+                value="${opt.value}"
+                class="visually-hidden"
+                ${isSelected ? 'checked' : ''}>
+              <label for="${q.id}_cat_${opt.value}"
+                class="option-label selector-textarea-pill"
+                style="${isSelected
+                  ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
+                  : ''}">
+                <span style="font-size:1.5rem; line-height:1;">${opt.emoji}</span>
+                <span style="font-size:0.88rem; font-weight:500; text-align:center; line-height:1.3;">${opt.label}</span>
+              </label>
+            </div>`;
+        }).join('');
+
+        return `
+          <label id="${q.id}Label"
+            style="font-size:1.2rem; font-weight:600; color:var(--text-primary); display:block; margin-bottom:2px;">
+            ${q.question}
+          </label>
+          <p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:10px;">
+            ${q.subLabel}
+          </p>
+          <div class="selector-textarea-pills"
+            id="${q.id}_pillGrid"
+            role="radiogroup"
+            aria-labelledby="${q.id}Label">${pills}</div>
+          <textarea
+            id="${q.id}_text"
+            name="${q.name}_text"
+            rows="4"
+            class="other-text-input"
+            style="min-height:110px; resize:none; margin-top:12px;"
+            placeholder="${activePlaceholder}"
+            aria-label="Your response">${savedTxt}</textarea>
+          <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
+      },
+
+      setupEvents(q, handleNextQuestion, updateData) {
+        const pillGrid = document.getElementById(`${q.id}_pillGrid`);
+        const textarea = document.getElementById(`${q.id}_text`);
+        if (!pillGrid || !textarea) return;
+
+        const save = () => {
+          const checkedPill = pillGrid.querySelector('input[type="radio"]:checked');
+          updateData(q.name, {
+            category: checkedPill ? checkedPill.value : null,
+            text:     textarea.value.trim(),
+          });
+        };
+
+        // Pill selection — swap placeholder, apply styles, save
+        pillGrid.addEventListener('change', e => {
+          if (e.target.name !== `${q.id}_category`) return;
+
+          // Apply selected styles to all pills
+          pillGrid.querySelectorAll('label').forEach(lbl => {
+            const inp = document.getElementById(lbl.getAttribute('for'));
+            if (!inp) return;
+            applyChipSelectedStyle(lbl, inp.checked);
+          });
+
+          // Swap textarea placeholder
+          const opt = q.options.find(o => o.value === e.target.value);
+          textarea.placeholder = opt?.placeholder || q.defaultPlaceholder;
+
+          // Focus textarea after category selected — invites typing immediately
+          textarea.focus();
+
+          save();
+        });
+
+        // Textarea input — just save, no auto-advance (optional field)
+        textarea.addEventListener('input', () => save());
+      },
+    },
+
     // ── EMOJI RADIO — always 4 cols, single row ─────────────
     'emoji-radio': {
       render(q, data) {
@@ -325,15 +451,15 @@ window.dataUtils = (function () {
             ${q.question}
           </label>
           <div class="emoji-radio-group"
+            id="${q.id}_emojiGrid"
             role="radiogroup" aria-labelledby="${q.id}Label">${opts}</div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
-        const container = document.querySelector('.emoji-radio-group');
+        const container = document.getElementById(`${q.id}_emojiGrid`);
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          // Store as plain string — emoji-radio has no companion field
           updateData(q.name, e.target.value);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
@@ -360,6 +486,7 @@ window.dataUtils = (function () {
             ${q.question}
           </label>
           <div class="number-scale-group"
+            id="${q.id}_scaleGrid"
             role="radiogroup" aria-labelledby="${q.id}Label">${btns}</div>
           <div style="display:flex; justify-content:space-between; font-size:0.82rem; color:var(--text-muted); margin-top:6px;">
             <span>${q.labels.min}</span><span>${q.labels.max}</span>
@@ -367,7 +494,7 @@ window.dataUtils = (function () {
           <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
-        const container = document.querySelector('.number-scale-group');
+        const container = document.getElementById(`${q.id}_scaleGrid`);
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
@@ -398,11 +525,12 @@ window.dataUtils = (function () {
             ${q.question}
           </label>
           <div class="star-rating"
+            id="${q.id}_starGrid"
             role="radiogroup" aria-labelledby="${q.id}Label">${stars}</div>
           <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
-        const container = document.querySelector('.star-rating');
+        const container = document.getElementById(`${q.id}_starGrid`);
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
@@ -464,7 +592,6 @@ window.dataUtils = (function () {
           <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
       },
       setupEvents(q, handleNextQuestion, updateData) {
-        // Scoped by ID — avoids targeting wrong grid on back/forward
         const container      = document.getElementById(`${q.id}_radioGrid`);
         const otherContainer = document.getElementById(`other-${q.id}-container`);
         const otherInput     = document.getElementById(`other-${q.id}-text`);
@@ -491,9 +618,7 @@ window.dataUtils = (function () {
           if (val !== 'Other') scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         });
 
-        otherInput?.addEventListener('input', e => {
-          save('Other');
-        });
+        otherInput?.addEventListener('input', () => save('Other'));
       },
     },
 
@@ -641,8 +766,7 @@ window.dataUtils = (function () {
 
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          const val     = e.target.value;
-          const optSlug = val.replace(/\s+/g,'_').replace(/'/g,'');
+          const val = e.target.value;
 
           applyRadioSelectedStyles(container);
 
@@ -673,17 +797,7 @@ window.dataUtils = (function () {
 
             const lbl = drawer.querySelector(`label[for="${e.target.id}"]`);
             if (!lbl) return;
-            if (e.target.checked) {
-              lbl.style.background  = 'var(--orange-light)';
-              lbl.style.borderColor = 'var(--orange)';
-              lbl.style.color       = 'var(--orange-dark)';
-              lbl.style.borderWidth = '2px';
-            } else {
-              lbl.style.background  = '';
-              lbl.style.borderColor = '';
-              lbl.style.color       = '';
-              lbl.style.borderWidth = '';
-            }
+            applyChipSelectedStyle(lbl, e.target.checked);
           });
         });
       },
@@ -726,7 +840,6 @@ window.dataUtils = (function () {
             </div>`;
         }).join('');
 
-        // Cap hint shown only when maxSelections is set
         const capHint = cap
           ? `<p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">
                Select up to ${cap}
@@ -766,23 +879,19 @@ window.dataUtils = (function () {
           const values = Array.from(
             container.querySelectorAll(`input[name="${q.name}"]:checked`)
           ).map(cb => cb.value);
-          // Store array directly — validator expects string[]
           updateData(q.name, values);
-          // Normalized other key
           updateData(otherKey(q.name), values.includes('Other') ? (otherInput?.value || '') : '');
         };
 
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
 
-          // Enforce max selection cap before accepting the change
           if (cap && e.target.checked) {
             const currentlyChecked = Array.from(
               container.querySelectorAll(`input[name="${q.name}"]:checked`)
             );
             if (currentlyChecked.length > cap) {
               e.target.checked = false;
-              // Flash the error span as a hint
               const errEl = document.getElementById(`${q.id}Error`);
               if (errEl) {
                 errEl.textContent = `Maximum ${cap} selections allowed`;
@@ -832,12 +941,14 @@ window.dataUtils = (function () {
 
   }; // end questionRenderers
 
+  // ─── surveyQuestions as getter — always returns active type ───
+  // NOTE: anything calling window.dataUtils.surveyQuestions gets
+  // the live active-type set, not a stale type1 snapshot.
   return {
-    surveyQuestions: surveyQuestionsType1,
+    get surveyQuestions() { return getSurveyQuestions(); },
     getSurveyQuestions,
     questionRenderers,
-    otherKey,           // exported so validation.js and submit.js use same key formula
-    kioskId,
+    otherKey,
     clearAutoAdvance,
   };
 

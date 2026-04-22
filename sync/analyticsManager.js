@@ -27,25 +27,22 @@ export function recordAnalytics(eventType, data = {}) {
         const timestamp = new Date().toISOString();
         const appState = window.appState;
         
-        analytics.push({
-            timestamp: timestamp,
-            eventType: eventType,
-            surveyId: appState?.formData?.id,
-            kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
-            ...data
-        });
-        
-        // Check analytics array size
-        if (analytics.length >= MAX_ANALYTICS_SIZE) {
-            console.warn(`[ANALYTICS] Array at capacity (${MAX_ANALYTICS_SIZE}) - removing oldest entry`);
-            analytics.shift();
-        }
-        
-        safeSetLocalStorage(STORAGE_KEY_ANALYTICS, analytics);
-    } catch (e) {
-        console.warn('[ANALYTICS] Failed to record analytics:', e.message);
-    }
+      analytics.push({
+  timestamp,
+  eventType,
+  surveyId: appState?.formData?.id,
+  kioskId:  window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+  ...data
+});
+
+// Trim from oldest if over capacity
+if (analytics.length > MAX_ANALYTICS_SIZE) {
+  const excess = analytics.length - MAX_ANALYTICS_SIZE;
+  analytics.splice(0, excess);
+  console.warn(`[ANALYTICS] Trimmed ${excess} oldest event(s) — at capacity (${MAX_ANALYTICS_SIZE})`);
 }
+
+safeSetLocalStorage(STORAGE_KEY_ANALYTICS, analytics);
 
 /**
  * Check if analytics should be synced (daily check)
@@ -104,11 +101,15 @@ export async function syncAnalytics(isManual = false) {
     const abandonments = analytics.filter(a => a.eventType === 'survey_abandoned');
     
     // Calculate drop-off by question
-    const dropoffByQuestion = {};
-    abandonments.forEach(a => {
-        const qId = a.questionId || 'unknown';
-        dropoffByQuestion[qId] = (dropoffByQuestion[qId] || 0) + 1;
-    });
+   // Calculate drop-off by question
+// Key format: "q{index}:{questionId}" — sortable by index, readable by id
+const dropoffByQuestion = {};
+abandonments.forEach(a => {
+  const idx  = a.questionIndex !== undefined ? a.questionIndex : '?';
+  const qId  = a.questionId || 'unknown';
+  const key  = `q${idx}:${qId}`;
+  dropoffByQuestion[key] = (dropoffByQuestion[key] || 0) + 1;
+});
     
     // Calculate average completion time
     const completionTimes = completions.map(c => c.totalTimeSeconds).filter(t => t > 0);

@@ -23,7 +23,9 @@ const ANALYTICS_DETAIL_COLUMNS = [
     'questionId',
     'questionIndex',
     'totalTimeSeconds',
-    'reason'
+    'reason',
+    'surveyType',        // ← type1 / type2 split for funnel
+  'questionTimeSpent'  // ← JSON string of per-question durations
 ];
 
 export default async function handler(request, response) {
@@ -99,22 +101,26 @@ export default async function handler(request, response) {
 
         // --- 3. OPTIONAL: APPEND DETAILED EVENTS ---
         if (analyticsData.rawEvents && analyticsData.rawEvents.length > 0) {
-            const detailRows = analyticsData.rawEvents.map(event => [
-                event.timestamp || '',
-                event.kioskId || kioskId,
-                event.sessionId || event.surveyId || '', // Fallback to surveyId if sessionId missing
-                event.eventType || '',
-                event.surveyId || '',
-                event.questionId || '',
-                event.questionIndex !== undefined ? event.questionIndex : '',
-                event.totalTimeSeconds || '',
-                event.reason || ''
-            ]);
+           const detailRows = analyticsData.rawEvents.map(event => [
+  event.timestamp                                          || '',
+  event.kioskId                                            || kioskId,
+  event.sessionId || event.surveyId                        || '',
+  event.eventType                                          || '',
+  event.surveyId                                           || '',
+  event.questionId                                         || '',
+  event.questionIndex !== undefined ? event.questionIndex  : '',
+  event.totalTimeSeconds                                   || '',
+  event.reason                                             || '',
+  event.surveyType                                         || '',
+  event.questionTimeSpent
+    ? JSON.stringify(event.questionTimeSpent)
+    : ''
+]);
 
             try {
                 await sheets.spreadsheets.values.append({
                     spreadsheetId: SPREADSHEET_ID,
-                    range: `${ANALYTICS_DETAIL_SHEET_NAME}!A:I`,
+                    range: `${ANALYTICS_DETAIL_SHEET_NAME}!A:K`,
                     valueInputOption: 'USER_ENTERED',
                     resource: {
                         values: detailRows
@@ -122,8 +128,10 @@ export default async function handler(request, response) {
                 });
                 console.log(`${detailRows.length} detailed events written to ${ANALYTICS_DETAIL_SHEET_NAME}`);
             } catch (detailError) {
-                console.warn(`Could not write to detail sheet (${ANALYTICS_DETAIL_SHEET_NAME}):`, detailError.message);
-            }
+  console.error(`[ANALYTICS] ❌ Detail sheet write failed (${ANALYTICS_DETAIL_SHEET_NAME}):`, detailError.message);
+  // Non-fatal — summary already written — but log clearly so missing rows are visible
+  // Check that the "${ANALYTICS_DETAIL_SHEET_NAME}" tab exists in your spreadsheet
+}
         }
 
         // --- SUCCESS RESPONSE ---

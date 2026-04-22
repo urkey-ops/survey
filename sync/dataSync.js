@@ -1,14 +1,11 @@
 // FILE: sync/dataSync.js
 // PURPOSE: Core data synchronization - offline-first, queue-based, retry-safe
-// VERSION: 3.3.1
-// FIXES:
-//   - syncs both survey queues when needed, not just active type
-//   - serializes sync operations safely via promise queue
-//   - prevents duplicate online/offline listeners and startup timers
-//   - handles partial success by removing only confirmed IDs
-//   - keeps manual/admin status messaging safe and non-fatal
-//   - filters blank/metadata-only submissions before sync
-//   - removes second-pass invalid blank rows from local queue too
+// VERSION: 3.4.0
+// CHANGES FROM 3.3.1:
+//   - hasMeaningfulResponse: handles selector-textarea { category, text } shape
+//     (previously fell through to generic object branch which checked for .main,
+//      .other, or .followup keys — none exist on selector-textarea data, so a
+//      response with only { category, text } was incorrectly treated as blank)
 // DEPENDENCIES: storageUtils.js, queueManager.js, analyticsManager.js, networkHandler.js
 
 import {
@@ -140,6 +137,20 @@ function getTotalUnsyncedAcrossQueues() {
   }, 0);
 }
 
+/**
+ * Determines whether a queued record contains at least one real survey answer.
+ *
+ * Handles all data-util.js stored shapes:
+ *   string              → emoji-radio, radio, textarea
+ *   Number              → number-scale, star-rating
+ *   string[]            → checkbox-with-other
+ *   { main, other }     → radio-with-other
+ *   { main, followup[] }→ radio-with-followup
+ *   { category, text }  → selector-textarea (final_thoughts on type2)
+ *
+ * A record with only technical/metadata keys and no survey answers is blank
+ * and must NOT be queued or synced.
+ */
 function hasMeaningfulResponse(record = {}) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     return false;
@@ -168,24 +179,44 @@ function hasMeaningfulResponse(record = {}) {
 
   return Object.entries(record).some(([key, value]) => {
     if (technicalKeys.has(key)) return false;
-    if (value == null) return false;
+    if (value == null)           return false;
 
+    // Plain string answer
     if (typeof value === 'string') {
       return value.trim() !== '';
     }
 
+    // Number answer (star-rating, number-scale) — 0 is valid
+    if (typeof value === 'number') {
+      return true;
+    }
+
+    // Array answer (checkbox-with-other)
     if (Array.isArray(value)) {
       return value.length > 0;
     }
 
     if (typeof value === 'object') {
+      // ── selector-textarea: { category, text } ──────────────────────────
+      // Meaningful when text has content OR a category was chosen.
+      // A category-only pick with no text is still a signal worth keeping.
+      // An entirely blank { category: null, text: '' } is not meaningful.
+      if ('category' in value || 'text' in value) {
+        const hasCategory = value.category != null && String(value.category).trim() !== '';
+        const hasText     = typeof value.text === 'string' && value.text.trim() !== '';
+        return hasCategory || hasText;
+      }
+
+      // ── radio-with-other: { main, other } ──────────────────────────────
+      // ── radio-with-followup: { main, followup[] } ──────────────────────
       if ('main' in value || 'other' in value || 'followup' in value) {
-        const main = typeof value.main === 'string' ? value.main.trim() : value.main;
-        const other = typeof value.other === 'string' ? value.other.trim() : value.other;
-        const followup = Array.isArray(value.followup) ? value.followup : [];
+        const main     = typeof value.main    === 'string' ? value.main.trim()    : value.main;
+        const other    = typeof value.other   === 'string' ? value.other.trim()   : value.other;
+        const followup = Array.isArray(value.followup)     ? value.followup       : [];
         return Boolean(main) || Boolean(other) || followup.length > 0;
       }
 
+      // Generic object fallback — non-empty means something is there
       return Object.keys(value).length > 0;
     }
 
@@ -199,7 +230,7 @@ function removeMeaninglessRecords(queue = [], surveyType = 'unknown') {
   }
 
   const meaningful = [];
-  const dropped = [];
+  const dropped    = [];
 
   queue.forEach((record) => {
     if (hasMeaningfulResponse(record)) {
@@ -219,15 +250,15 @@ function removeMeaninglessRecords(queue = [], surveyType = 'unknown') {
 // ═══════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════
-let syncInProgress = false;
-let syncQueue = Promise.resolve();
-let periodicSyncTimer = null;
+let syncInProgress         = false;
+let syncQueue              = Promise.resolve();
+let periodicSyncTimer      = null;
 let periodicAnalyticsTimer = null;
-let initialSyncTimer = null;
-let statusClearTimer = null;
-let networkListenersBound = false;
-let onlineHandlerRef = null;
-let offlineHandlerRef = null;
+let initialSyncTimer       = null;
+let statusClearTimer       = null;
+let networkListenersBound  = false;
+let onlineHandlerRef       = null;
+let offlineHandlerRef      = null;
 
 // ═══════════════════════════════════════════════════════════
 // SURVEY DATA SYNC
@@ -306,14 +337,14 @@ async function doSyncData(isManual = false, { syncBothQueues = true } = {}) {
     console.log(`[DATA SYNC] Starting sync across ${queueTargets.length} queue(s), ${totalQueued} record(s) total`);
 
     let totalSuccessful = 0;
-    let totalRemaining = 0;
-    const syncSummary = [];
+    let totalRemaining  = 0;
+    const syncSummary   = [];
 
     for (const target of queueTargets) {
       const result = await syncSingleQueue(target, isManual);
       syncSummary.push(result);
       totalSuccessful += result.successfulCount;
-      totalRemaining += result.remainingCount;
+      totalRemaining  += result.remainingCount;
     }
 
     safeSetLocalStorage(getLastSyncStorageKey(), Date.now());
@@ -335,18 +366,24 @@ async function doSyncData(isManual = false, { syncBothQueues = true } = {}) {
 
     console.log(`[DATA SYNC] Done. Success=${totalSuccessful}, Remaining=${totalRemaining}, FailedQueues=${syncSummary.filter(r => !r.ok).length}`);
 
+    
     try {
-      recordAnalytics(hadAnyFailure ? 'sync_partial_or_failed' : 'sync_completed', {
-        activeSurveyType: getActiveSurveyType(),
-        synced: totalSuccessful,
-        remaining: totalRemaining,
-        queuesProcessed: syncSummary.length,
-        failedQueues: syncSummary.filter(r => !r.ok).length,
-        manual: isManual
-      });
-    } catch (e) {
-      console.warn('[DATA SYNC] Analytics record failed (safe to ignore):', e.message);
-    }
+  // Only record sync_completed if records were actually sent
+  if (totalSuccessful > 0 || totalRemaining > 0) {
+    recordAnalytics(hadAnyFailure ? 'sync_partial_or_failed' : 'sync_completed', {
+      activeSurveyType: getActiveSurveyType(),
+      synced:           totalSuccessful,
+      remaining:        totalRemaining,
+      queuesProcessed:  syncSummary.length,
+      failedQueues:     syncSummary.filter(r => !r.ok).length,
+      manual:           isManual
+    });
+  }
+} catch (e) {
+  console.warn('[DATA SYNC] Analytics record failed (safe to ignore):', e.message);
+}
+    
+    
 
     return hadAnySuccess || totalRemaining === 0;
   } catch (error) {
@@ -355,7 +392,7 @@ async function doSyncData(isManual = false, { syncBothQueues = true } = {}) {
     try {
       recordAnalytics('sync_failed', {
         activeSurveyType: getActiveSurveyType(),
-        error: error.message,
+        error:  error.message,
         manual: isManual
       });
     } catch (e) {
@@ -391,17 +428,14 @@ async function syncSingleQueue(target, isManual = false) {
       surveyType,
       queueKey,
       successfulCount: 0,
-      remainingCount: 0
+      remainingCount:  0
     };
   }
 
   const { meaningful: cleanedQueue, dropped: blankRecords } = removeMeaninglessRecords(submissionQueue, surveyType);
 
   if (blankRecords.length > 0) {
-    const blankIds = blankRecords
-      .map(record => record?.id)
-      .filter(Boolean);
-
+    const blankIds = blankRecords.map(record => record?.id).filter(Boolean);
     if (blankIds.length > 0) {
       removeFromQueue(blankIds, queueKey);
       console.log(`[DATA SYNC] Removed ${blankIds.length} blank/metadata-only record(s) from "${queueKey}" before sync`);
@@ -412,7 +446,7 @@ async function syncSingleQueue(target, isManual = false) {
         surveyType,
         queueKey,
         droppedCount: blankRecords.length,
-        manual: isManual
+        manual:       isManual
       });
     } catch (e) {
       // non-critical
@@ -421,18 +455,16 @@ async function syncSingleQueue(target, isManual = false) {
 
   if (cleanedQueue.length === 0) {
     console.warn(`[DATA SYNC] No meaningful submissions remain for ${surveyType} after filtering`);
-
     if (isManual) {
       updateSyncStatus(`No valid ${surveyType} records to sync ✅`);
       clearSyncStatusLater(3000);
     }
-
     return {
       ok: true,
       surveyType,
       queueKey,
       successfulCount: 0,
-      remainingCount: 0
+      remainingCount:  0
     };
   }
 
@@ -448,10 +480,7 @@ async function syncSingleQueue(target, isManual = false) {
     : [];
 
   if (secondPassDropped.length > 0) {
-    const secondPassIds = secondPassDropped
-      .map(record => record?.id)
-      .filter(Boolean);
-
+    const secondPassIds = secondPassDropped.map(record => record?.id).filter(Boolean);
     if (secondPassIds.length > 0) {
       removeFromQueue(secondPassIds, queueKey);
       console.log(`[DATA SYNC] Removed ${secondPassIds.length} second-pass blank record(s) from "${queueKey}"`);
@@ -462,7 +491,7 @@ async function syncSingleQueue(target, isManual = false) {
         surveyType,
         queueKey,
         droppedCount: secondPassDropped.length,
-        manual: isManual
+        manual:       isManual
       });
     } catch (e) {
       // non-critical
@@ -471,21 +500,18 @@ async function syncSingleQueue(target, isManual = false) {
 
   if (!Array.isArray(filteredValidSubmissions) || filteredValidSubmissions.length === 0) {
     console.error(`[DATA SYNC] No valid submissions found for ${surveyType}`);
-
     if (invalidSubmissions?.length > 0) {
       console.warn(`[DATA SYNC] ${invalidSubmissions.length} invalid record(s) filtered out for ${surveyType}`);
     }
-
     if (isManual) {
       showUserError(`All ${surveyType} records are invalid. Queue retained for safety.`);
     }
-
     return {
       ok: false,
       surveyType,
       queueKey,
       successfulCount: 0,
-      remainingCount: countUnsyncedRecords(queueKey)
+      remainingCount:  countUnsyncedRecords(queueKey)
     };
   }
 
@@ -497,7 +523,7 @@ async function syncSingleQueue(target, isManual = false) {
     submissions: filteredValidSubmissions,
     surveyType,
     sheetName,
-    kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+    kioskId:   window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
     timestamp: new Date().toISOString()
   };
 
@@ -514,7 +540,7 @@ async function syncSingleQueue(target, isManual = false) {
         surveyType,
         queueKey,
         successfulCount: 0,
-        remainingCount: countUnsyncedRecords(queueKey)
+        remainingCount:  countUnsyncedRecords(queueKey)
       };
     }
 
@@ -532,14 +558,13 @@ async function syncSingleQueue(target, isManual = false) {
     };
   } catch (error) {
     console.error(`[DATA SYNC] ❌ Queue sync failed for ${surveyType}: ${error.message}`);
-
     return {
       ok: false,
       surveyType,
       queueKey,
       successfulCount: 0,
-      remainingCount: countUnsyncedRecords(queueKey),
-      error: error.message
+      remainingCount:  countUnsyncedRecords(queueKey),
+      error:           error.message
     };
   }
 }
@@ -559,8 +584,8 @@ export function autoSync() {
 // ═══════════════════════════════════════════════════════════
 
 export function startPeriodicSync() {
-  const SYNC_INTERVAL = window.CONSTANTS?.SYNC_INTERVAL_MS || 300000;
-  const ANALYTICS_INTERVAL = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS || 600000;
+  const SYNC_INTERVAL      = window.CONSTANTS?.SYNC_INTERVAL_MS            || 300000;
+  const ANALYTICS_INTERVAL = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS  || 600000;
 
   stopPeriodicSync();
 
@@ -597,19 +622,16 @@ export function stopPeriodicSync() {
     periodicSyncTimer = null;
     console.log('[PERIODIC SYNC] Survey sync timer stopped.');
   }
-
   if (periodicAnalyticsTimer) {
     clearInterval(periodicAnalyticsTimer);
     periodicAnalyticsTimer = null;
     console.log('[PERIODIC SYNC] Analytics sync timer stopped.');
   }
-
   if (initialSyncTimer) {
     clearTimeout(initialSyncTimer);
     initialSyncTimer = null;
     console.log('[PERIODIC SYNC] Initial sync timer cleared.');
   }
-
   if (statusClearTimer) {
     clearTimeout(statusClearTimer);
     statusClearTimer = null;
@@ -651,7 +673,6 @@ export function setupNetworkListeners() {
     } catch (e) {
       // safe to ignore
     }
-
     window.clearTimeout(initialSyncTimer);
     initialSyncTimer = window.setTimeout(() => {
       initialSyncTimer = null;
@@ -669,7 +690,7 @@ export function setupNetworkListeners() {
     updateAdminCount();
   };
 
-  window.addEventListener('online', onlineHandlerRef);
+  window.addEventListener('online',  onlineHandlerRef);
   window.addEventListener('offline', offlineHandlerRef);
   networkListenersBound = true;
 
@@ -681,12 +702,10 @@ export function cleanupNetworkListeners() {
     window.removeEventListener('online', onlineHandlerRef);
     onlineHandlerRef = null;
   }
-
   if (offlineHandlerRef) {
     window.removeEventListener('offline', offlineHandlerRef);
     offlineHandlerRef = null;
   }
-
   networkListenersBound = false;
   console.log('[NETWORK] Cleanup complete');
 }
@@ -742,11 +761,11 @@ export {
 // BOOT LOG
 // ═══════════════════════════════════════════════════════════
 
-const _bootSurveyType = getActiveSurveyType();
+const _bootSurveyType   = getActiveSurveyType();
 const _bootSurveyConfig = getQueueConfigByType(_bootSurveyType);
 
 console.log('═══════════════════════════════════════════════════════');
-console.log('🔄 DATA SYNC MODULE LOADED (v3.3.1)');
+console.log('🔄 DATA SYNC MODULE LOADED (v3.4.0)');
 console.log('═══════════════════════════════════════════════════════');
 console.log(`  Active Survey : ${_bootSurveyType}`);
 console.log(`  Queue Key     : ${_bootSurveyConfig.queueKey}`);

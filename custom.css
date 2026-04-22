@@ -994,3 +994,39 @@ textarea:focus {
     min-width: 200px;
   }
 }
+
+/* ── Selector Textarea — category pill grid ── */
+.selector-textarea-pills {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.selector-textarea-pills .option-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 8px;
+  min-height: 80px;
+  border: 1.5px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  background: var(--surface, #fff);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.selector-textarea-pills .option-label:active {
+  background: var(--orange-light);
+  border-color: var(--orange);
+}
+
+/* Collapse to 2-col on narrow screens */
+@media (max-width: 480px) {
+  .selector-textarea-pills {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

@@ -148,13 +148,14 @@ function handleInactivityTimeout(dataUtils, appState) {
   if (idx === 0) {
     console.log('[INACTIVITY] Q1 abandonment — recording analytics');
     try {
-      getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
-        questionId: currentQuestion?.id,
-        questionIndex: idx,
-        totalTimeSeconds: getTotalSurveyTime(),
-        reason: 'inactivity_q1',
-        partialData: { satisfaction: appState.formData?.satisfaction ?? null },
-      });
+     getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
+  questionId:       currentQuestion?.id,
+  questionIndex:    idx,
+  totalTimeSeconds: getTotalSurveyTime(),
+  reason:           'inactivity_q1',
+  surveyType:       window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1',
+  partialData:      { satisfaction: appState.formData?.satisfaction ?? null },
+});
     } catch (analyticsErr) {
       console.warn('[INACTIVITY] Q1 abandonment analytics failed:', analyticsErr);
     }
@@ -210,17 +211,23 @@ function handleInactivityTimeout(dataUtils, appState) {
     `(queue ${surveyType}: ${submissionQueue.length}/${MAX_QUEUE_SIZE})`
   );
 
-  try {
-    dataHandlers.recordAnalytics('survey_abandoned', {
-      questionId: currentQuestion?.id,
-      questionIndex: idx,
-      totalTimeSeconds,
-      reason: 'inactivity',
-      surveyType,
-    });
-  } catch (analyticsErr) {
-    console.warn('[INACTIVITY] Abandonment analytics failed:', analyticsErr);
-  }
+
+
+
+try {
+  dataHandlers.recordAnalytics('survey_abandoned', {
+    questionId:        currentQuestion?.id,
+    questionIndex:     idx,
+    totalTimeSeconds,
+    reason:            'inactivity',
+    surveyType,
+    questionTimeSpent: { ...appState.questionTimeSpent },
+  });
+} catch (analyticsErr) {
+  console.warn('[INACTIVITY] Abandonment analytics failed:', analyticsErr);
+}
+
+  
 
   if (typeof window.cleanupAdminPanel === 'function') window.cleanupAdminPanel();
   performKioskReset();

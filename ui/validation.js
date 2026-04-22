@@ -1,23 +1,17 @@
 // FILE: ui/validation.js
 // PURPOSE: Form validation logic for survey questions
-// VERSION: 2.3.0
-// CHANGES FROM 2.2.0:
-//   - radio-with-other: validates against { main, other } object shape
-//     (was checking answer === 'Other' on a string — never matched object)
-//   - radio-with-followup: validates against { main, followup[] } object shape
-//     (was checking answer directly as string or using followupName key)
-//   - checkbox-with-other: uses otherKey(q.name) from dataUtils (was hardcoded
-//     'otherhearabout' / 'other_hear_about' — brittle, breaks other questions)
-//   - star-rating / number-scale: accepts Number type (data-util now stores Number)
-//   - getValidationErrors: same shape fixes applied for batch validation
-//   - All hardcoded fallback key strings removed — single source of truth via
-//     window.dataUtils.otherKey()
+// VERSION: 2.4.0
+// CHANGES FROM 2.3.0:
+//   - selector-textarea: new optional hybrid type — passes validation when
+//     both category and text are empty (fully skipped is valid since required:false)
+//     passes when text has content regardless of category selection
+//     never blocks on category alone
+//   - _isEmpty updated to handle selector-textarea { category, text } shape
+//     (previously fell through to object branch which checked for .main — wrong key)
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── Companion key helper — must match data-util.js otherKey() exactly ────────
-// We call through window.dataUtils so there is one source of truth.
-// Falls back to inline formula if dataUtils not yet loaded (defensive).
 function otherKey(qName) {
   return (typeof window.dataUtils?.otherKey === 'function')
     ? window.dataUtils.otherKey(qName)
@@ -45,23 +39,40 @@ function displayError(elementId, message) {
 
 /**
  * Core "is this answer empty?" check — handles ALL value types.
- * For { main, other } and { main, followup[] } objects, empty means no main.
- * For Number, 0 is valid (never empty).
+ *
+ * Shape guide:
+ *   emoji-radio / radio / textarea    → plain string
+ *   number-scale / star-rating        → Number (0 is valid, never empty)
+ *   checkbox-with-other               → string[]
+ *   radio-with-other                  → { main, other }
+ *   radio-with-followup               → { main, followup[] }
+ *   selector-textarea                 → { category, text } — empty when BOTH blank
  */
-function _isEmpty(answer) {
+function _isEmpty(answer, questionType) {
   if (answer === null || answer === undefined)  return true;
   if (typeof answer === 'string')               return answer.trim() === '';
   if (typeof answer === 'number')               return false; // 0 is a valid rating
   if (typeof answer === 'boolean')              return false;
   if (Array.isArray(answer))                    return answer.length === 0;
-  // Object shape: { main, other } or { main, followup[] }
-  if (typeof answer === 'object')               return !answer.main || String(answer.main).trim() === '';
+
+  if (typeof answer === 'object') {
+    // selector-textarea stores { category, text }
+    // considered non-empty only when at least text has content
+    // (category alone with no text is not a meaningful response)
+    if (questionType === 'selector-textarea') {
+      return !answer.text || String(answer.text).trim() === '';
+    }
+    // All other object shapes: { main, other } or { main, followup[] }
+    return !answer.main || String(answer.main).trim() === '';
+  }
+
   return false;
 }
 
 /**
  * Extract the main selection value from any stored answer shape.
  * Handles: plain string, number, { main, ... } object.
+ * Not applicable to selector-textarea — access .category directly.
  */
 function _mainValue(answer) {
   if (answer === null || answer === undefined) return '';
@@ -83,14 +94,31 @@ export function validateQuestion(question, formData) {
   let isValid = true;
   let errorMessage = '';
 
+  // ── SELECTOR TEXTAREA ─────────────────────────────────────────────────────
+  // This type is always optional (required: false on final_thoughts).
+  // Validation rule:
+  //   - fully empty (no category, no text) → valid (user skipped, that's fine)
+  //   - text has content → valid regardless of category
+  //   - category selected but no text → valid (category is purely a UX aid)
+  // If somehow marked required in future: requires text to be non-empty.
+  if (question.type === 'selector-textarea') {
+    if (question.required) {
+      const txt = (answer && typeof answer === 'object') ? (answer.text || '') : '';
+      if (!txt || String(txt).trim() === '') {
+        errorMessage = 'Please write your response.';
+        isValid = false;
+      }
+    }
+    // Non-required: always passes — no further checks needed
+  }
+
   // ── CHECKBOX WITH OTHER ───────────────────────────────────────────────────
-  if (question.type === 'checkbox-with-other') {
+  else if (question.type === 'checkbox-with-other') {
     if (question.required && (!Array.isArray(answer) || answer.length === 0)) {
       errorMessage = 'Please select at least one option.';
       isValid = false;
     }
 
-    // If "Other" is in the selection, the specify field must be filled
     if (isValid && Array.isArray(answer) && answer.includes('Other')) {
       const otherVal = formData[otherKey(question.name)] || '';
       if (!otherVal || String(otherVal).trim() === '') {
@@ -103,7 +131,7 @@ export function validateQuestion(question, formData) {
   // ── RADIO WITH OTHER ──────────────────────────────────────────────────────
   // answer shape: { main: string, other: string }
   else if (question.type === 'radio-with-other') {
-    if (question.required && _isEmpty(answer)) {
+    if (question.required && _isEmpty(answer, question.type)) {
       errorMessage = 'Please select an option.';
       isValid = false;
     }
@@ -111,7 +139,6 @@ export function validateQuestion(question, formData) {
     if (isValid) {
       const mainVal = _mainValue(answer);
       if (mainVal === 'Other') {
-        // other text lives inside the object itself (set by data-util)
         const otherText = (answer && typeof answer === 'object')
           ? (answer.other || '')
           : (formData[otherKey(question.name)] || '');
@@ -126,7 +153,7 @@ export function validateQuestion(question, formData) {
   // ── RADIO WITH FOLLOW-UP ──────────────────────────────────────────────────
   // answer shape: { main: string, followup: string[] }
   else if (question.type === 'radio-with-followup') {
-    if (question.required && _isEmpty(answer)) {
+    if (question.required && _isEmpty(answer, question.type)) {
       errorMessage = 'Please select an option.';
       isValid = false;
     }
@@ -134,12 +161,9 @@ export function validateQuestion(question, formData) {
     if (isValid) {
       const mainVal = _mainValue(answer);
 
-      // Only validate follow-up if the question definition requires it
-      // AND the selected option actually has follow-up options
       if (question.followupRequired && mainVal) {
         const selectedOpt = question.options?.find(o => o.value === mainVal);
         if (selectedOpt?.followupLabel && selectedOpt.followupOptions?.length > 0) {
-          // followup array lives inside the object (set by data-util)
           const followupArr = (answer && typeof answer === 'object' && Array.isArray(answer.followup))
             ? answer.followup
             : [];
@@ -170,8 +194,8 @@ export function validateQuestion(question, formData) {
   }
 
   // ── STAR RATING & NUMBER SCALE ────────────────────────────────────────────
-  // data-util now stores these as Number — null/undefined means unanswered.
-  // 0 would be a valid number so we check explicitly for null/undefined only.
+  // data-util stores these as Number — null/undefined means unanswered.
+  // 0 is a valid value so we check for null/undefined only, not falsiness.
   else if (question.type === 'star-rating' || question.type === 'number-scale') {
     if (question.required && (answer === null || answer === undefined)) {
       errorMessage = 'Please make a selection.';
@@ -180,7 +204,7 @@ export function validateQuestion(question, formData) {
   }
 
   // ── ALL OTHER TYPES (emoji-radio, radio, textarea, etc.) ──────────────────
-  else if (question.required && _isEmpty(answer)) {
+  else if (question.required && _isEmpty(answer, question.type)) {
     errorMessage = 'This response is required.';
     isValid = false;
   }
@@ -218,8 +242,20 @@ export function getValidationErrors(question, formData) {
   const answer  = formData[question.name];
   const mainVal = _mainValue(answer);
 
-  // Required check — works for all shapes via _isEmpty
-  if (question.required && _isEmpty(answer)) {
+  // ── selector-textarea: only errors if explicitly required and text is blank ─
+  if (question.type === 'selector-textarea') {
+    if (question.required) {
+      const txt = (answer && typeof answer === 'object') ? (answer.text || '') : '';
+      if (!txt || String(txt).trim() === '') {
+        errors.push('Please write your response.');
+      }
+    }
+    // Non-required: no errors possible — return early
+    return errors;
+  }
+
+  // Required check — works for all remaining shapes via _isEmpty
+  if (question.required && _isEmpty(answer, question.type)) {
     errors.push('This response is required.');
   }
 

@@ -1,9 +1,10 @@
 // FILE: main/adminMaintenance.js
-// PURPOSE: Destructive/maintenance button handlers — clear local, check update, fix video
-// VERSION: 1.0.0
-// DEPENDENCIES: adminState.js, window.globals, window.CONSTANTS, window.KIOSK_CONFIG
+// PURPOSE: Destructive/maintenance button handlers — clear local, check update, fix video + debug helpers
+// VERSION: 1.1.0 - trackAdminEvent + vibrateError from adminUtils
+// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS
 
 import { adminState } from './adminState.js';
+import { trackAdminEvent, vibrateSuccess, vibrateError } from './adminUtils.js';
 
 const CLEAR_PASSWORD = '8765';
 const MAX_ATTEMPTS = 2;
@@ -12,6 +13,8 @@ const PASSWORD_SESSION_TIMEOUT = 300000;
 
 let failedAttempts = 0;
 let lockoutUntil = null;
+// lastPasswordSuccess intentionally not persisted — session cache resets on reload
+// which is correct behaviour for a shared kiosk
 let lastPasswordSuccess = null;
 
 let adminClearButtonHandler = null;
@@ -20,20 +23,6 @@ let fixVideoButtonHandler = null;
 let boundAdminClearButton = null;
 let boundCheckUpdateButton = null;
 let boundFixVideoButton = null;
-
-function trackAdminEvent(eventType, metadata = {}) {
-  try {
-    if (window.dataHandlers?.trackAnalytics) {
-      window.dataHandlers.trackAnalytics(eventType, {
-        ...metadata,
-        source: 'admin_panel',
-        online: navigator.onLine,
-      });
-    }
-  } catch (error) {
-    console.warn('[MAINTENANCE] Analytics tracking failed (offline safe):', error.message);
-  }
-}
 
 // ─────────────────────────────────────────────────────────────
 // PASSWORD + LOCKOUT
@@ -77,14 +66,6 @@ export function restoreLockoutState() {
 function isPasswordSessionExpired() {
   if (!lastPasswordSuccess) return true;
   return (Date.now() - lastPasswordSuccess) > PASSWORD_SESSION_TIMEOUT;
-}
-
-function vibrateSuccess() {
-  try { if (navigator.vibrate) navigator.vibrate([50]); } catch (_) {}
-}
-
-function vibrateError() {
-  try { if (navigator.vibrate) navigator.vibrate([100, 50, 100]); } catch (_) {}
 }
 
 function verifyClearPassword() {
@@ -134,7 +115,7 @@ function verifyClearPassword() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON STATE UPDATER — called from adminPanel.js
+// BUTTON STATE UPDATERS
 // ─────────────────────────────────────────────────────────────
 
 export function updateClearButtonState() {
@@ -238,7 +219,7 @@ export function setupMaintenanceHandlers(adminClearButton, checkUpdateButton, fi
           return;
         }
 
-        // Plug-and-play: clear all survey type queue keys dynamically
+        // Plug-and-play: clears all survey type queues dynamically from config
         const surveyQueueKeys = Object.values(CONSTANTS.SURVEY_TYPES || {})
           .map(cfg => cfg.storageKey)
           .filter(Boolean);
@@ -391,7 +372,6 @@ export function setupMaintenanceHandlers(adminClearButton, checkUpdateButton, fi
           }, 5000);
 
           repairedVideo.addEventListener('canplaythrough', onReady, { once: true });
-
           repairedVideo.addEventListener('loadeddata', onReady, { once: true });
         });
 
@@ -463,10 +443,7 @@ export function cleanupMaintenanceHandlers() {
 
 window.inspectQueue = function () {
   const CONSTANTS = window.CONSTANTS;
-  if (!CONSTANTS) {
-    console.error('[MAINTENANCE] window.CONSTANTS not available');
-    return;
-  }
+  if (!CONSTANTS) { console.error('[MAINTENANCE] window.CONSTANTS not available'); return; }
 
   const surveyTypes = CONSTANTS.SURVEY_TYPES || {};
   const results = {};
@@ -478,8 +455,6 @@ window.inspectQueue = function () {
 
   console.log('');
   console.log('══════════ QUEUE INSPECTION ══════════');
-  console.log('');
-
   Object.entries(results).forEach(([type, queue]) => {
     console.log(`--- ${type} (${queue.length} records) ---`);
     queue.forEach((sub, idx) => {
@@ -492,16 +467,12 @@ window.inspectQueue = function () {
   console.log(`Active Survey Type: ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
   console.log(`Network: ${navigator.onLine ? 'Online' : 'Offline'}`);
   console.log('');
-
   return results;
 };
 
 window.systemStatus = function () {
   const CONSTANTS = window.CONSTANTS;
-  if (!CONSTANTS) {
-    console.error('[MAINTENANCE] window.CONSTANTS not available');
-    return;
-  }
+  if (!CONSTANTS) { console.error('[MAINTENANCE] window.CONSTANTS not available'); return; }
 
   const surveyTypes = CONSTANTS.SURVEY_TYPES || {};
   const analytics = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_ANALYTICS) || '[]');
@@ -510,7 +481,6 @@ window.systemStatus = function () {
 
   console.log('');
   console.log('══════════ SYSTEM STATUS — OFFLINE-FIRST KIOSK ══════════');
-  console.log('');
   console.log(`Network: ${navigator.onLine ? '🌐 Online' : '📡 Offline Mode'}`);
   console.log(`Active Survey: ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
 
@@ -531,8 +501,8 @@ window.systemStatus = function () {
 
   console.log('');
   console.log('DEBUG COMMANDS:');
-  console.log('  window.inspectQueue()        — View all queues');
-  console.log('  window.systemStatus()        — View system status');
+  console.log('  window.inspectQueue()          — View all queues');
+  console.log('  window.systemStatus()          — View system status');
   console.log('  window.inspectAdminHitTarget() — Inspect top hit target');
   console.log('');
 };
@@ -546,5 +516,3 @@ window.inspectAdminHitTarget = function () {
   console.log('[ADMIN DEBUG] elementsFromPoint:', stack);
   return { el, stack };
 };
-
-                                               

@@ -29,12 +29,13 @@ const COLUMN_ORDER_TYPE1 = [
 const COLUMN_ORDER_TYPE2 = [
   'visit_feeling',
   'experiences',
-  'standout',         // "Something Else: typed text" when Other selected
-  'shayona_intent',   // main selection only
-  'shayona_reason',   // followup checkboxes joined
-  'expectation_met',  // main selection only
-  'expectation_diff', // followup checkboxes joined
-  'final_thoughts',
+  'standout',
+  'shayona_intent',
+  'shayona_reason',
+  'expectation_met',
+  'expectation_diff',
+  'final_thoughts_category',   // ← was 'final_thoughts'
+  'final_thoughts_text',       // ← new second column
   'sync_status',
   'timestamp',
   'id',
@@ -176,8 +177,9 @@ function processSingleSubmissionType2(submission) {
     shayona_reason:   flattenFollowup(source.shayona_intent),
     expectation_met:  flattenRadioWithFollowup(source.expectation_met),
     expectation_diff: flattenFollowup(source.expectation_met),
-    // future_wish removed — no longer in Type 2 survey
-    final_thoughts:   (source.final_thoughts || '').trim(),
+    // ADD these two:
+final_thoughts_category: source.final_thoughts_category || '',
+final_thoughts_text:     (source.final_thoughts_text    || '').trim(),
   };
 
   return COLUMN_ORDER_TYPE2.map(key => String(processedData[key] ?? ''));

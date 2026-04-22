@@ -128,8 +128,10 @@ export default async function handler(request, response) {
                 });
                 console.log(`${detailRows.length} detailed events written to ${ANALYTICS_DETAIL_SHEET_NAME}`);
             } catch (detailError) {
-                console.warn(`Could not write to detail sheet (${ANALYTICS_DETAIL_SHEET_NAME}):`, detailError.message);
-            }
+  console.error(`[ANALYTICS] ❌ Detail sheet write failed (${ANALYTICS_DETAIL_SHEET_NAME}):`, detailError.message);
+  // Non-fatal — summary already written — but log clearly so missing rows are visible
+  // Check that the "${ANALYTICS_DETAIL_SHEET_NAME}" tab exists in your spreadsheet
+}
         }
 
         // --- SUCCESS RESPONSE ---

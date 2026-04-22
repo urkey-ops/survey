@@ -1,28 +1,15 @@
 // FILE: main/adminSurveyControls.js
 // PURPOSE: Survey type switcher + sync + analytics sync button handlers
-// VERSION: 1.0.0
-// DEPENDENCIES: adminState.js, window.globals, window.CONSTANTS, window.KIOSK_CONFIG
+// VERSION: 1.1.0 - trackAdminEvent from adminUtils, guard on empty SURVEY_TYPES
+// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS, window.KIOSK_CONFIG
 
 import { adminState } from './adminState.js';
+import { trackAdminEvent } from './adminUtils.js';
 
 let syncButtonHandler = null;
 let syncAnalyticsButtonHandler = null;
 let boundSyncButton = null;
 let boundSyncAnalyticsButton = null;
-
-function trackAdminEvent(eventType, metadata = {}) {
-  try {
-    if (window.dataHandlers?.trackAnalytics) {
-      window.dataHandlers.trackAnalytics(eventType, {
-        ...metadata,
-        source: 'admin_panel',
-        online: navigator.onLine,
-      });
-    }
-  } catch (error) {
-    console.warn('[SURVEY CONTROLS] Analytics tracking failed (offline safe):', error.message);
-  }
-}
 
 // ─────────────────────────────────────────────────────────────
 // BUTTON STATE UPDATERS — called from adminPanel.js
@@ -89,7 +76,7 @@ export function updateAnalyticsButtonState(isOnline) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SURVEY TYPE SWITCHER — plug-and-play, reads from CONSTANTS
+// SURVEY TYPE SWITCHER
 // ─────────────────────────────────────────────────────────────
 
 export function updateSurveyTypeSwitcher() {
@@ -113,8 +100,15 @@ export function updateSurveyTypeSwitcher() {
 export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
   if (document.getElementById('surveyTypeSwitcher')) return;
 
-  const currentType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
   const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
+
+  // Guard: if config not loaded yet or empty, bail with a clear warning
+  if (!Object.keys(surveyTypes).length) {
+    console.error('[SURVEY CONTROLS] ❌ SURVEY_TYPES is empty or not loaded — switcher not built');
+    return;
+  }
+
+  const currentType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
 
   const switcherRow = document.createElement('div');
   switcherRow.id = 'surveyTypeSwitcher';
@@ -157,32 +151,35 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         const hasPartialData = partialData && Object.keys(partialData).length > 1;
 
         if (hasPartialData) {
+          // Always read queue key from config — never fall back to a hardcoded string
           const queueKey =
-            window.CONSTANTS?.SURVEY_TYPES?.[currentSurveyType]?.storageKey ||
-            window.CONSTANTS?.STORAGE_KEY_QUEUE ||
-            'submissionQueue';
+            window.CONSTANTS?.SURVEY_TYPES?.[currentSurveyType]?.storageKey;
 
-          const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
-          let existingQueue = [];
-
-          try {
-            existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-          } catch (_) {
-            existingQueue = [];
-          }
-
-          if (existingQueue.length < MAX_QUEUE_SIZE) {
-            existingQueue.push({
-              ...partialData,
-              surveyType: currentSurveyType,
-              abandonedAt: new Date().toISOString(),
-              abandonedReason: 'survey_type_switch',
-              sync_status: 'unsynced_partial',
-            });
-            localStorage.setItem(queueKey, JSON.stringify(existingQueue));
-            console.log(`[SURVEY CONTROLS] ✅ Partial data saved before type switch (queue: ${queueKey})`);
+          if (!queueKey) {
+            console.warn('[SURVEY CONTROLS] ⚠️ No storageKey found for type:', currentSurveyType, '— partial data not saved');
           } else {
-            console.warn('[SURVEY CONTROLS] Queue full — partial data not saved before type switch');
+            const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
+            let existingQueue = [];
+
+            try {
+              existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+            } catch (_) {
+              existingQueue = [];
+            }
+
+            if (existingQueue.length < MAX_QUEUE_SIZE) {
+              existingQueue.push({
+                ...partialData,
+                surveyType: currentSurveyType,
+                abandonedAt: new Date().toISOString(),
+                abandonedReason: 'survey_type_switch',
+                sync_status: 'unsynced_partial',
+              });
+              localStorage.setItem(queueKey, JSON.stringify(existingQueue));
+              console.log(`[SURVEY CONTROLS] ✅ Partial data saved before type switch (queue: ${queueKey})`);
+            } else {
+              console.warn('[SURVEY CONTROLS] Queue full — partial data not saved before type switch');
+            }
           }
         }
       } catch (saveErr) {
@@ -229,7 +226,7 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
     return btn;
   };
 
-  // ── Plug-and-play: reads all types from CONSTANTS, no hardcoding ──
+  // Plug-and-play: reads all types from CONSTANTS, no hardcoding
   Object.entries(surveyTypes).forEach(([type, cfg]) => {
     btnGroup.appendChild(makeBtn(type, cfg.label || type));
   });

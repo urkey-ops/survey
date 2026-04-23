@@ -176,7 +176,7 @@
     console.log('\nTiming Settings:');
     console.log(`  Inactivity Timeout : ${INACTIVITY_TIMEOUT_MS / 1000}s`);
     console.log(`  Sync Interval      : ${SYNC_INTERVAL_MS / 60000} min`);
-    console.log(`  Analytics Sync     : ${ANALYTICS_SYNC_INTERVAL_MS / 3600000} hrs`);
+    console.log(`  Analytics Sync     : ${ANALYTICS_SYNC_INTERVAL_MS / 60000).toFixed(0)} min`);
     console.log(`  Reset Delay        : ${RESET_DELAY_MS / 1000}s`);
     console.log('\nQueue Limits:');
     console.log(`  Max Queue Size  : ${MAX_QUEUE_SIZE} records`);

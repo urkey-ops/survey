@@ -1,12 +1,11 @@
 // FILE: timers/inactivityHandler.js
 // PURPOSE: Handle user inactivity detection and auto-reset
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 3.4.0
-// CHANGES FROM 3.3.0:
-//   - adds cleanupVideoLoop() call in performKioskReset()
-//   - dedupes focus + visibilitychange with shared handleAppVisible()
-//   - guards against duplicate binds more explicitly
-//   - uses timerManager consistently for inactivity/sync cleanup
+// VERSION: 3.4.1
+// CHANGES FROM 3.4.0:
+//   - ADD: explicit comment that Q1 inactivity discard is intentional product behavior
+//     (treat as bounce, do not save partial queue record if user never progresses past Q1)
+//   - No logic changes
 
 let boundResetInactivityTimer = null;
 let throttleTimeout = null;
@@ -145,17 +144,22 @@ function handleInactivityTimeout(dataUtils, appState) {
 
   console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion?.id})`);
 
+  // INTENTIONAL PRODUCT RULE:
+  // If the user never progresses beyond Question 1, treat this as a bounce
+  // rather than a meaningful partial survey. Record analytics, but do NOT
+  // save a partial queue record. This is deliberate to keep one-question
+  // abandons out of the dataset.
   if (idx === 0) {
     console.log('[INACTIVITY] Q1 abandonment — recording analytics');
     try {
-     getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
-  questionId:       currentQuestion?.id,
-  questionIndex:    idx,
-  totalTimeSeconds: getTotalSurveyTime(),
-  reason:           'inactivity_q1',
-  surveyType:       window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1',
-  partialData:      { satisfaction: appState.formData?.satisfaction ?? null },
-});
+      getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
+        questionId:       currentQuestion?.id,
+        questionIndex:    idx,
+        totalTimeSeconds: getTotalSurveyTime(),
+        reason:           'inactivity_q1',
+        surveyType:       window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1',
+        partialData:      { satisfaction: appState.formData?.satisfaction ?? null },
+      });
     } catch (analyticsErr) {
       console.warn('[INACTIVITY] Q1 abandonment analytics failed:', analyticsErr);
     }
@@ -211,23 +215,18 @@ function handleInactivityTimeout(dataUtils, appState) {
     `(queue ${surveyType}: ${submissionQueue.length}/${MAX_QUEUE_SIZE})`
   );
 
-
-
-
-try {
-  dataHandlers.recordAnalytics('survey_abandoned', {
-    questionId:        currentQuestion?.id,
-    questionIndex:     idx,
-    totalTimeSeconds,
-    reason:            'inactivity',
-    surveyType,
-    questionTimeSpent: { ...appState.questionTimeSpent },
-  });
-} catch (analyticsErr) {
-  console.warn('[INACTIVITY] Abandonment analytics failed:', analyticsErr);
-}
-
-  
+  try {
+    dataHandlers.recordAnalytics('survey_abandoned', {
+      questionId:        currentQuestion?.id,
+      questionIndex:     idx,
+      totalTimeSeconds,
+      reason:            'inactivity',
+      surveyType,
+      questionTimeSpent: { ...appState.questionTimeSpent },
+    });
+  } catch (analyticsErr) {
+    console.warn('[INACTIVITY] Abandonment analytics failed:', analyticsErr);
+  }
 
   if (typeof window.cleanupAdminPanel === 'function') window.cleanupAdminPanel();
   performKioskReset();

@@ -115,6 +115,21 @@ function clearManagedTimers() {
   if (unlockTapTimeout) { clearTimeout(unlockTapTimeout); unlockTapTimeout = null; }
 }
 
+
+
+
+
+// Inside your admin panel build function
+const resetBtn = document.createElement('button');
+resetBtn.textContent = 'Reset Device Type';
+resetBtn.addEventListener('click', () => {
+  if (confirm('This will reset the kiosk type on next reload. Continue?')) {
+    localStorage.removeItem('deviceConfig');
+    location.reload();
+  }
+});
+adminControls.appendChild(resetBtn);
+
 // ─────────────────────────────────────────────────────────────
 // SHOW / HIDE
 // ─────────────────────────────────────────────────────────────

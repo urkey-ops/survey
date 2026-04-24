@@ -97,10 +97,10 @@ window.shayonaDataUtils = (function () {
       type: 'emoji-radio',
       question: 'How was your experience at Shayona Café today?',
       options: [
-        { value: 'Excellent',       label: 'Excellent',       emoji: '😊' },
-        { value: 'Good',            label: 'Good',            emoji: '🙂' },
-        { value: 'Okay',            label: 'Okay',            emoji: '😐' },
         { value: 'Not as expected', label: 'Not as expected', emoji: '🙁' },
+        { value: 'Okay',            label: 'Okay',            emoji: '😐' },
+        { value: 'Good',            label: 'Good',            emoji: '🙂' },
+        { value: 'Excellent',       label: 'Excellent',       emoji: '😊' },
       ],
       required: true,
     },

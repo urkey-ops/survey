@@ -300,10 +300,7 @@
     <script src="appState.js"></script>
 
     <!-- 5. Survey data utils — both always loaded -->
-    <!-- Temple questions + base renderers -->
     <script src="surveys/data-util.js"></script>
-    <!-- Café questions + section-header + dual-star-rating renderers -->
-    <!-- Proxy guard inside routes window.dataUtils → shayonaDataUtils on café iPad -->
     <script src="surveys/shayona-data-util.js"></script>
 
     <!-- 6-8. App modules -->
@@ -376,13 +373,26 @@
         return !!target.closest('header, #mainTitle, #adminControls');
       }
 
+      // FIX: Start screen taps must never be swallowed by the double-tap
+      // prevention handler. On iOS, e.preventDefault() on touchend blocks
+      // the synthetic click event — meaning the first tap sets lastTouchEnd
+      // and any tap within 300ms after (e.g. a confident single tap) is
+      // silently dropped, making the start screen appear completely unresponsive.
+      function isStartScreenTarget(target) {
+        if (!target) return false;
+        return !!target.closest('#kioskStartScreen');
+      }
+
       let lastTouchEnd = 0;
       document.addEventListener('touchend', function(e) {
         const target = e.target;
-        if (isAdminOrHeaderTarget(target) || isTextInputLike(target) || isInteractiveTarget(target)) {
-          lastTouchEnd = Date.now();
-          return;
-        }
+
+        // Never block start screen taps — let them through unconditionally
+        if (isStartScreenTarget(target))      { lastTouchEnd = Date.now(); return; }
+        if (isAdminOrHeaderTarget(target))    { lastTouchEnd = Date.now(); return; }
+        if (isTextInputLike(target))          { lastTouchEnd = Date.now(); return; }
+        if (isInteractiveTarget(target))      { lastTouchEnd = Date.now(); return; }
+
         const now = Date.now();
         if (now - lastTouchEnd <= 300) { e.preventDefault(); }
         lastTouchEnd = now;

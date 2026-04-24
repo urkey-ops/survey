@@ -89,6 +89,14 @@
 
   const DEFAULT_SURVEY_TYPE = 'type1';
 
+
+
+  type3: {
+  label: 'Shayona Café',
+  storageKey: 'shayonaQueue',
+  sheetName: 'Shayona_Cafe',
+  analyticsKey: 'shayonaAnalytics',
+}
   // ═══════════════════════════════════════════════════════════
   // QUEUE & SYNC LIMITS
   // ═══════════════════════════════════════════════════════════

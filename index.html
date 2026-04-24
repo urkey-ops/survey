@@ -86,12 +86,20 @@
         width: 100% !important;
       }
 
-      /* Device setup overlay — injected by device-config.js on first launch */
+      /*
+       * Device setup overlay — static in HTML, hidden by default.
+       * device-config.js shows it on first launch by setting display:flex.
+       * On configured launches it is never shown — zero flash.
+       *
+       * display:none here is intentional. device-config.js (the very first
+       * script) sets display:flex immediately if no stored config is found,
+       * before DOMContentLoaded, so the overlay appears before any app JS runs.
+       */
       #device-setup-overlay {
+        display: none;
         position: fixed;
         inset: 0;
         z-index: 9999;
-        display: flex;
         align-items: center;
         justify-content: center;
         background: #f7f6f2;
@@ -147,6 +155,46 @@
     <script>
       window.globals = {};
     </script>
+
+    <!--
+    ═══════════════════════════════════════════════════════
+    DEVICE SETUP OVERLAY — static element, hidden by default.
+
+    Placed as the FIRST element in <body> so it is in the DOM
+    immediately when device-config.js runs (which is a blocking
+    <script> tag, executing synchronously before any module loads).
+
+    device-config.js checks for stored config:
+      - Config found  → leaves display:none, app boots normally
+      - No config     → sets display:flex immediately (synchronous),
+                        showing this overlay before any other content
+                        renders. Zero flash guaranteed.
+
+    The overlay confirm handler (in device-config.js) hides this
+    element and calls window._initializeSurveyState() after the
+    user picks a mode.
+    ═══════════════════════════════════════════════════════
+    -->
+    <div id="device-setup-overlay">
+      <div class="setup-card">
+        <div class="setup-logo">
+          <h1>Shayona</h1>
+          <p>Select what this iPad is used for</p>
+        </div>
+        <div class="setup-options">
+          <button class="setup-btn" data-mode="temple">
+            <span class="setup-icon">🛕</span>
+            <span class="setup-label">Temple</span>
+            <span class="setup-desc">Visitor survey kiosk</span>
+          </button>
+          <button class="setup-btn" data-mode="shayona">
+            <span class="setup-icon">☕</span>
+            <span class="setup-label">Shayona Café</span>
+            <span class="setup-desc">Café feedback kiosk</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
         <div class="mb-8 content">
@@ -271,8 +319,9 @@
     SCRIPT LOAD ORDER — DO NOT REORDER
     ───────────────────────────────────────────────────────
     1. device-config.js   — MUST be first, sets window.DEVICECONFIG
-                            Shows setup screen on first launch
-                            All other scripts depend on this
+                            Shows #device-setup-overlay (static in HTML)
+                            on first launch via display:flex. All other
+                            scripts depend on this.
     2. pwa-update-manager — non-module utility, no dependencies
     3. config.js          — CONSTANTS, SURVEYTYPES (needs nothing)
     4. appState.js        — app state shape (needs nothing)

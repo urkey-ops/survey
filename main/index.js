@@ -1,12 +1,15 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.1.0
-// FIXES:
-//   - prevents duplicate initialize() runs
-//   - stores heartbeat / quota monitor / emergency online listener references
-//   - avoids duplicate periodic timers on re-init
-//   - uses readyState-safe boot in addition to DOMContentLoaded
-//   - keeps storage quota polling and periodic sync behavior
+// VERSION: 5.2.0
+// CHANGES FROM 5.1.0:
+//   - FIX: startApp() now calls initialize() — was an empty stub
+//   - FIX: readyState-safe boot moved INSIDE startApp() so deviceConfigReady
+//     guard controls when initialize() runs on first-launch iPads
+//   - REMOVE: setupTypewriterVisibilityHandler import + call (typewriterEffect.js
+//     removed in Phase 2 — was causing fatal module load error on boot)
+//   - ADD: type3 (shayonaQueue) included in heartbeat log
+// DEPENDENCIES: uiElements.js, navigationSetup.js, adminPanel.js,
+//   networkStatus.js, visibilityHandler.js, inactivityHandler.js
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -14,37 +17,43 @@ import { setupAdminPanel } from './adminPanel.js';
 import { setupNetworkMonitoring } from './networkStatus.js';
 import { setupVisibilityHandler } from './visibilityHandler.js';
 import { setupInactivityVisibilityHandler, startPeriodicSync } from '../timers/inactivityHandler.js';
-import { setupTypewriterVisibilityHandler } from '../ui/typewriterEffect.js';
+// typewriterEffect.js removed in Phase 2 — import deleted
 
 // ── Init guards / timer refs ──────────────────────────────────────────────────
-let initializationStarted = false;
+let initializationStarted   = false;
 let initializationCompleted = false;
-let heartbeatIntervalId = null;
-let storageMonitorIntervalId = null;
-let emergencyOnlineHandler = null;
-let pendingDataHandlersPoll = null;
+let heartbeatIntervalId       = null;
+let storageMonitorIntervalId  = null;
+let emergencyOnlineHandler    = null;
+let pendingDataHandlersPoll   = null;
 
-//----Start App One Time Config ------
+// ── Device config guard ───────────────────────────────────────────────────────
+// startApp() is the single boot entry point.
+// On returning iPads (localStorage has deviceConfig) DEVICECONFIG is already
+// set before this module runs — boot immediately.
+// On first-ever launch device-config.js shows the setup screen and fires
+// 'deviceConfigReady' after the user picks — we wait for that event.
 
 function startApp() {
-  // all your existing init code here
+  // readyState-safe: if DOM is already ready, run now; otherwise wait.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize, { once: true });
+  } else {
+    initialize();
+  }
 }
 
 if (window.DEVICECONFIG) {
-  // Config already existed in localStorage — start immediately
+  // Already configured (returning iPad) — boot immediately
   startApp();
 } else {
-  // Waiting for user to pick on first launch
+  // First launch — wait for user to select device type on setup screen
   window.addEventListener('deviceConfigReady', startApp, { once: true });
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
 
 function startHeartbeat() {
-  const CONSTANTS = window.CONSTANTS;
-  const appState = window.appState;
-  const dataHandlers = window.dataHandlers;
-
   if (heartbeatIntervalId) {
     clearInterval(heartbeatIntervalId);
     heartbeatIntervalId = null;
@@ -54,24 +63,29 @@ function startHeartbeat() {
     if (document.hidden) return;
     if (!window.dataHandlers || !window.appState) return;
 
-    const type1Key =
-      window.CONSTANTS?.SURVEY_TYPES?.type1?.storageKey ||
-      window.CONSTANTS?.STORAGE_KEY_QUEUE ||
-      'submissionQueue';
+    const CONSTANTS    = window.CONSTANTS;
+    const dataHandlers = window.dataHandlers;
+    const appState     = window.appState;
 
-    const type2Key =
-      window.CONSTANTS?.SURVEY_TYPES?.type2?.storageKey ||
-      window.CONSTANTS?.STORAGE_KEY_QUEUE_V2 ||
-      'submissionQueueV2';
+    const type1Key = CONSTANTS?.SURVEY_TYPES?.type1?.storageKey
+      || CONSTANTS?.STORAGE_KEY_QUEUE
+      || 'submissionQueue';
 
-    const queue1 = dataHandlers.getSubmissionQueue ? dataHandlers.getSubmissionQueue(type1Key) : [];
-    const queue2 = dataHandlers.getSubmissionQueue ? dataHandlers.getSubmissionQueue(type2Key) : [];
-    const analytics = dataHandlers.safeGetLocalStorage
-      ? (dataHandlers.safeGetLocalStorage(CONSTANTS.STORAGE_KEY_ANALYTICS) || [])
-      : [];
+    const type2Key = CONSTANTS?.SURVEY_TYPES?.type2?.storageKey
+      || CONSTANTS?.STORAGE_KEY_QUEUE_V2
+      || 'submissionQueueV2';
+
+    const type3Key = CONSTANTS?.SURVEY_TYPES?.type3?.storageKey
+      || 'shayonaQueue';
+
+    const queue1    = dataHandlers.getSubmissionQueue?.(type1Key) ?? [];
+    const queue2    = dataHandlers.getSubmissionQueue?.(type2Key) ?? [];
+    const queue3    = dataHandlers.getSubmissionQueue?.(type3Key) ?? [];
+    const analytics = dataHandlers.safeGetLocalStorage?.(CONSTANTS?.STORAGE_KEY_ANALYTICS) ?? [];
 
     console.log(
-      `[HEARTBEAT] ❤️ Kiosk alive | Queue T1: ${queue1.length} | Queue T2: ${queue2.length} | ` +
+      `[HEARTBEAT] ❤️ Kiosk alive | ` +
+      `Queue T1: ${queue1.length} | Queue T2: ${queue2.length} | Queue T3: ${queue3.length} | ` +
       `Analytics: ${analytics.length} | Question: ${appState.currentQuestionIndex + 1} | ` +
       `Online: ${navigator.onLine ? '✔' : '✗'}`
     );
@@ -105,7 +119,7 @@ function clearPendingDataHandlersPoll() {
 }
 
 function runStorageQuotaCheck() {
-  if (!window.dataHandlers || !window.dataHandlers.checkStorageQuota) return;
+  if (!window.dataHandlers?.checkStorageQuota) return;
 
   const quotaStatus = window.dataHandlers.checkStorageQuota();
   if (!quotaStatus) return;
@@ -120,11 +134,9 @@ function runStorageQuotaCheck() {
         .then(success => {
           if (success) {
             console.log('[INIT] ✅ Emergency sync freed storage');
-
             setTimeout(() => {
               const newStatus = window.dataHandlers.checkStorageQuota?.();
               if (!newStatus) return;
-
               console.log(`[INIT] Storage after sync: ${newStatus.status} (${newStatus.percentUsed}%)`);
               if (newStatus.status === 'critical') {
                 console.error('[INIT] ⚠️ Storage still critical — manual intervention may be needed');
@@ -147,9 +159,7 @@ function runStorageQuotaCheck() {
 
       emergencyOnlineHandler = () => {
         console.log('[INIT] Device online — attempting emergency sync');
-        if (window.dataHandlers?.syncData) {
-          window.dataHandlers.syncData(true);
-        }
+        window.dataHandlers?.syncData?.(true);
         window.removeEventListener('online', emergencyOnlineHandler);
         emergencyOnlineHandler = null;
       };
@@ -174,7 +184,7 @@ function startStorageMonitoring() {
   }
 
   storageMonitorIntervalId = setInterval(() => {
-    if (!window.dataHandlers || !window.dataHandlers.checkStorageQuota) return;
+    if (!window.dataHandlers?.checkStorageQuota) return;
 
     const quotaStatus = window.dataHandlers.checkStorageQuota();
     if (!quotaStatus) return;
@@ -192,13 +202,13 @@ function startStorageMonitoring() {
 
 function _showStorageAlert(message) {
   if (window.globals?.syncStatusMessage) {
-    window.globals.syncStatusMessage.textContent = message;
-    window.globals.syncStatusMessage.style.color = '#dc2626';
+    window.globals.syncStatusMessage.textContent  = message;
+    window.globals.syncStatusMessage.style.color      = '#dc2626';
     window.globals.syncStatusMessage.style.fontWeight = 'bold';
   }
 
   const adminControls = window.globals?.adminControls;
-  if (adminControls && adminControls.classList.contains('hidden')) {
+  if (adminControls?.classList.contains('hidden')) {
     console.log('[INIT] Auto-showing admin panel due to storage crisis');
     adminControls.classList.remove('hidden');
   }
@@ -220,7 +230,9 @@ function initialize() {
   initializationStarted = true;
 
   try {
-    console.log('[INIT] DOM Content Loaded — Initializing kiosk...');
+    console.log('[INIT] DOM ready — Initializing kiosk...');
+    console.log(`[INIT] Device mode: ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
+    console.log(`[INIT] Allowed survey types: ${(window.DEVICECONFIG?.allowedSurveyTypes ?? []).join(', ') || 'none'}`);
 
     // Step 1: Initialize DOM element references
     initializeElements();
@@ -265,11 +277,9 @@ function initialize() {
     setupInactivityVisibilityHandler();
     console.log('[INIT] ✅ Inactivity visibility handler active');
 
-    // Step 11: Setup typewriter visibility handler
-    setupTypewriterVisibilityHandler();
-    console.log('[INIT] ✅ Typewriter visibility handler active');
+    // Step 11: (typewriterEffect removed in Phase 2 — step intentionally skipped)
 
-       // Step 12: Start periodic sync
+    // Step 12: Start periodic sync
     startPeriodicSync();
     console.log('[INIT] ✅ Periodic sync started (stable interval)');
 
@@ -278,7 +288,7 @@ function initialize() {
     console.log('[INIT] ✅ Heartbeat started (15 min, hidden-aware)');
 
     initializationCompleted = true;
-    initializationStarted = false;
+    initializationStarted   = false;
 
     console.log('[INIT] ✅ Initialization complete');
     console.log('═══════════════════════════════════════════════════════════');
@@ -289,15 +299,8 @@ function initialize() {
   }
 }
 
-// ── Ready-state-safe boot ─────────────────────────────────────────────────────
+// ── Cleanup hook (hot reload / re-init scenarios) ─────────────────────────────
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initialize, { once: true });
-} else {
-  initialize();
-}
-
-// Optional cleanup hook for hot reload / re-init scenarios
 export function cleanupMainInitialization() {
   clearPendingDataHandlersPoll();
 
@@ -316,7 +319,7 @@ export function cleanupMainInitialization() {
     emergencyOnlineHandler = null;
   }
 
-  initializationStarted = false;
+  initializationStarted   = false;
   initializationCompleted = false;
 
   console.log('[INIT] Cleanup complete');

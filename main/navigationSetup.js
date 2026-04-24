@@ -1,16 +1,25 @@
 // FILE: main/navigationSetup.js
 // PURPOSE: Setup navigation buttons and activity tracking
-// DEPENDENCIES: window.uiHandlers, window.globals
-// VERSION: 2.1.0
-// FIXES:
-//   - idempotent navigation button setup
-//   - safer resume path guards
-//   - avoids duplicate listeners on re-init
-//   - preserves BUG #21 inactivity listener fix
+// DEPENDENCIES: ui/navigation/core.js, ui/navigation/startScreen.js,
+//               window.uiHandlers (inactivity only), window.globals
+// VERSION: 3.0.0
+// CHANGES FROM 2.1.0:
+//   - CONVERT to ES module (type="module" already set in index.html)
+//   - REPLACE window.uiHandlers lookups for goNext/goPrev/showQuestion/
+//     showStartScreen with direct ES module imports from core.js and
+//     startScreen.js — these functions were never on window.uiHandlers,
+//     causing "handler not available" on every boot
+//   - KEEP window.uiHandlers for inactivity-only functions
+//     (addInactivityListeners, resetInactivityTimer) which are correctly
+//     registered there by uiHandlers.js
+//   - All other logic, guards, and BUG #21 fix preserved exactly
 
-let navigationBound = false;
-let boundNextHandler = null;
-let boundPrevHandler = null;
+import { goNext, goPrev, showQuestion } from '../ui/navigation/core.js';
+import { showStartScreen }              from '../ui/navigation/startScreen.js';
+
+let navigationBound    = false;
+let boundNextHandler   = null;
+let boundPrevHandler   = null;
 
 /**
  * Remove existing navigation listeners if present.
@@ -29,7 +38,7 @@ function cleanupNavigationListeners() {
 
   boundNextHandler = null;
   boundPrevHandler = null;
-  navigationBound = false;
+  navigationBound  = false;
 }
 
 /**
@@ -38,18 +47,13 @@ function cleanupNavigationListeners() {
 export function setupNavigation() {
   const nextBtn = window.globals?.nextBtn;
   const prevBtn = window.globals?.prevBtn;
-  const { goNext, goPrev } = window.uiHandlers || {};
 
   if (!nextBtn || !prevBtn) {
     console.error('[NAVIGATION] Navigation buttons not found');
     return false;
   }
 
-  if (typeof goNext !== 'function' || typeof goPrev !== 'function') {
-    console.error('[NAVIGATION] goNext/goPrev handlers not available');
-    return false;
-  }
-
+  // goNext and goPrev are now imported directly — always available
   cleanupNavigationListeners();
 
   boundNextHandler = (event) => goNext(event);
@@ -66,7 +70,7 @@ export function setupNavigation() {
 
 /**
  * Setup inactivity tracking listeners.
- * Called for fresh survey starts.
+ * addInactivityListeners is correctly on window.uiHandlers — keep as-is.
  */
 export function setupActivityTracking() {
   const { addInactivityListeners } = window.uiHandlers || {};
@@ -85,19 +89,16 @@ export function setupActivityTracking() {
  * Initialize survey state — resume in-progress or start fresh.
  *
  * BUG #21 FIX preserved:
- * Resume path explicitly calls addInactivityListeners() after resetInactivityTimer().
+ * Resume path explicitly calls addInactivityListeners() after
+ * resetInactivityTimer() so listeners are never lost on resume.
  */
 export function initializeSurveyState() {
-  const appState = window.appState;
+  const appState         = window.appState;
   const kioskStartScreen = window.globals?.kioskStartScreen;
-  const kioskVideo = window.globals?.kioskVideo;
+  const kioskVideo       = window.globals?.kioskVideo;
 
-  const {
-    showQuestion,
-    showStartScreen,
-    resetInactivityTimer,
-    addInactivityListeners
-  } = window.uiHandlers || {};
+  // Inactivity helpers still come from window.uiHandlers (correct location)
+  const { resetInactivityTimer, addInactivityListeners } = window.uiHandlers || {};
 
   if (!appState) {
     console.error('[NAVIGATION] appState not available');
@@ -115,11 +116,7 @@ export function initializeSurveyState() {
       kioskVideo.pause();
     }
 
-    if (typeof showQuestion !== 'function') {
-      console.error('[NAVIGATION] showQuestion handler not available');
-      return false;
-    }
-
+    // showQuestion imported directly — always available
     showQuestion(appState.currentQuestionIndex);
 
     if (typeof resetInactivityTimer === 'function') {
@@ -136,11 +133,7 @@ export function initializeSurveyState() {
 
   console.log('[NAVIGATION] 🆕 Starting fresh survey');
 
-  if (typeof showStartScreen !== 'function') {
-    console.error('[NAVIGATION] showStartScreen handler not available');
-    return false;
-  }
-
+  // showStartScreen imported directly — always available
   showStartScreen();
   return true;
 }

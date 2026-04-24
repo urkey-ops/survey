@@ -1,12 +1,12 @@
 // FILE: config.js
 // PURPOSE: Central configuration for offline-first iPad kiosk PWA
-// VERSION: 3.2.0
-// CHANGES FROM 3.1.0:
-//   - FIX: type3 entry moved inside SURVEY_TYPES object (was floating loose — syntax error)
-//   - ADD: STORAGE_KEY_QUEUE_V3 + STORAGE_KEY_ANALYTICS_V3 named constants
-//   - ADD: type3 references named constants instead of raw strings
-//   - ADD: CONSTANTS exposes V3 storage keys
-//   - ADD: Boot log prints Queue (T3)
+// VERSION: 3.2.1
+// CHANGES FROM 3.2.0:
+//   - FIX: KIOSK_CONFIG.KIOSK_ID now resolves dynamically from window.DEVICECONFIG.kioskId
+//     so Temple and Café devices report the correct kiosk ID in sync and analytics payloads.
+//   - CLEANUP: STORAGE_KEY_ANALYTICS canonical fallback aligned to 'surveyAnalytics'
+//     to match client analyticsManager expectations.
+//   - CLEANUP: comments clarified around canonical storage keys.
 
 (function () {
   // ═══════════════════════════════════════════════════════════
@@ -61,35 +61,35 @@
   // ═══════════════════════════════════════════════════════════
   // STORAGE KEYS
   // ═══════════════════════════════════════════════════════════
-  const STORAGE_KEY_QUEUE           = 'submissionQueue';
-  const STORAGE_KEY_QUEUE_V2        = 'submissionQueueV2';
-  const STORAGE_KEY_QUEUE_V3        = 'shayonaQueue';        // Shayona Café
-  const STORAGE_KEY_ANALYTICS       = 'analyticsQueue';
-  const STORAGE_KEY_ANALYTICS_V3    = 'shayonaAnalytics';    // Shayona Café analytics
-  const STORAGE_KEY_STATE           = 'kioskState';
-  const STORAGE_KEY_LAST_SYNC       = 'lastDataSync';
-  const STORAGE_KEY_LAST_ANALYTICS_SYNC = 'lastAnalyticsSync';
-  const STORAGE_KEY_ACTIVE_SURVEY   = 'activeSurveyType';
+  const STORAGE_KEY_QUEUE                = 'submissionQueue';
+  const STORAGE_KEY_QUEUE_V2             = 'submissionQueueV2';
+  const STORAGE_KEY_QUEUE_V3             = 'shayonaQueue';        // Shayona Café
+  const STORAGE_KEY_ANALYTICS            = 'surveyAnalytics';     // canonical default analytics key
+  const STORAGE_KEY_ANALYTICS_V3         = 'shayonaAnalytics';    // Shayona Café analytics
+  const STORAGE_KEY_STATE                = 'kioskState';
+  const STORAGE_KEY_LAST_SYNC            = 'lastDataSync';
+  const STORAGE_KEY_LAST_ANALYTICS_SYNC  = 'lastAnalyticsSync';
+  const STORAGE_KEY_ACTIVE_SURVEY        = 'activeSurveyType';
 
   // ═══════════════════════════════════════════════════════════
   // SURVEY TYPE DEFINITIONS
-  // All three types live here — type3 was previously outside
-  // this object (syntax error) and has been moved inside.
   // ═══════════════════════════════════════════════════════════
   const SURVEY_TYPES = {
     type1: {
-      label:      'Original Survey (V1)',
-      sheetName:  'Sheet1',
-      storageKey: STORAGE_KEY_QUEUE,
+      label:        'Original Survey (V1)',
+      sheetName:    'Sheet1',
+      storageKey:   STORAGE_KEY_QUEUE,
+      analyticsKey: STORAGE_KEY_ANALYTICS,
     },
     type2: {
-      label:      'Visitor Feedback V2',
-      sheetName:  'VisitorFeedbackV2',
-      storageKey: STORAGE_KEY_QUEUE_V2,
+      label:        'Visitor Feedback V2',
+      sheetName:    'VisitorFeedbackV2',
+      storageKey:   STORAGE_KEY_QUEUE_V2,
+      analyticsKey: STORAGE_KEY_ANALYTICS,
     },
     type3: {
       label:        'Shayona Café',
-      sheetName:    'ShayonaCafe',       // matches SHEET_NAME_V3 env var
+      sheetName:    'ShayonaCafe',
       storageKey:   STORAGE_KEY_QUEUE_V3,
       analyticsKey: STORAGE_KEY_ANALYTICS_V3,
     },
@@ -100,23 +100,23 @@
   // ═══════════════════════════════════════════════════════════
   // QUEUE & SYNC LIMITS
   // ═══════════════════════════════════════════════════════════
-  const MAX_QUEUE_SIZE                  = 250;
-  const QUEUE_WARNING_THRESHOLD         = 200;
-  const MAX_ANALYTICS_SIZE              = 500;
-  const AUTO_ADVANCE_DELAY_MS           = 50;
-  const INACTIVITY_TIMEOUT_MS           = 60000;
-  const SYNC_INTERVAL_MS                = 300000;
-  const ANALYTICS_SYNC_INTERVAL_MS      = 600000;
-  const ADMIN_PANEL_TIMEOUT_MS          = 30000;
-  const RESET_DELAY_MS                  = 5000;
-  const TYPEWRITER_DURATION_MS          = 2000;
-  const TEXT_ROTATION_INTERVAL_MS       = 4000;
-  const VISIBILITY_CHANGE_DELAY_MS      = 5000;
-  const STATUS_MESSAGE_AUTO_CLEAR_MS    = 4000;
-  const ERROR_MESSAGE_AUTO_CLEAR_MS     = 10000;
-  const START_SCREEN_REMOVE_DELAY_MS    = 400;
-  const MAX_RETRIES                     = 3;
-  const RETRY_DELAY_MS                  = 2000;
+  const MAX_QUEUE_SIZE               = 250;
+  const QUEUE_WARNING_THRESHOLD      = 200;
+  const MAX_ANALYTICS_SIZE           = 500;
+  const AUTO_ADVANCE_DELAY_MS        = 50;
+  const INACTIVITY_TIMEOUT_MS        = 60000;
+  const SYNC_INTERVAL_MS             = 300000;
+  const ANALYTICS_SYNC_INTERVAL_MS   = 600000;
+  const ADMIN_PANEL_TIMEOUT_MS       = 30000;
+  const RESET_DELAY_MS               = 5000;
+  const TYPEWRITER_DURATION_MS       = 2000;
+  const TEXT_ROTATION_INTERVAL_MS    = 4000;
+  const VISIBILITY_CHANGE_DELAY_MS   = 5000;
+  const STATUS_MESSAGE_AUTO_CLEAR_MS = 4000;
+  const ERROR_MESSAGE_AUTO_CLEAR_MS  = 10000;
+  const START_SCREEN_REMOVE_DELAY_MS = 400;
+  const MAX_RETRIES                  = 3;
+  const RETRY_DELAY_MS               = 2000;
 
   // ═══════════════════════════════════════════════════════════
   // ENDPOINTS
@@ -242,7 +242,10 @@
   // KIOSK CONFIGURATION
   // ═══════════════════════════════════════════════════════════
   const KIOSK_CONFIG = {
-    KIOSK_ID: 'KIOSK-GWINNETT-001',
+    get KIOSK_ID() {
+      return window.DEVICECONFIG?.kioskId || 'KIOSK-GWINNETT-001';
+    },
+
     storageAvailable,
 
     getDefaultSurveyType,
@@ -255,7 +258,7 @@
     isValidSurveyType,
   };
 
-  window.CONSTANTS   = CONSTANTS;
+  window.CONSTANTS    = CONSTANTS;
   window.KIOSK_CONFIG = KIOSK_CONFIG;
 
   // ═══════════════════════════════════════════════════════════
@@ -265,7 +268,7 @@
   const activeConfig = getSurveyConfig(activeType);
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('⚙️  CONFIG LOADED (v3.2.0)');
+  console.log('⚙️  CONFIG LOADED (v3.2.1)');
   console.log('═══════════════════════════════════════════════════════');
   console.log(`  Kiosk ID      : ${KIOSK_CONFIG.KIOSK_ID}`);
   console.log(`  Storage       : ${storageAvailable ? 'Available' : 'Unavailable'}`);

@@ -1,17 +1,17 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS KIOSK SAFE)
-// VERSION: 9.6.0
-// CHANGES FROM 9.5.0:
-//   - ADD:    /config/device-config.js   — first-launch setup screen
-//   - ADD:    /surveys/data-util.js      — moved from root in Phase 2
-//   - ADD:    /surveys/shayona-data-util.js — café questions + renderers
-//   - ADD:    /adminAnalytics.js         — was missing from precache
-//   - REMOVE: /data-util.js             — no longer exists at root
-//   - REMOVE: /ui/typewriterEffect.js   — removed in Phase 2
-//   - BUMP:   CACHE_NAME / RUNTIME_CACHE v27 → v28
+// VERSION: 9.7.0
+// CHANGES FROM 9.6.0:
+//   - BUMP: CACHE_NAME / RUNTIME_CACHE v28 → v29
+//     Invalidates stale cache for the four files changed in the
+//     first-launch flash fix:
+//       • index.html              (static #device-setup-overlay added)
+//       • config/device-config.js (v1.1.0 — static overlay, visibility guard)
+//       • main/navigationSetup.js (v3.1.0 — isSetupOverlayActive guard)
+//       • main/index.js           (v5.5.0 — isDeviceConfigured guard)
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v28';
-const RUNTIME_CACHE = 'kiosk-runtime-v28';
+const CACHE_NAME    = 'kiosk-survey-v29';
+const RUNTIME_CACHE = 'kiosk-runtime-v29';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation
@@ -26,15 +26,15 @@ const CRITICAL_CACHE = [
   '/input.css',
 
   // Config + device setup
-  '/config/device-config.js',   // ← NEW: first-launch iPad setup screen
+  '/config/device-config.js',
   '/config.js',
   '/appState.js',
   '/pwa-update-manager.js',
-  '/adminAnalytics.js',         // ← NEW: was missing
+  '/adminAnalytics.js',
 
   // Survey data utils — both always cached (proxy guard routes at runtime)
-  '/surveys/data-util.js',           // ← NEW PATH (was /data-util.js)
-  '/surveys/shayona-data-util.js',   // ← NEW: café questions + renderers
+  '/surveys/data-util.js',
+  '/surveys/shayona-data-util.js',
 
   // Main modules
   '/main/index.js',
@@ -102,7 +102,7 @@ let cleanupStarted = false;
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v9.6 with complete module cache...');
+  console.log('[SW] Installing v9.7 with complete module cache...');
 
   event.waitUntil(
     (async () => {
@@ -159,7 +159,7 @@ self.addEventListener('install', event => {
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v9.6 (complete module cache)');
+      console.log('[SW] ✅ Installed v9.7 (complete module cache)');
     })()
   );
 });
@@ -168,7 +168,7 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v9.6...');
+  console.log('[SW] Activating v9.7...');
 
   event.waitUntil(
     (async () => {
@@ -190,10 +190,10 @@ self.addEventListener('activate', event => {
 
       const clients = await self.clients.matchAll({ type: 'window' });
       clients.forEach(client => {
-        client.postMessage({ type: 'SW_ACTIVATED', version: '9.6' });
+        client.postMessage({ type: 'SW_ACTIVATED', version: '9.7' });
       });
 
-      console.log('[SW] ✅ Activated v9.6 (battery optimized, complete cache)');
+      console.log('[SW] ✅ Activated v9.7 (battery optimized, complete cache)');
     })()
   );
 });

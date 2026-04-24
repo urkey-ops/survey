@@ -1,11 +1,18 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS KIOSK SAFE)
-// UPDATED: Added adminUtils.js to CRITICAL_CACHE for modular admin panel split
-// VERSION: 9.5.0
+// VERSION: 9.6.0
+// CHANGES FROM 9.5.0:
+//   - ADD:    /config/device-config.js   — first-launch setup screen
+//   - ADD:    /surveys/data-util.js      — moved from root in Phase 2
+//   - ADD:    /surveys/shayona-data-util.js — café questions + renderers
+//   - ADD:    /adminAnalytics.js         — was missing from precache
+//   - REMOVE: /data-util.js             — no longer exists at root
+//   - REMOVE: /ui/typewriterEffect.js   — removed in Phase 2
+//   - BUMP:   CACHE_NAME / RUNTIME_CACHE v27 → v28
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME = 'kiosk-survey-v27';
-const RUNTIME_CACHE = 'kiosk-runtime-v27';
-const MEDIA_CACHE = 'kiosk-media-v1'; // unchanged — video hasn't changed
+const CACHE_NAME    = 'kiosk-survey-v28';
+const RUNTIME_CACHE = 'kiosk-runtime-v28';
+const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation
 const CRITICAL_CACHE = [
@@ -18,12 +25,16 @@ const CRITICAL_CACHE = [
   '/custom.css',
   '/input.css',
 
-  // Core JavaScript
+  // Config + device setup
+  '/config/device-config.js',   // ← NEW: first-launch iPad setup screen
   '/config.js',
   '/appState.js',
-  '/data-util.js',
-  '/uiHandlers.js',
   '/pwa-update-manager.js',
+  '/adminAnalytics.js',         // ← NEW: was missing
+
+  // Survey data utils — both always cached (proxy guard routes at runtime)
+  '/surveys/data-util.js',           // ← NEW PATH (was /data-util.js)
+  '/surveys/shayona-data-util.js',   // ← NEW: café questions + renderers
 
   // Main modules
   '/main/index.js',
@@ -58,8 +69,9 @@ const CRITICAL_CACHE = [
   '/ui/navigation/videoScheduler.js',
 
   // UI modules - Other
-  '/ui/typewriterEffect.js',
+  // /ui/typewriterEffect.js — REMOVED in Phase 2
   '/ui/validation.js',
+  '/uiHandlers.js',
 
   // Icons
   '/icons/icon-72x72.png',
@@ -79,10 +91,10 @@ const MEDIA_FILES = [
 ];
 
 // BATTERY OPTIMIZATION: Throttled background updates
-const recentlyUpdated = new Map();
-const THROTTLE_MS = 300000;    // 5 minutes
-const CLEANUP_INTERVAL = 600000; // 10 minutes
-const CLEANUP_AGE = 3600000;   // 1 hour
+const recentlyUpdated  = new Map();
+const THROTTLE_MS      = 300000;    // 5 minutes
+const CLEANUP_INTERVAL = 600000;    // 10 minutes
+const CLEANUP_AGE      = 3600000;   // 1 hour
 
 let cleanupStarted = false;
 
@@ -90,7 +102,7 @@ let cleanupStarted = false;
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v9.5 with complete module cache...');
+  console.log('[SW] Installing v9.6 with complete module cache...');
 
   event.waitUntil(
     (async () => {
@@ -147,7 +159,7 @@ self.addEventListener('install', event => {
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v9.5 (complete module cache)');
+      console.log('[SW] ✅ Installed v9.6 (complete module cache)');
     })()
   );
 });
@@ -156,7 +168,7 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v9.5...');
+  console.log('[SW] Activating v9.6...');
 
   event.waitUntil(
     (async () => {
@@ -178,10 +190,10 @@ self.addEventListener('activate', event => {
 
       const clients = await self.clients.matchAll({ type: 'window' });
       clients.forEach(client => {
-        client.postMessage({ type: 'SW_ACTIVATED', version: '9.5' });
+        client.postMessage({ type: 'SW_ACTIVATED', version: '9.6' });
       });
 
-      console.log('[SW] ✅ Activated v9.5 (battery optimized, complete cache)');
+      console.log('[SW] ✅ Activated v9.6 (battery optimized, complete cache)');
     })()
   );
 });
@@ -192,9 +204,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
 
-  if (request.method !== 'GET') {
-    return;
-  }
+  if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
 
@@ -234,18 +244,15 @@ async function handleNavigationRequest(request) {
       return cachedIndex;
     }
 
-    const networkResponse = await fetch(request);
-    return networkResponse;
+    return await fetch(request);
   } catch (error) {
     console.warn('[SW] Navigation request failed, trying fallback:', error.message);
 
     const fallback =
       await caches.match('/index.html', { ignoreSearch: true }) ||
-      await caches.match('/', { ignoreSearch: true });
+      await caches.match('/',           { ignoreSearch: true });
 
-    if (fallback) {
-      return fallback;
-    }
+    if (fallback) return fallback;
 
     return new Response('Offline', {
       status: 503,
@@ -272,9 +279,7 @@ async function handleStaticRequest(request) {
     console.warn('[SW] Static request failed:', request.url, error.message);
 
     const fallback = await caches.match(request, { ignoreSearch: true });
-    if (fallback) {
-      return fallback;
-    }
+    if (fallback) return fallback;
 
     return new Response('Offline', {
       status: 503,
@@ -296,7 +301,7 @@ function eventSafeBackgroundUpdate(request) {
 async function handleVideoRequest(request) {
   try {
     const mediaCache = await caches.open(MEDIA_CACHE);
-    const cached = await mediaCache.match(request, { ignoreSearch: true });
+    const cached     = await mediaCache.match(request, { ignoreSearch: true });
 
     if (cached) {
       console.log('[SW] Serving video from cache');
@@ -318,7 +323,7 @@ async function handleVideoRequest(request) {
     console.error('[SW] Video request failed:', error);
 
     const mediaCache = await caches.open(MEDIA_CACHE);
-    const fallback = await mediaCache.match(request, { ignoreSearch: true });
+    const fallback   = await mediaCache.match(request, { ignoreSearch: true });
 
     if (fallback) {
       console.log('[SW] Serving video from fallback cache');
@@ -340,9 +345,7 @@ async function handleAPIRequest(request) {
   try {
     const response = await fetch(request);
 
-    if (response.ok) {
-      return response;
-    }
+    if (response.ok) return response;
 
     return new Response(
       JSON.stringify({ error: 'Server error', status: response.status, offline: false }),
@@ -384,14 +387,12 @@ async function fetchAndCache(request) {
 // STALE-WHILE-REVALIDATE (BATTERY OPTIMIZED)
 // ----------------------------
 async function fetchAndUpdateCache(request) {
-  const url = new URL(request.url, self.location.origin);
+  const url      = new URL(request.url, self.location.origin);
   const cacheKey = url.origin === self.location.origin ? url.pathname : request.url;
   const lastUpdate = recentlyUpdated.get(cacheKey);
-  const now = Date.now();
+  const now      = Date.now();
 
-  if (lastUpdate && (now - lastUpdate) < THROTTLE_MS) {
-    return;
-  }
+  if (lastUpdate && (now - lastUpdate) < THROTTLE_MS) return;
 
   const response = await fetch(request);
 

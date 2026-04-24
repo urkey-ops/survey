@@ -1,17 +1,26 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.5.0
-// CHANGES FROM 5.4.0:
-//   - FIX: First-launch flash — device-setup-overlay was invisible during the
-//     window between initializeSurveyState() calling showStartScreen() and the
-//     overlay rendering. Fix: guard initializeSurveyState() behind
-//     isDeviceConfigured() check. If unconfigured, skip initializeSurveyState()
-//     here entirely — the device-setup-overlay's confirm handler is responsible
-//     for calling window.uiHandlers.showStartScreen() after the user picks a
-//     mode. If already configured (all subsequent launches), proceeds directly.
-//   - ADD: isDeviceConfigured() helper — true when kioskMode is set AND
-//     allowedSurveyTypes is non-empty in DEVICECONFIG
-//   - ADD: console log distinguishing first-launch vs configured-launch path
+// VERSION: 5.6.0
+// CHANGES FROM 5.5.0:
+//   - FIX: First-launch tap freeze — after user picked Shayona/Temple,
+//     start screen showed but taps did nothing until reload. Root cause:
+//     device-config.js (sync IIFE) fires deviceConfigReady before ES modules
+//     finish loading, so the { once: true } listener in index.js was never
+//     registered in time to catch it. Result: initialize() never ran,
+//     setupNavigation() never ran, tap listener never attached.
+//   - REPLACE: Simple { once: true } event listener with a race-proof
+//     3-path boot strategy:
+//       Path 1 — DEVICECONFIG.kioskMode already set (configured device,
+//                every launch after first): startApp() immediately.
+//       Path 2 — deviceConfigReady fires while modules are loading:
+//                onConfigReady() listener catches it and calls startApp().
+//       Path 3 — Safety net: 500ms setTimeout checks whether DEVICECONFIG
+//                was set during that window but the event was missed.
+//                Catches the exact race where IIFE ran before module listener
+//                registered.
+//   - ADD: started flag shared across all three paths — prevents double-init
+//     if both Path 2 and Path 3 fire in quick succession.
+//   - All other logic, guards, heartbeat, storage monitoring unchanged.
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -28,7 +37,22 @@ let storageMonitorIntervalId = null;
 let emergencyOnlineHandler   = null;
 let pendingDataHandlersPoll  = null;
 
-// ── Device config guard ───────────────────────────────────────────────────────
+// ── Race-proof boot strategy ──────────────────────────────────────────────────
+//
+// Problem: device-config.js is a synchronous IIFE. On first launch it shows
+// the setup overlay and fires deviceConfigReady AFTER the user picks a mode.
+// ES modules load asynchronously — by the time index.js is parsed and its
+// top-level code runs, the deviceConfigReady event may have already fired
+// (if the user was fast) or the { once: true } listener may not yet be
+// registered (if modules were slow). Either way the old single-listener
+// approach created a race that left the app stuck on the start screen with
+// non-functional taps.
+//
+// Solution: three paths with a shared `started` guard:
+//   Path 1 — kioskMode already set → start immediately (normal launch)
+//   Path 2 — listen for deviceConfigReady (first launch, modules win race)
+//   Path 3 — 500ms safety net (first launch, IIFE won race, event was missed)
+
 function startApp() {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initialize, { once: true });
@@ -37,10 +61,32 @@ function startApp() {
   }
 }
 
-if (window.DEVICECONFIG) {
+let started = false;
+
+function onConfigReady() {
+  if (started) return;
+  started = true;
+  window.removeEventListener('deviceConfigReady', onConfigReady);
+  console.log('[INIT] deviceConfigReady received — starting app');
+  startApp();
+}
+
+// Path 1: Already configured (every launch after first setup)
+if (window.DEVICECONFIG?.kioskMode) {
+  started = true;
   startApp();
 } else {
-  window.addEventListener('deviceConfigReady', startApp, { once: true });
+  // Path 2: Listen for event (first launch — modules load before user picks)
+  window.addEventListener('deviceConfigReady', onConfigReady);
+
+  // Path 3: Safety net — IIFE may have fired deviceConfigReady before this
+  // module's listener was registered. Poll once after 500ms.
+  setTimeout(() => {
+    if (!started && window.DEVICECONFIG?.kioskMode) {
+      console.log('[INIT] deviceConfigReady was missed — starting via safety net');
+      onConfigReady();
+    }
+  }, 500);
 }
 
 // ── First-launch detection ────────────────────────────────────────────────────
@@ -48,10 +94,6 @@ if (window.DEVICECONFIG) {
 // Returns true when the device has already been configured (kioskMode set,
 // allowedSurveyTypes populated). Returns false on a genuine first launch where
 // the device-setup-overlay needs to run first.
-//
-// NOTE: DEVICECONFIG is the runtime config object set by device-config.js.
-// On first launch it exists but kioskMode will be null/undefined and
-// allowedSurveyTypes will be empty — the overlay hasn't written a choice yet.
 
 function isDeviceConfigured() {
   const cfg = window.DEVICECONFIG;
@@ -302,9 +344,9 @@ function initialize() {
     // On first launch (kioskMode not yet set, allowedSurveyTypes empty):
     //   Skip initializeSurveyState() entirely. The device-setup-overlay is
     //   already rendered in the HTML and visible. Its confirm handler must call
-    //   window.uiHandlers.showStartScreen() (or initializeSurveyState() via
-    //   a global) AFTER the user picks Shayona / Temple and the overlay hides.
-    //   This prevents the start screen flashing before the overlay appears.
+    //   window._initializeSurveyState() AFTER the user picks Shayona / Temple
+    //   and the overlay hides. This prevents the start screen flashing before
+    //   the overlay appears.
     //
     // On all subsequent launches (kioskMode + allowedSurveyTypes set):
     //   Proceed normally — showStartScreen() runs inside initializeSurveyState()
@@ -315,8 +357,8 @@ function initialize() {
       initializeSurveyState();
     } else {
       console.log('[INIT] 🆕 First launch — device-setup-overlay active, deferring survey state init');
-      // device-setup-overlay confirm handler is responsible for calling
-      // window.uiHandlers.showStartScreen() after the user selects a mode.
+      // window._initializeSurveyState is set by navigationSetup.js at module
+      // load time. device-config.js confirm handler calls it after mode selection.
     }
 
     // Step 9: Setup network monitoring
@@ -373,6 +415,7 @@ export function cleanupMainInitialization() {
 
   initializationStarted   = false;
   initializationCompleted = false;
+  started                 = false;
 
   console.log('[INIT] Cleanup complete');
 }

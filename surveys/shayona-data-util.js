@@ -1,16 +1,8 @@
 // FILE: surveys/shayona-data-util.js
-// VERSION: 2.0.0
-// CHANGES FROM 1.0.0:
-//   - ADD: 'Wanted to purchase, but did not' as explicit visitPurpose option
-//   - ADD: Branch D split into two micro-paths:
-//       'Failed Intent' → browsingBarrier  (diagnostic: "What stopped you?")
-//       'Browsing'      → browsingDiscovery (soft: "What were you hoping to find?")
-//   - ADD: waitTime skip logic — 'Under 5 min' skips waitAcceptable entirely
-//   - UPDATE: browsingBarrier options match final spec
-//   - ADD: browsingDiscovery question (new)
-//   - ADD: headerFailedIntent section header (new)
-//   - UPDATE: section header copy throughout
-//   - UPDATE: getNextQuestionIndex handles new branch keys + waitTime skip
+// VERSION: 2.1.0
+// CHANGES FROM 2.0.0:
+//   - UPDATE: visitPurpose option labels rewritten for clean on-screen display
+//     Values unchanged — branch logic unaffected.
 
 window.shayonaDataUtils = (function () {
 
@@ -119,12 +111,12 @@ window.shayonaDataUtils = (function () {
       type: 'radio',
       question: 'What was the primary reason for your visit today?',
       options: [
-        { value: 'Grab & Go',                        label: 'Quick snack / sweets (Grab & Go)' },
-        { value: 'Hot Food',                          label: 'Fresh hot food (Made to order)' },
-        { value: 'Buffet',                            label: 'Buffet / Thali' },
-        { value: 'Catering',                          label: 'Catering inquiry / Large order' },
-        { value: 'Browsing',                          label: 'Just browsing' },
-        { value: 'Wanted to purchase, but did not',   label: 'Wanted to purchase, but did not' },
+        { value: 'Grab & Go',                      label: 'Packaged Snacks or Sweets'       },
+        { value: 'Hot Food',                        label: 'Hot Food & Snacks'               },
+        { value: 'Buffet',                          label: 'Buffet / Thali'                  },
+        { value: 'Catering',                        label: 'Catering Inquiry / Large Order'  },
+        { value: 'Browsing',                        label: 'Just Browsing'                   },
+        { value: 'Wanted to purchase, but did not', label: 'Wanted to Purchase, but Did Not' },
       ],
       required: true,
     },
@@ -138,12 +130,12 @@ window.shayonaDataUtils = (function () {
       name: 'waitTime',
       type: 'radio',
       question: 'How long did you wait today?',
-      branch: 'purchaser',   // skip for Browsing + Failed Intent
+      branch: 'purchaser',
       options: [
         { value: 'Under 5 min', label: 'Under 5 minutes' },
-        { value: '5–10 min',    label: '5–10 minutes' },
-        { value: '10–15 min',   label: '10–15 minutes' },
-        { value: '15+ min',     label: '15+ minutes' },
+        { value: '5–10 min',    label: '5–10 minutes'    },
+        { value: '10–15 min',   label: '10–15 minutes'   },
+        { value: '15+ min',     label: '15+ minutes'     },
       ],
       required: true,
     },
@@ -153,7 +145,7 @@ window.shayonaDataUtils = (function () {
       name: 'waitAcceptable',
       type: 'radio-with-followup',
       question: 'Was this wait time acceptable?',
-      branch: 'purchaser',   // also skipped when waitTime === 'Under 5 min'
+      branch: 'purchaser',
       options: [
         {
           value: 'Yes',
@@ -185,10 +177,10 @@ window.shayonaDataUtils = (function () {
       question: 'How did the overall flow of your visit feel?',
       branch: 'purchaser',
       options: [
-        { value: 'Very smooth',   label: 'Very smooth' },
+        { value: 'Very smooth',   label: 'Very smooth'   },
         { value: 'Mostly smooth', label: 'Mostly smooth' },
         { value: 'Some friction', label: 'Some friction' },
-        { value: 'Frustrating',   label: 'Frustrating' },
+        { value: 'Frustrating',   label: 'Frustrating'   },
       ],
       required: true,
     },
@@ -210,10 +202,10 @@ window.shayonaDataUtils = (function () {
       question: 'How easy was it to find what you were looking for?',
       branch: 'Grab & Go',
       options: [
-        { value: 'Very easy',         label: 'Very easy',         followupLabel: null, followupOptions: [] },
-        { value: 'Somewhat easy',     label: 'Somewhat easy',     followupLabel: null, followupOptions: [] },
-        { value: 'Somewhat difficult',label: 'Somewhat difficult', followupLabel: 'What made it difficult?', followupOptions: ['Items were hard to locate', 'Labels or prices were unclear', 'Too crowded around display', 'Could not decide quickly'] },
-        { value: 'Very difficult',    label: 'Very difficult',    followupLabel: 'What made it difficult?', followupOptions: ['Items were hard to locate', 'Labels or prices were unclear', 'Too crowded around display', 'Could not decide quickly'] },
+        { value: 'Very easy',          label: 'Very easy',          followupLabel: null, followupOptions: [] },
+        { value: 'Somewhat easy',      label: 'Somewhat easy',      followupLabel: null, followupOptions: [] },
+        { value: 'Somewhat difficult', label: 'Somewhat difficult', followupLabel: 'What made it difficult?', followupOptions: ['Items were hard to locate', 'Labels or prices were unclear', 'Too crowded around display', 'Could not decide quickly'] },
+        { value: 'Very difficult',     label: 'Very difficult',     followupLabel: 'What made it difficult?', followupOptions: ['Items were hard to locate', 'Labels or prices were unclear', 'Too crowded around display', 'Could not decide quickly'] },
       ],
       required: true,
     },
@@ -225,7 +217,7 @@ window.shayonaDataUtils = (function () {
       question: 'Was the service speed fast enough for a quick visit?',
       branch: 'Grab & Go',
       options: [
-        { value: 'Yes, fast enough', label: 'Yes, fast enough', followupLabel: null,  followupOptions: [] },
+        { value: 'Yes, fast enough', label: 'Yes, fast enough', followupLabel: null, followupOptions: [] },
         { value: 'No, too slow',     label: 'No, too slow',     followupLabel: 'What slowed you down most?', followupOptions: ['Waiting to place order', 'Waiting to pay', 'Staff was busy', 'Could not decide quickly'] },
       ],
       required: true,
@@ -248,10 +240,10 @@ window.shayonaDataUtils = (function () {
       question: 'What mattered most to you today?',
       branch: 'Hot Food|Buffet',
       options: [
-        { value: 'Speed of service',     label: 'Speed of service' },
+        { value: 'Speed of service',     label: 'Speed of service'     },
         { value: 'Food quality & taste', label: 'Food quality & taste' },
-        { value: 'Value for money',      label: 'Value for money' },
-        { value: 'Balanced experience',  label: 'Balanced experience' },
+        { value: 'Value for money',      label: 'Value for money'      },
+        { value: 'Balanced experience',  label: 'Balanced experience'  },
       ],
       required: true,
     },
@@ -263,7 +255,7 @@ window.shayonaDataUtils = (function () {
       question: 'How would you rate your food experience?',
       branch: 'Hot Food|Buffet',
       subRatings: [
-        { key: 'taste', label: 'Food taste' },
+        { key: 'taste', label: 'Food taste'     },
         { key: 'value', label: 'Value for money' },
       ],
       min: 1,
@@ -303,16 +295,15 @@ window.shayonaDataUtils = (function () {
       question: 'How can we improve the catering experience?',
       branch: 'Catering',
       options: [
-        { value: 'Online menu / brochure',    label: 'Online menu / brochure' },
-        { value: 'Dedicated staff member',    label: 'Dedicated staff member' },
-        { value: 'Faster response time',      label: 'Faster response time' },
+        { value: 'Online menu / brochure',    label: 'Online menu / brochure'    },
+        { value: 'Dedicated staff member',    label: 'Dedicated staff member'    },
+        { value: 'Faster response time',      label: 'Faster response time'      },
         { value: 'Better signage / guidance', label: 'Better signage / guidance' },
       ],
       required: true,
     },
 
-    // ── SECTION 3: BRANCH D1 — FAILED INTENT (high-value signal) ────────────
-    // "Wanted to purchase, but did not" — diagnostic, direct
+    // ── SECTION 3: BRANCH D1 — FAILED INTENT ────────────────────────────────
 
     {
       id: 'headerFailedIntent',
@@ -329,16 +320,15 @@ window.shayonaDataUtils = (function () {
       question: 'What was the main reason you didn\'t purchase today?',
       branch: 'Failed Intent',
       options: [
-        { value: 'Wait or line was too long',            label: 'The wait or line was too long' },
-        { value: 'No staff available',                   label: 'No staff was available to help or take my order' },
-        { value: 'Did not find specific item',           label: 'I did not see the specific item I wanted' },
-        { value: 'Prices were not clearly marked',       label: 'Prices were not clearly marked' },
+        { value: 'Wait or line was too long',      label: 'The wait or line was too long'              },
+        { value: 'No staff available',             label: 'No staff was available to help or take my order' },
+        { value: 'Did not find specific item',     label: 'I did not see the specific item I wanted'   },
+        { value: 'Prices were not clearly marked', label: 'Prices were not clearly marked'             },
       ],
       required: true,
     },
 
-    // ── SECTION 3: BRANCH D2 — CASUAL BROWSER (discovery, soft) ────────────
-    // "Just browsing" — aspirational, inviting
+    // ── SECTION 3: BRANCH D2 — CASUAL BROWSER ───────────────────────────────
 
     {
       id: 'headerBrowsing',
@@ -355,13 +345,13 @@ window.shayonaDataUtils = (function () {
       question: 'What were you hoping to find today?',
       branch: 'Browsing',
       options: [
-        { value: 'Exploring for the first time',      label: 'Just exploring the café for the first time' },
-        { value: 'Checking menu for future visit',    label: 'Checking the menu for a future visit' },
-        { value: 'Looking for a specific snack',      label: 'Looking for a specific snack or sweet' },
-        { value: 'Looking for a gift or souvenir',    label: 'Looking for a gift or souvenir' },
-        { value: 'Checking for seating / space',      label: 'Checking for seating or a place to sit' },
+        { value: 'Exploring for the first time',   label: 'Just exploring the café for the first time' },
+        { value: 'Checking menu for future visit',  label: 'Checking the menu for a future visit'       },
+        { value: 'Looking for a specific snack',   label: 'Looking for a specific snack or sweet'      },
+        { value: 'Looking for a gift or souvenir', label: 'Looking for a gift or souvenir'             },
+        { value: 'Checking for seating / space',   label: 'Checking for seating or a place to sit'     },
       ],
-      required: false,   // soft question — no pressure
+      required: false,
     },
 
     // ── SECTION 4: EMOTIONAL CLOSURE (all users) ────────────────────────────
@@ -373,11 +363,11 @@ window.shayonaDataUtils = (function () {
       question: 'What would you like to share about your visit to Shayona Café?',
       subLabel: 'Optional — select one to begin',
       options: [
-        { value: 'shoutout',    label: 'A shout-out to the team', emoji: '🌟', placeholder: 'A big thank you to ' },
+        { value: 'shoutout',    label: 'A shout-out to the team', emoji: '🌟', placeholder: 'A big thank you to '              },
         { value: 'improvement', label: 'An idea for improvement',  emoji: '💡', placeholder: 'One thing that could be better is ' },
-        { value: 'favourite',   label: 'My favourite part',        emoji: '❤️', placeholder: 'My favourite part was ' },
-        { value: 'issue',       label: 'Something didn\'t work',   emoji: '⚠️', placeholder: 'Something didn\'t work — ' },
-        { value: 'other',       label: 'Something else',           emoji: '📝', placeholder: 'I wanted to share that ' },
+        { value: 'favourite',   label: 'My favourite part',        emoji: '❤️', placeholder: 'My favourite part was '            },
+        { value: 'issue',       label: 'Something didn\'t work',   emoji: '⚠️', placeholder: 'Something didn\'t work — '        },
+        { value: 'other',       label: 'Something else',           emoji: '📝', placeholder: 'I wanted to share that '           },
       ],
       defaultPlaceholder: 'Share your thoughts about the café here…',
       required: false,
@@ -386,57 +376,31 @@ window.shayonaDataUtils = (function () {
   ];
 
   // ─── BRANCHING LOGIC ─────────────────────────────────────────────────────
-  //
-  // Branch key map:
-  //   visitPurpose value                    → activeBranch
-  //   ─────────────────────────────────────────────────────
-  //   'Grab & Go'                           → 'Grab & Go'
-  //   'Hot Food' | 'Buffet'                 → 'Hot Food|Buffet'
-  //   'Catering'                            → 'Catering'
-  //   'Wanted to purchase, but did not'     → 'Failed Intent'
-  //   'Browsing'                            → 'Browsing'
-  //   (unanswered)                          → null (show all)
-  //
-  // Special skip rules (applied before branch check):
-  //   waitTime === 'Under 5 min'  → skip waitAcceptable
-  //   activeBranch === 'Browsing' || 'Failed Intent' → skip 'purchaser' branch questions
-  //
-  // Branch field matching:
-  //   q.branch = 'purchaser'      → shown for Grab & Go, Hot Food, Buffet, Catering only
-  //   q.branch = 'Hot Food|Buffet'→ pipe-separated, matches either value
 
   function getActiveBranch(formData) {
     const purpose = formData['visitPurpose'] ?? '';
-    if (purpose === 'Grab & Go')                      return 'Grab & Go';
+    if (purpose === 'Grab & Go')                        return 'Grab & Go';
     if (purpose === 'Hot Food' || purpose === 'Buffet') return 'Hot Food|Buffet';
-    if (purpose === 'Catering')                        return 'Catering';
-    if (purpose === 'Wanted to purchase, but did not') return 'Failed Intent';
-    if (purpose === 'Browsing')                        return 'Browsing';
-    return null; // visitPurpose not yet answered — show everything
+    if (purpose === 'Catering')                         return 'Catering';
+    if (purpose === 'Wanted to purchase, but did not')  return 'Failed Intent';
+    if (purpose === 'Browsing')                         return 'Browsing';
+    return null;
   }
 
   const NON_PURCHASER_BRANCHES = new Set(['Browsing', 'Failed Intent']);
 
   function isPurchaser(activeBranch) {
-    if (activeBranch === null) return true; // unknown — don't skip
+    if (activeBranch === null) return true;
     return !NON_PURCHASER_BRANCHES.has(activeBranch);
   }
 
   function shouldShowQuestion(q, activeBranch, formData) {
-    // ── waitAcceptable skip: 'Under 5 min' answer skips this question ────────
     if (q.id === 'waitAcceptable' && formData['waitTime'] === 'Under 5 min') {
       return false;
     }
-
-    // ── No branch field = global question, always show ───────────────────────
     if (!q.branch) return true;
-
-    if (activeBranch === null) return true; // purpose unknown — show all
-
-    // ── 'purchaser' pseudo-branch ─────────────────────────────────────────────
+    if (activeBranch === null) return true;
     if (q.branch === 'purchaser') return isPurchaser(activeBranch);
-
-    // ── Pipe-separated multi-branch e.g. 'Hot Food|Buffet' ───────────────────
     const allowedBranches = q.branch.split('|');
     return allowedBranches.some(b => activeBranch.includes(b));
   }
@@ -444,12 +408,10 @@ window.shayonaDataUtils = (function () {
   function getNextQuestionIndex(currentIndex, formData, questions) {
     const activeBranch = getActiveBranch(formData);
     let next = currentIndex + 1;
-
     while (next < questions.length) {
       if (shouldShowQuestion(questions[next], activeBranch, formData)) break;
       next++;
     }
-
     return next;
   }
 

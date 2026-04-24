@@ -1,15 +1,13 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.2.0
-// CHANGES FROM 5.1.0:
-//   - FIX: startApp() now calls initialize() — was an empty stub
-//   - FIX: readyState-safe boot moved INSIDE startApp() so deviceConfigReady
-//     guard controls when initialize() runs on first-launch iPads
-//   - REMOVE: setupTypewriterVisibilityHandler import + call (typewriterEffect.js
-//     removed in Phase 2 — was causing fatal module load error on boot)
-//   - ADD: type3 (shayonaQueue) included in heartbeat log
-// DEPENDENCIES: uiElements.js, navigationSetup.js, adminPanel.js,
-//   networkStatus.js, visibilityHandler.js, inactivityHandler.js
+// VERSION: 5.3.0
+// CHANGES FROM 5.2.0:
+//   - FIX: Survey type reconciliation — forces type3 when device mode is
+//     'shayona' and localStorage still holds a stale type1/type2 value.
+//     Applied before setupNavigation() so core.js loads correct questions.
+//   - FIX: showStartScreen guard — calls window.navigationHandler.showStartScreen()
+//     after initializeSurveyState() instead of relying on navigationSetup.js
+//     to find it at module load time (was logging "handler not available").
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -17,25 +15,17 @@ import { setupAdminPanel } from './adminPanel.js';
 import { setupNetworkMonitoring } from './networkStatus.js';
 import { setupVisibilityHandler } from './visibilityHandler.js';
 import { setupInactivityVisibilityHandler, startPeriodicSync } from '../timers/inactivityHandler.js';
-// typewriterEffect.js removed in Phase 2 — import deleted
 
 // ── Init guards / timer refs ──────────────────────────────────────────────────
-let initializationStarted   = false;
-let initializationCompleted = false;
-let heartbeatIntervalId       = null;
-let storageMonitorIntervalId  = null;
-let emergencyOnlineHandler    = null;
-let pendingDataHandlersPoll   = null;
+let initializationStarted    = false;
+let initializationCompleted  = false;
+let heartbeatIntervalId      = null;
+let storageMonitorIntervalId = null;
+let emergencyOnlineHandler   = null;
+let pendingDataHandlersPoll  = null;
 
 // ── Device config guard ───────────────────────────────────────────────────────
-// startApp() is the single boot entry point.
-// On returning iPads (localStorage has deviceConfig) DEVICECONFIG is already
-// set before this module runs — boot immediately.
-// On first-ever launch device-config.js shows the setup screen and fires
-// 'deviceConfigReady' after the user picks — we wait for that event.
-
 function startApp() {
-  // readyState-safe: if DOM is already ready, run now; otherwise wait.
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initialize, { once: true });
   } else {
@@ -44,10 +34,8 @@ function startApp() {
 }
 
 if (window.DEVICECONFIG) {
-  // Already configured (returning iPad) — boot immediately
   startApp();
 } else {
-  // First launch — wait for user to select device type on setup screen
   window.addEventListener('deviceConfigReady', startApp, { once: true });
 }
 
@@ -76,6 +64,7 @@ function startHeartbeat() {
       || 'submissionQueueV2';
 
     const type3Key = CONSTANTS?.SURVEY_TYPES?.type3?.storageKey
+      || CONSTANTS?.STORAGE_KEY_QUEUE_V3
       || 'shayonaQueue';
 
     const queue1    = dataHandlers.getSubmissionQueue?.(type1Key) ?? [];
@@ -214,6 +203,32 @@ function _showStorageAlert(message) {
   }
 }
 
+// ── Survey type reconciliation ────────────────────────────────────────────────
+// Ensures the active survey type stored in localStorage matches what the
+// device config requires. On a Shayona iPad, localStorage may still hold
+// 'type1' from a previous session or a fresh default — this corrects it
+// before any survey questions are loaded.
+
+function reconcileSurveyType() {
+  const allowed = window.DEVICECONFIG?.allowedSurveyTypes;
+  if (!allowed?.length) return;
+
+  const current = window.KIOSK_CONFIG?.getActiveSurveyType?.();
+  if (!current) return;
+
+  if (!allowed.includes(current)) {
+    const corrected = allowed[0];
+    const success   = window.KIOSK_CONFIG.setActiveSurveyType(corrected);
+    if (success) {
+      console.log(`[INIT] ✅ Survey type corrected: "${current}" → "${corrected}"`);
+    } else {
+      console.warn(`[INIT] ⚠️ Survey type correction failed — KIOSK_CONFIG.setActiveSurveyType returned false`);
+    }
+  } else {
+    console.log(`[INIT] ✅ Survey type confirmed: "${current}" (allowed by device config)`);
+  }
+}
+
 // ── Main initialisation ───────────────────────────────────────────────────────
 
 function initialize() {
@@ -255,35 +270,49 @@ function initialize() {
     }
     console.log('[INIT] ✅ All essential elements found');
 
-    // Step 4: Setup navigation
+    // Step 4: Reconcile survey type BEFORE any navigation/survey setup
+    // so core.js loads the correct question set from the start.
+    reconcileSurveyType();
+
+    // Step 5: Setup navigation
     setupNavigation();
 
-    // Step 5: Setup activity tracking
+    // Step 6: Setup activity tracking
     setupActivityTracking();
 
-    // Step 6: Setup admin panel
+    // Step 7: Setup admin panel
     setupAdminPanel();
 
-    // Step 7: Initialize survey state (resume or start fresh)
+    // Step 8: Initialize survey state (resume or start fresh)
     initializeSurveyState();
 
-    // Step 8: Setup network monitoring
+    // Step 9: Show start screen — called here directly after survey state is
+    // ready so the handler is guaranteed to be registered by navigationHandler.
+    // navigationSetup.js previously called this too early (before registration).
+    if (typeof window.navigationHandler?.showStartScreen === 'function') {
+      window.navigationHandler.showStartScreen();
+      console.log('[INIT] ✅ Start screen shown');
+    } else {
+      console.warn('[INIT] ⚠️ navigationHandler.showStartScreen not available — start screen may not display');
+    }
+
+    // Step 10: Setup network monitoring
     setupNetworkMonitoring();
 
-    // Step 9: Setup visibility change handler
+    // Step 11: Setup visibility change handler
     setupVisibilityHandler();
 
-    // Step 10: Setup inactivity visibility handler
+    // Step 12: Setup inactivity visibility handler
     setupInactivityVisibilityHandler();
     console.log('[INIT] ✅ Inactivity visibility handler active');
 
-    // Step 11: (typewriterEffect removed in Phase 2 — step intentionally skipped)
+    // Step 13: (typewriterEffect removed in Phase 2 — step intentionally skipped)
 
-    // Step 12: Start periodic sync
+    // Step 14: Start periodic sync
     startPeriodicSync();
     console.log('[INIT] ✅ Periodic sync started (stable interval)');
 
-    // Step 13: Start heartbeat
+    // Step 15: Start heartbeat
     startHeartbeat();
     console.log('[INIT] ✅ Heartbeat started (15 min, hidden-aware)');
 
@@ -299,7 +328,7 @@ function initialize() {
   }
 }
 
-// ── Cleanup hook (hot reload / re-init scenarios) ─────────────────────────────
+// ── Cleanup hook ──────────────────────────────────────────────────────────────
 
 export function cleanupMainInitialization() {
   clearPendingDataHandlersPoll();

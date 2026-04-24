@@ -1,6 +1,12 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel shell — show/hide, unlock gesture, auto-hide, online indicator, orchestration
-// VERSION: 8.1.0 - vibrateSuccess/vibrateTap from adminUtils, resetAdminState from adminState
+// VERSION: 8.2.0
+// CHANGES FROM 8.1.0:
+//   - FIX: remove loose resetBtn block that was floating in module scope (bug)
+//   - ADD: buildSurveyTypeSwitcher wrapped in allowedSurveyTypes guard
+//     (switcher only shown when device is configured for >1 survey type)
+//   - ADD: "Reset Device Type" button in admin panel
+//     (clears deviceConfig from localStorage → setup screen on next reload)
 // DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js
 
 import { adminState, resetAdminState } from './adminState.js';
@@ -28,7 +34,7 @@ import {
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
-const VERSION = 'v8.1.0';
+const VERSION = 'v8.2.0';
 const AUTO_HIDE_DELAY = 20000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
 const STUCK_FLAG_TIMEOUT_MS = 60000;
@@ -78,20 +84,20 @@ function updateCountdown() {
   const countdownEl = document.getElementById('adminCountdown');
   if (!countdownEl || !adminState.adminPanelVisible || !adminState.autoHideStartTime) return;
 
-  const elapsed = Date.now() - adminState.autoHideStartTime;
+  const elapsed   = Date.now() - adminState.autoHideStartTime;
   const remaining = Math.max(0, Math.ceil((AUTO_HIDE_DELAY - elapsed) / 1000));
 
   if (remaining > 0) {
-    countdownEl.textContent = `Auto-hide in ${remaining}s`;
-    countdownEl.style.opacity = remaining <= 5 ? '1' : '0.6';
+    countdownEl.textContent    = `Auto-hide in ${remaining}s`;
+    countdownEl.style.opacity  = remaining <= 5 ? '1' : '0.6';
   } else {
     countdownEl.textContent = '';
   }
 }
 
 function startAutoHideTimer() {
-  if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
-  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  if (autoHideTimer)     { clearTimeout(autoHideTimer);       autoHideTimer     = null; }
+  if (countdownInterval) { clearInterval(countdownInterval);  countdownInterval = null; }
 
   adminState.autoHideStartTime = Date.now();
 
@@ -110,25 +116,10 @@ function resetAutoHideTimer() {
 }
 
 function clearManagedTimers() {
-  if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
-  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
-  if (unlockTapTimeout) { clearTimeout(unlockTapTimeout); unlockTapTimeout = null; }
+  if (autoHideTimer)     { clearTimeout(autoHideTimer);       autoHideTimer     = null; }
+  if (countdownInterval) { clearInterval(countdownInterval);  countdownInterval = null; }
+  if (unlockTapTimeout)  { clearTimeout(unlockTapTimeout);    unlockTapTimeout  = null; }
 }
-
-
-
-
-
-// Inside your admin panel build function
-const resetBtn = document.createElement('button');
-resetBtn.textContent = 'Reset Device Type';
-resetBtn.addEventListener('click', () => {
-  if (confirm('This will reset the kiosk type on next reload. Continue?')) {
-    localStorage.removeItem('deviceConfig');
-    location.reload();
-  }
-});
-adminControls.appendChild(resetBtn);
 
 // ─────────────────────────────────────────────────────────────
 // SHOW / HIDE
@@ -243,7 +234,7 @@ function bindAdminUnlock() {
     document.removeEventListener('pointerup', handleTitlePointerUp, true);
   }
 
-  unlockTapCount = 0;
+  unlockTapCount    = 0;
   unlockLastTapTime = 0;
   if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
   unlockTapTimeout = null;
@@ -263,7 +254,7 @@ function bindAdminUnlock() {
 
     if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
     unlockTapTimeout = setTimeout(() => {
-      unlockTapCount = 0;
+      unlockTapCount   = 0;
       unlockTapTimeout = null;
     }, 2000);
 
@@ -286,9 +277,58 @@ function unbindAdminUnlock() {
     handleTitlePointerUp = null;
   }
 
-  unlockTapCount = 0;
+  unlockTapCount    = 0;
   unlockLastTapTime = 0;
   if (unlockTapTimeout) { clearTimeout(unlockTapTimeout); unlockTapTimeout = null; }
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEVICE RESET BUTTON
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Appends a "Reset Device Type" button to the admin panel.
+ * Clears deviceConfig from localStorage so the first-launch setup
+ * screen reappears on the next page load/reload.
+ * Always added regardless of allowedSurveyTypes count — useful for
+ * correcting a wrong device selection on either iPad.
+ */
+function _buildDeviceResetButton(adminControls) {
+  // Avoid duplicates if setupAdminPanel is called more than once
+  if (document.getElementById('adminDeviceResetBtn')) return;
+
+  const divider = document.createElement('hr');
+  divider.style.cssText = 'border:none;border-top:1px solid #e5e7eb;margin:8px 0';
+
+  const resetBtn = document.createElement('button');
+  resetBtn.id          = 'adminDeviceResetBtn';
+  resetBtn.textContent = '🔄 Reset Device Type';
+  resetBtn.style.cssText = `
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+  `;
+
+  resetBtn.addEventListener('click', () => {
+    resetAutoHideTimer();
+    if (confirm('This will reset the kiosk device type.\nThe setup screen will appear on the next reload.\n\nContinue?')) {
+      localStorage.removeItem('deviceConfig');
+      console.log('[ADMIN] 🔄 deviceConfig cleared — reloading for setup screen');
+      trackAdminEvent('device_type_reset');
+      location.reload();
+    }
+  });
+
+  adminControls.appendChild(divider);
+  adminControls.appendChild(resetBtn);
+  console.log('[ADMIN] ✅ Device reset button added');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -296,7 +336,7 @@ function unbindAdminUnlock() {
 // ─────────────────────────────────────────────────────────────
 
 export function setupAdminPanel() {
-  const mainTitle = window.globals?.mainTitle;
+  const mainTitle     = window.globals?.mainTitle;
   const adminControls = window.globals?.adminControls;
 
   if (!mainTitle || !adminControls) {
@@ -304,7 +344,7 @@ export function setupAdminPanel() {
     return;
   }
 
-  if (onlineHandler) window.removeEventListener('online', onlineHandler);
+  if (onlineHandler)  window.removeEventListener('online',  onlineHandler);
   if (offlineHandler) window.removeEventListener('offline', offlineHandler);
 
   if (!document.getElementById('adminCountdown')) {
@@ -312,7 +352,7 @@ export function setupAdminPanel() {
     statusRow.className = 'admin-status-row';
 
     const onlineStatus = document.createElement('p');
-    onlineStatus.id = 'adminOnlineStatus';
+    onlineStatus.id        = 'adminOnlineStatus';
     onlineStatus.className = 'admin-online-state';
     onlineStatus.textContent = navigator.onLine ? '🌐 Online' : '📡 Offline Mode';
 
@@ -330,7 +370,17 @@ export function setupAdminPanel() {
   adminState.adminPanelVisible = false;
   adminState.autoHideStartTime = null;
 
-  buildSurveyTypeSwitcher(adminControls, resetAutoHideTimer);
+  // ── Survey type switcher — only show when device supports >1 type ─────────
+  // Temple iPad: allowedSurveyTypes = ['type1', 'type2'] → length 2 → show
+  // Café iPad:   allowedSurveyTypes = ['type3']           → length 1 → hide
+  const allowedTypes = window.DEVICECONFIG?.allowedSurveyTypes ?? [];
+  if (allowedTypes.length > 1) {
+    buildSurveyTypeSwitcher(adminControls, resetAutoHideTimer);
+    console.log('[ADMIN] ✅ Survey type switcher built');
+  } else {
+    console.log('[ADMIN] ℹ️ Single survey type — switcher hidden');
+  }
+
   bindAdminUnlock();
   bindHideButton(window.globals?.hideAdminButton);
 
@@ -347,6 +397,9 @@ export function setupAdminPanel() {
     resetAutoHideTimer
   );
 
+  // ── Device reset button — always present on both iPads ───────────────────
+  _buildDeviceResetButton(adminControls);
+
   onlineHandler = () => {
     console.log('[ADMIN] 🌐 Connection restored');
     if (adminState.adminPanelVisible) updateAllButtonStates();
@@ -359,10 +412,10 @@ export function setupAdminPanel() {
     trackAdminEvent('connection_lost');
   };
 
-  window.addEventListener('online', onlineHandler);
+  window.addEventListener('online',  onlineHandler);
   window.addEventListener('offline', offlineHandler);
 
-  window.setupAdminPanel = setupAdminPanel;
+  window.setupAdminPanel   = setupAdminPanel;
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
@@ -370,6 +423,8 @@ export function setupAdminPanel() {
   console.log('═══════════════════════════════════════════════════════');
   console.log('  Mode:           Offline-First iPad Kiosk PWA');
   console.log(`  Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
+  console.log(`  Device mode:    ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
+  console.log(`  Survey types:   ${(allowedTypes.length > 0 ? allowedTypes : ['type1']).join(', ')}`);
   console.log(`  Active Survey:  ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
   console.log(`  Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
   console.log('═══════════════════════════════════════════════════════');
@@ -378,9 +433,9 @@ export function setupAdminPanel() {
 export function cleanupAdminPanel() {
   clearManagedTimers();
 
-  if (onlineHandler) window.removeEventListener('online', onlineHandler);
+  if (onlineHandler)  window.removeEventListener('online',  onlineHandler);
   if (offlineHandler) window.removeEventListener('offline', offlineHandler);
-  onlineHandler = null;
+  onlineHandler  = null;
   offlineHandler = null;
 
   unbindAdminUnlock();
@@ -388,13 +443,12 @@ export function cleanupAdminPanel() {
   if (boundHideAdminButton && hideAdminButtonHandler) {
     boundHideAdminButton.removeEventListener('click', hideAdminButtonHandler);
     hideAdminButtonHandler = null;
-    boundHideAdminButton = null;
+    boundHideAdminButton   = null;
   }
 
   cleanupSurveyControls();
   cleanupMaintenanceHandlers();
 
-  // Single call resets all shared flags — no risk of missing one
   resetAdminState();
 
   const adminControls = window.globals?.adminControls;

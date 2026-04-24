@@ -1,9 +1,12 @@
 // FILE: appState.js
-// VERSION: 3.4.1
-// CHANGES FROM 3.4.0:
-//   - ADD: Queue Type 3 (shayonaQueue) count in boot log
-//     Reads CONSTANTS.STORAGE_KEY_QUEUE_V3 with same safe fallback
-//     pattern used by type1 and type2 queue counts.
+// VERSION: 3.4.2
+// CHANGES FROM 3.4.1:
+//   - CLEANUP: Align fallback state storage key with config.js canonical key ('kioskState')
+//     instead of legacy-only fallback ('kioskAppState').
+//   - CLEANUP: Align fallback analytics key with config.js canonical key ('surveyAnalytics').
+//   - CLEANUP: Align fallback MAX_ANALYTICS_SIZE with config.js value (500).
+//   - KEEP: Legacy migration support for older 'kioskAppState' persisted state.
+//   - No runtime logic changes to survey flow or queue behavior.
 
 (function () {
   const CONFIG    = window.KIOSK_CONFIG || {};
@@ -29,13 +32,13 @@
 
   // ─── Queue limits ─────────────────────────────────────────────────────────────
   const MAX_QUEUE_SIZE     = CONSTANTS.MAX_QUEUE_SIZE     || CONFIG.MAX_QUEUE_SIZE     || 250;
-  const MAX_ANALYTICS_SIZE = CONSTANTS.MAX_ANALYTICS_SIZE || CONFIG.MAX_ANALYTICS_SIZE || 1000;
+  const MAX_ANALYTICS_SIZE = CONSTANTS.MAX_ANALYTICS_SIZE || CONFIG.MAX_ANALYTICS_SIZE || 500;
 
   // ─── Storage keys ─────────────────────────────────────────────────────────────
   const CANONICAL_STORAGE_KEY_STATE =
     CONSTANTS.STORAGE_KEY_STATE ||
     CONFIG.STORAGE_KEY_STATE ||
-    'kioskAppState';
+    'kioskState';
 
   const LEGACY_STORAGE_KEY_STATE = 'kioskAppState';
 
@@ -88,10 +91,10 @@
         ? parsed.questionStartTimes : defaults.questionStartTimes,
       questionTimeSpent: parsed?.questionTimeSpent && typeof parsed.questionTimeSpent === 'object'
         ? parsed.questionTimeSpent : defaults.questionTimeSpent,
-      adminClickCount:  0,
-      inactivityTimer:  null,
-      syncTimer:        null,
-      rotationInterval: null,
+      adminClickCount:   0,
+      inactivityTimer:   null,
+      syncTimer:         null,
+      rotationInterval:  null,
       countdownInterval: null,
     };
   }
@@ -269,7 +272,6 @@
     try { return JSON.parse(localStorage.getItem(_q2Key) || '[]').length; } catch { return 0; }
   })();
 
-  // ADD v3.4.1 — type3 queue count (Shayona Café)
   const _q3Key = CONSTANTS.STORAGE_KEY_QUEUE_V3 ||
                  CONSTANTS.SURVEY_TYPES?.type3?.storageKey ||
                  'shayonaQueue';
@@ -279,7 +281,7 @@
   })();
 
   console.log('\n📱 Kiosk Survey Application Initialized');
-  console.log('   Version       : 3.4.1');
+  console.log('   Version       : 3.4.2');
   console.log(`   State Key     : ${CANONICAL_STORAGE_KEY_STATE}`);
   console.log(`   State         : ${appState.currentQuestionIndex > 0 ? 'RESUMING' : 'FRESH'}`);
   if (appState.currentQuestionIndex > 0) {

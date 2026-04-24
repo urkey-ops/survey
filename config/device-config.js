@@ -69,6 +69,7 @@
 
           // Persist and activate
           localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+          localStorage.setItem('activeSurveyType', config.defaultSurveyType);
           window.DEVICECONFIG = config;
 
           // Hide overlay

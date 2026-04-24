@@ -1,12 +1,11 @@
 // FILE: surveys/shayona-data-util.js
-// VERSION: 2.2.0
-// CHANGES FROM 2.1.0:
-//   - FIX: Preserve base dataUtils instead of overwriting it in Shayona mode.
-//   - FIX: Merge base question renderers into shayonaDataUtils so base renderer
-//     types like emoji-radio, radio, radio-with-followup, selector-textarea,
-//     textarea, checkbox-with-other, etc. remain available at runtime.
-//   - KEEP: Existing Shayona survey questions, branching logic, and custom
-//     renderers unchanged.
+// VERSION: 2.3.0
+// CHANGES FROM 2.2.0:
+//   - FIX: Shayona mode now always resolves to surveyQuestionsType3 here.
+//   - FIX: Keep base dataUtils intact; never overwrite it.
+//   - FIX: Dual star rating visually aligns better with single star rating by
+//     reusing the base star-rating container class on each row.
+//   - KEEP: Existing Shayona survey questions and branching logic unchanged.
 
 window.shayonaDataUtils = (function () {
 
@@ -475,35 +474,53 @@ window.shayonaDataUtils = (function () {
     render(q, data) {
       const saved = data[q.name] ?? {};
 
-      const rows = q.subRatings.map(sub => {
+      const renderRow = (sub) => {
+        const selected = saved[sub.key] ?? 0;
+
         const stars = Array.from({ length: q.max }, (_, i) => {
           const num = q.max - i;
-          const checked = saved[sub.key] === num ? 'checked' : '';
-          const filled = saved[sub.key] >= num ? '#FBBF24' : '#D1D5DB';
+          const checked = selected === num ? 'checked' : '';
+          const filled = selected >= num ? '#FBBF24' : '#D1D5DB';
           return `
-            <input type="radio" id="${q.id}_${sub.key}_${num}" name="${q.id}_${sub.key}" value="${num}" class="visually-hidden" ${checked}>
-            <label for="${q.id}_${sub.key}_${num}" class="star option-label"
-                   style="font-size:2.6rem;padding:0 4px;color:${filled}"
-                   role="radio" aria-label="${num} star">★</label>
+            <input
+              type="radio"
+              id="${q.id}_${sub.key}_${num}"
+              name="${q.id}_${sub.key}"
+              value="${num}"
+              class="visually-hidden"
+              ${checked}
+            >
+            <label
+              for="${q.id}_${sub.key}_${num}"
+              class="star option-label"
+              style="font-size:2.6rem;padding:0 4px;color:${filled}"
+              role="radio"
+              aria-label="${num} stars"
+            >★</label>
           `;
         }).join('');
 
         return `
           <div class="dual-star-row">
             <span class="dual-star-label">${sub.label}</span>
-            <div class="dual-star-stars" id="${q.id}_${sub.key}_grid" role="radiogroup" aria-label="${sub.label}">
+            <div
+              class="dual-star-stars star-rating"
+              id="${q.id}_${sub.key}_grid"
+              role="radiogroup"
+              aria-label="${sub.label}"
+            >
               ${stars}
             </div>
           </div>
         `;
-      }).join('');
+      };
 
       return `
         <label id="${q.id}Label" style="font-size:1.2rem;font-weight:600;color:var(--text-primary);display:block;margin-bottom:8px">
           ${q.question}
         </label>
         <div class="dual-star-rating" id="${q.id}_wrapper">
-          ${rows}
+          ${q.subRatings.map(renderRow).join('')}
         </div>
         <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>
       `;
@@ -547,18 +564,18 @@ window.shayonaDataUtils = (function () {
     'dual-star-rating': dualStarRatingRenderer,
   };
 
+  function getSurveyQuestions() {
+    return surveyQuestionsType3;
+  }
+
   // ─── PUBLIC API ──────────────────────────────────────────────────────────
   return {
     get surveyQuestions() { return surveyQuestionsType3; },
+    getSurveyQuestions,
     questionRenderers,
     getNextQuestionIndex,
     otherKey,
     clearAutoAdvance,
-
-    // Optional passthroughs if other files ever look for these
-    getSurveyQuestions() {
-      return surveyQuestionsType3;
-    },
     shouldShowQuestion,
     getActiveBranch,
     scheduleAutoAdvance,
@@ -571,12 +588,6 @@ window.shayonaDataUtils = (function () {
 
 })();
 
-// ─── SHAYONA MODE NOTE ──────────────────────────────────────────────────────
-// Do NOT overwrite window.dataUtils here.
-// core.js should merge base dataUtils.questionRenderers with
-// shayonaDataUtils.questionRenderers. Overwriting window.dataUtils with the
-// partial Shayona object removes base renderers like emoji-radio and causes the
-// first-question crash.
 if (window.DEVICECONFIG?.kioskMode === 'shayona') {
-  console.info('[shayona-data-util] Shayona overlay active — base dataUtils preserved');
+  console.info('[shayona-data-util] Shayona mode active — base dataUtils preserved');
 }

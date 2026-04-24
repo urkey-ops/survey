@@ -1,13 +1,17 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.4.0
-// CHANGES FROM 5.3.0:
-//   - REMOVE: Step 9 redundant showStartScreen call — navigationSetup.js
-//     v3.0.0 now imports showStartScreen directly from startScreen.js and
-//     calls it inside initializeSurveyState(). Calling it again here caused
-//     a double-fire: two sets of tap listeners attached to #kioskStartScreen,
-//     the second overwriting window.boundStartSurvey and leaving the first
-//     listener orphaned and uncancelable.
+// VERSION: 5.5.0
+// CHANGES FROM 5.4.0:
+//   - FIX: First-launch flash — device-setup-overlay was invisible during the
+//     window between initializeSurveyState() calling showStartScreen() and the
+//     overlay rendering. Fix: guard initializeSurveyState() behind
+//     isDeviceConfigured() check. If unconfigured, skip initializeSurveyState()
+//     here entirely — the device-setup-overlay's confirm handler is responsible
+//     for calling window.uiHandlers.showStartScreen() after the user picks a
+//     mode. If already configured (all subsequent launches), proceeds directly.
+//   - ADD: isDeviceConfigured() helper — true when kioskMode is set AND
+//     allowedSurveyTypes is non-empty in DEVICECONFIG
+//   - ADD: console log distinguishing first-launch vs configured-launch path
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -37,6 +41,21 @@ if (window.DEVICECONFIG) {
   startApp();
 } else {
   window.addEventListener('deviceConfigReady', startApp, { once: true });
+}
+
+// ── First-launch detection ────────────────────────────────────────────────────
+//
+// Returns true when the device has already been configured (kioskMode set,
+// allowedSurveyTypes populated). Returns false on a genuine first launch where
+// the device-setup-overlay needs to run first.
+//
+// NOTE: DEVICECONFIG is the runtime config object set by device-config.js.
+// On first launch it exists but kioskMode will be null/undefined and
+// allowedSurveyTypes will be empty — the overlay hasn't written a choice yet.
+
+function isDeviceConfigured() {
+  const cfg = window.DEVICECONFIG;
+  return !!(cfg?.kioskMode && cfg?.allowedSurveyTypes?.length > 0);
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
@@ -269,8 +288,7 @@ function initialize() {
     // Step 4: Reconcile survey type BEFORE any navigation/survey setup
     reconcileSurveyType();
 
-    // Step 5: Setup navigation buttons (goNext/goPrev now imported directly
-    // in navigationSetup.js — no longer depends on window.uiHandlers)
+    // Step 5: Setup navigation buttons
     setupNavigation();
 
     // Step 6: Setup activity tracking
@@ -279,9 +297,27 @@ function initialize() {
     // Step 7: Setup admin panel
     setupAdminPanel();
 
-    // Step 8: Initialize survey state — calls showStartScreen() internally
-    // via direct import in navigationSetup.js v3.0.0. No separate call needed.
-    initializeSurveyState();
+    // Step 8: Initialize survey state — guarded by first-launch check.
+    //
+    // On first launch (kioskMode not yet set, allowedSurveyTypes empty):
+    //   Skip initializeSurveyState() entirely. The device-setup-overlay is
+    //   already rendered in the HTML and visible. Its confirm handler must call
+    //   window.uiHandlers.showStartScreen() (or initializeSurveyState() via
+    //   a global) AFTER the user picks Shayona / Temple and the overlay hides.
+    //   This prevents the start screen flashing before the overlay appears.
+    //
+    // On all subsequent launches (kioskMode + allowedSurveyTypes set):
+    //   Proceed normally — showStartScreen() runs inside initializeSurveyState()
+    //   with the correct survey type already active.
+
+    if (isDeviceConfigured()) {
+      console.log('[INIT] ✅ Device configured — initializing survey state directly');
+      initializeSurveyState();
+    } else {
+      console.log('[INIT] 🆕 First launch — device-setup-overlay active, deferring survey state init');
+      // device-setup-overlay confirm handler is responsible for calling
+      // window.uiHandlers.showStartScreen() after the user selects a mode.
+    }
 
     // Step 9: Setup network monitoring
     setupNetworkMonitoring();

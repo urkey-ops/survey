@@ -24,6 +24,20 @@ let storageMonitorIntervalId = null;
 let emergencyOnlineHandler = null;
 let pendingDataHandlersPoll = null;
 
+//----Start App One Time Config ------
+
+function startApp() {
+  // all your existing init code here
+}
+
+if (window.DEVICECONFIG) {
+  // Config already existed in localStorage — start immediately
+  startApp();
+} else {
+  // Waiting for user to pick on first launch
+  window.addEventListener('deviceConfigReady', startApp, { once: true });
+}
+
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
 
 function startHeartbeat() {

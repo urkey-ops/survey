@@ -1,13 +1,9 @@
 // FILE: ui/validation.js
 // PURPOSE: Form validation logic for survey questions
-// VERSION: 2.4.0
-// CHANGES FROM 2.3.0:
-//   - selector-textarea: new optional hybrid type — passes validation when
-//     both category and text are empty (fully skipped is valid since required:false)
-//     passes when text has content regardless of category selection
-//     never blocks on category alone
-//   - _isEmpty updated to handle selector-textarea { category, text } shape
-//     (previously fell through to object branch which checked for .main — wrong key)
+// VERSION: 2.5.0
+// CHANGES FROM 2.4.0:
+//   - ADD: section-header type — always passes (no user input, auto-advances)
+//   - ADD: dual-star-rating type — validates both sub-ratings filled when required
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -47,6 +43,7 @@ function displayError(elementId, message) {
  *   radio-with-other                  → { main, other }
  *   radio-with-followup               → { main, followup[] }
  *   selector-textarea                 → { category, text } — empty when BOTH blank
+ *   dual-star-rating                  → { taste: number, value: number }
  */
 function _isEmpty(answer, questionType) {
   if (answer === null || answer === undefined)  return true;
@@ -57,10 +54,12 @@ function _isEmpty(answer, questionType) {
 
   if (typeof answer === 'object') {
     // selector-textarea stores { category, text }
-    // considered non-empty only when at least text has content
-    // (category alone with no text is not a meaningful response)
     if (questionType === 'selector-textarea') {
       return !answer.text || String(answer.text).trim() === '';
+    }
+    // dual-star-rating stores { key1: number|null, key2: number|null }
+    if (questionType === 'dual-star-rating') {
+      return Object.values(answer).every(v => v === null || v === undefined);
     }
     // All other object shapes: { main, other } or { main, followup[] }
     return !answer.main || String(answer.main).trim() === '';
@@ -71,8 +70,6 @@ function _isEmpty(answer, questionType) {
 
 /**
  * Extract the main selection value from any stored answer shape.
- * Handles: plain string, number, { main, ... } object.
- * Not applicable to selector-textarea — access .category directly.
  */
 function _mainValue(answer) {
   if (answer === null || answer === undefined) return '';
@@ -94,14 +91,29 @@ export function validateQuestion(question, formData) {
   let isValid = true;
   let errorMessage = '';
 
+  // ── SECTION HEADER ────────────────────────────────────────────────────────
+  // No user input — always valid. Auto-advances on its own timer.
+  if (question.type === 'section-header') {
+    return true;
+  }
+
+  // ── DUAL STAR RATING ──────────────────────────────────────────────────────
+  // answer shape: { taste: number|null, value: number|null }
+  // Required: every sub-rating must be filled.
+  else if (question.type === 'dual-star-rating') {
+    if (question.required) {
+      const allFilled = question.subRatings?.every(sub =>
+        answer && answer[sub.key] !== null && answer[sub.key] !== undefined
+      );
+      if (!allFilled) {
+        errorMessage = 'Please rate both options.';
+        isValid = false;
+      }
+    }
+  }
+
   // ── SELECTOR TEXTAREA ─────────────────────────────────────────────────────
-  // This type is always optional (required: false on final_thoughts).
-  // Validation rule:
-  //   - fully empty (no category, no text) → valid (user skipped, that's fine)
-  //   - text has content → valid regardless of category
-  //   - category selected but no text → valid (category is purely a UX aid)
-  // If somehow marked required in future: requires text to be non-empty.
-  if (question.type === 'selector-textarea') {
+  else if (question.type === 'selector-textarea') {
     if (question.required) {
       const txt = (answer && typeof answer === 'object') ? (answer.text || '') : '';
       if (!txt || String(txt).trim() === '') {
@@ -109,7 +121,7 @@ export function validateQuestion(question, formData) {
         isValid = false;
       }
     }
-    // Non-required: always passes — no further checks needed
+    // Non-required: always passes
   }
 
   // ── CHECKBOX WITH OTHER ───────────────────────────────────────────────────
@@ -129,7 +141,6 @@ export function validateQuestion(question, formData) {
   }
 
   // ── RADIO WITH OTHER ──────────────────────────────────────────────────────
-  // answer shape: { main: string, other: string }
   else if (question.type === 'radio-with-other') {
     if (question.required && _isEmpty(answer, question.type)) {
       errorMessage = 'Please select an option.';
@@ -151,7 +162,6 @@ export function validateQuestion(question, formData) {
   }
 
   // ── RADIO WITH FOLLOW-UP ──────────────────────────────────────────────────
-  // answer shape: { main: string, followup: string[] }
   else if (question.type === 'radio-with-followup') {
     if (question.required && _isEmpty(answer, question.type)) {
       errorMessage = 'Please select an option.';
@@ -194,8 +204,6 @@ export function validateQuestion(question, formData) {
   }
 
   // ── STAR RATING & NUMBER SCALE ────────────────────────────────────────────
-  // data-util stores these as Number — null/undefined means unanswered.
-  // 0 is a valid value so we check for null/undefined only, not falsiness.
   else if (question.type === 'star-rating' || question.type === 'number-scale') {
     if (question.required && (answer === null || answer === undefined)) {
       errorMessage = 'Please make a selection.';
@@ -203,7 +211,7 @@ export function validateQuestion(question, formData) {
     }
   }
 
-  // ── ALL OTHER TYPES (emoji-radio, radio, textarea, etc.) ──────────────────
+  // ── ALL OTHER TYPES ───────────────────────────────────────────────────────
   else if (question.required && _isEmpty(answer, question.type)) {
     errorMessage = 'This response is required.';
     isValid = false;
@@ -233,7 +241,6 @@ export function validateArrayNotEmpty(arr) {
 
 /**
  * Get all validation errors for a question (non-throwing, used by batch validate).
- * Mirrors the same shape-aware logic as validateQuestion().
  */
 export function getValidationErrors(question, formData) {
   if (!question) return ['Question definition missing.'];
@@ -242,7 +249,23 @@ export function getValidationErrors(question, formData) {
   const answer  = formData[question.name];
   const mainVal = _mainValue(answer);
 
-  // ── selector-textarea: only errors if explicitly required and text is blank ─
+  // ── section-header: never errors ─────────────────────────────────────────
+  if (question.type === 'section-header') {
+    return [];
+  }
+
+  // ── dual-star-rating ──────────────────────────────────────────────────────
+  if (question.type === 'dual-star-rating') {
+    if (question.required) {
+      const allFilled = question.subRatings?.every(sub =>
+        answer && answer[sub.key] !== null && answer[sub.key] !== undefined
+      );
+      if (!allFilled) errors.push('Please rate both options.');
+    }
+    return errors;
+  }
+
+  // ── selector-textarea ─────────────────────────────────────────────────────
   if (question.type === 'selector-textarea') {
     if (question.required) {
       const txt = (answer && typeof answer === 'object') ? (answer.text || '') : '';
@@ -250,7 +273,6 @@ export function getValidationErrors(question, formData) {
         errors.push('Please write your response.');
       }
     }
-    // Non-required: no errors possible — return early
     return errors;
   }
 
@@ -276,7 +298,7 @@ export function getValidationErrors(question, formData) {
     }
   }
 
-  // radio-with-other — other text lives in answer.other
+  // radio-with-other
   if (question.type === 'radio-with-other' && mainVal === 'Other') {
     const otherText = (answer && typeof answer === 'object')
       ? (answer.other || '')
@@ -286,7 +308,7 @@ export function getValidationErrors(question, formData) {
     }
   }
 
-  // radio-with-followup — followup lives in answer.followup[]
+  // radio-with-followup
   if (question.type === 'radio-with-followup' && question.followupRequired && mainVal) {
     const selectedOpt = question.options?.find(o => o.value === mainVal);
     if (selectedOpt?.followupLabel && selectedOpt.followupOptions?.length > 0) {

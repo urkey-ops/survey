@@ -1,10 +1,16 @@
 // FILE: surveys/shayona-data-util.js
-// VERSION: 2.1.0
-// CHANGES FROM 2.0.0:
-//   - UPDATE: visitPurpose option labels rewritten for clean on-screen display
-//     Values unchanged — branch logic unaffected.
+// VERSION: 2.2.0
+// CHANGES FROM 2.1.0:
+//   - FIX: Preserve base dataUtils instead of overwriting it in Shayona mode.
+//   - FIX: Merge base question renderers into shayonaDataUtils so base renderer
+//     types like emoji-radio, radio, radio-with-followup, selector-textarea,
+//     textarea, checkbox-with-other, etc. remain available at runtime.
+//   - KEEP: Existing Shayona survey questions, branching logic, and custom
+//     renderers unchanged.
 
 window.shayonaDataUtils = (function () {
+
+  const baseDataUtils = window.dataUtils || {};
 
   // ─── CONFIG ──────────────────────────────────────────────────────────────
   const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTOADVANCE_DELAY_MS ?? 50;
@@ -12,11 +18,17 @@ window.shayonaDataUtils = (function () {
 
   function scheduleAutoAdvance(callback, delay) {
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
-    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; callback(); }, delay);
+    autoAdvanceTimer = setTimeout(() => {
+      autoAdvanceTimer = null;
+      callback();
+    }, delay);
   }
 
   function clearAutoAdvance() {
-    if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
+    if (autoAdvanceTimer) {
+      clearTimeout(autoAdvanceTimer);
+      autoAdvanceTimer = null;
+    }
   }
 
   // ─── GRID HELPERS ────────────────────────────────────────────────────────
@@ -41,39 +53,39 @@ window.shayonaDataUtils = (function () {
       const input = document.getElementById(label.getAttribute('for'));
       if (!input) return;
       if (input.checked) {
-        label.style.background    = 'var(--orange-light)';
-        label.style.borderColor   = 'var(--orange)';
-        label.style.color         = 'var(--orange-dark)';
-        label.style.borderWidth   = '2px';
+        label.style.background = 'var(--orange-light)';
+        label.style.borderColor = 'var(--orange)';
+        label.style.color = 'var(--orange-dark)';
+        label.style.borderWidth = '2px';
       } else {
-        label.style.background    = '';
-        label.style.borderColor   = '';
-        label.style.color         = '';
-        label.style.borderWidth   = '';
+        label.style.background = '';
+        label.style.borderColor = '';
+        label.style.color = '';
+        label.style.borderWidth = '';
       }
     });
   }
 
   function applyChipSelectedStyle(label, isSelected) {
     if (isSelected) {
-      label.style.background    = 'var(--orange-light)';
-      label.style.borderColor   = 'var(--orange)';
-      label.style.color         = 'var(--orange-dark)';
-      label.style.borderWidth   = '2px';
+      label.style.background = 'var(--orange-light)';
+      label.style.borderColor = 'var(--orange)';
+      label.style.color = 'var(--orange-dark)';
+      label.style.borderWidth = '2px';
     } else {
-      label.style.background    = '';
-      label.style.borderColor   = '';
-      label.style.color         = '';
-      label.style.borderWidth   = '';
+      label.style.background = '';
+      label.style.borderColor = '';
+      label.style.color = '';
+      label.style.borderWidth = '';
     }
   }
 
   function applyStarSelectedStyles(container, selectedValue) {
     container.querySelectorAll('label.star').forEach(label => {
-      const input  = document.getElementById(label.getAttribute('for'));
+      const input = document.getElementById(label.getAttribute('for'));
       if (!input) return;
       const starVal = parseInt(input.value, 10);
-      const selVal  = parseInt(selectedValue, 10);
+      const selVal = parseInt(selectedValue, 10);
       if (starVal <= selVal) {
         label.classList.add('text-yellow-400');
         label.classList.remove('text-gray-300');
@@ -84,12 +96,12 @@ window.shayonaDataUtils = (function () {
     });
   }
 
-  function otherKey(qName) { return `other_${qName}`; }
+  function otherKey(qName) {
+    return `other_${qName}`;
+  }
 
   // ─── SURVEY QUESTIONS TYPE 3 ─────────────────────────────────────────────
   const surveyQuestionsType3 = [
-
-    // ── SECTION 1: IDENTITY & FIRST IMPRESSION ──────────────────────────────
 
     {
       id: 'cafeExperience',
@@ -98,9 +110,9 @@ window.shayonaDataUtils = (function () {
       question: 'How was your experience at Shayona Café today?',
       options: [
         { value: 'Not as expected', label: 'Not as expected', emoji: '🙁' },
-        { value: 'Okay',            label: 'Okay',            emoji: '😐' },
-        { value: 'Good',            label: 'Good',            emoji: '🙂' },
-        { value: 'Excellent',       label: 'Excellent',       emoji: '😊' },
+        { value: 'Okay', label: 'Okay', emoji: '😐' },
+        { value: 'Good', label: 'Good', emoji: '🙂' },
+        { value: 'Excellent', label: 'Excellent', emoji: '😊' },
       ],
       required: true,
     },
@@ -111,19 +123,15 @@ window.shayonaDataUtils = (function () {
       type: 'radio',
       question: 'What was the primary reason for your visit today?',
       options: [
-        { value: 'Grab & Go',                      label: 'Packaged Snacks or Sweets'       },
-        { value: 'Hot Food',                        label: 'Hot Food & Snacks'               },
-        { value: 'Buffet',                          label: 'Buffet / Thali'                  },
-        { value: 'Catering',                        label: 'Catering Inquiry / Large Order'  },
-        { value: 'Browsing',                        label: 'Just Browsing'                   },
+        { value: 'Grab & Go', label: 'Packaged Snacks or Sweets' },
+        { value: 'Hot Food', label: 'Hot Food & Snacks' },
+        { value: 'Buffet', label: 'Buffet / Thali' },
+        { value: 'Catering', label: 'Catering Inquiry / Large Order' },
+        { value: 'Browsing', label: 'Just Browsing' },
         { value: 'Wanted to purchase, but did not', label: 'Wanted to Purchase, but Did Not' },
       ],
       required: true,
     },
-
-    // ── SECTION 2: SYSTEM EFFICIENCY ────────────────────────────────────────
-    // Shown to purchasers only (Grab & Go, Hot Food, Buffet, Catering)
-    // Browsing + Failed Intent skip directly to their branch
 
     {
       id: 'waitTime',
@@ -133,9 +141,9 @@ window.shayonaDataUtils = (function () {
       branch: 'purchaser',
       options: [
         { value: 'Under 5 min', label: 'Under 5 minutes' },
-        { value: '5–10 min',    label: '5–10 minutes'    },
-        { value: '10–15 min',   label: '10–15 minutes'   },
-        { value: '15+ min',     label: '15+ minutes'     },
+        { value: '5–10 min', label: '5–10 minutes' },
+        { value: '10–15 min', label: '10–15 minutes' },
+        { value: '15+ min', label: '15+ minutes' },
       ],
       required: true,
     },
@@ -177,15 +185,13 @@ window.shayonaDataUtils = (function () {
       question: 'How did the overall flow of your visit feel?',
       branch: 'purchaser',
       options: [
-        { value: 'Very smooth',   label: 'Very smooth'   },
+        { value: 'Very smooth', label: 'Very smooth' },
         { value: 'Mostly smooth', label: 'Mostly smooth' },
         { value: 'Some friction', label: 'Some friction' },
-        { value: 'Frustrating',   label: 'Frustrating'   },
+        { value: 'Frustrating', label: 'Frustrating' },
       ],
       required: true,
     },
-
-    // ── SECTION 3: BRANCH A — GRAB & GO ─────────────────────────────────────
 
     {
       id: 'headerGrabGo',
@@ -202,10 +208,30 @@ window.shayonaDataUtils = (function () {
       question: 'How easy was it to find what you were looking for?',
       branch: 'Grab & Go',
       options: [
-        { value: 'Very easy',          label: 'Very easy',          followupLabel: null, followupOptions: [] },
-        { value: 'Somewhat easy',      label: 'Somewhat easy',      followupLabel: null, followupOptions: [] },
-        { value: 'Somewhat difficult', label: 'Somewhat difficult', followupLabel: 'What made it difficult?', followupOptions: ['Items were hard to locate', 'Labels or prices were unclear', 'Too crowded around display', 'Could not decide quickly'] },
-        { value: 'Very difficult',     label: 'Very difficult',     followupLabel: 'What made it difficult?', followupOptions: ['Items were hard to locate', 'Labels or prices were unclear', 'Too crowded around display', 'Could not decide quickly'] },
+        { value: 'Very easy', label: 'Very easy', followupLabel: null, followupOptions: [] },
+        { value: 'Somewhat easy', label: 'Somewhat easy', followupLabel: null, followupOptions: [] },
+        {
+          value: 'Somewhat difficult',
+          label: 'Somewhat difficult',
+          followupLabel: 'What made it difficult?',
+          followupOptions: [
+            'Items were hard to locate',
+            'Labels or prices were unclear',
+            'Too crowded around display',
+            'Could not decide quickly'
+          ]
+        },
+        {
+          value: 'Very difficult',
+          label: 'Very difficult',
+          followupLabel: 'What made it difficult?',
+          followupOptions: [
+            'Items were hard to locate',
+            'Labels or prices were unclear',
+            'Too crowded around display',
+            'Could not decide quickly'
+          ]
+        },
       ],
       required: true,
     },
@@ -218,12 +244,20 @@ window.shayonaDataUtils = (function () {
       branch: 'Grab & Go',
       options: [
         { value: 'Yes, fast enough', label: 'Yes, fast enough', followupLabel: null, followupOptions: [] },
-        { value: 'No, too slow',     label: 'No, too slow',     followupLabel: 'What slowed you down most?', followupOptions: ['Waiting to place order', 'Waiting to pay', 'Staff was busy', 'Could not decide quickly'] },
+        {
+          value: 'No, too slow',
+          label: 'No, too slow',
+          followupLabel: 'What slowed you down most?',
+          followupOptions: [
+            'Waiting to place order',
+            'Waiting to pay',
+            'Staff was busy',
+            'Could not decide quickly'
+          ]
+        },
       ],
       required: true,
     },
-
-    // ── SECTION 3: BRANCH B — HOT FOOD / BUFFET ─────────────────────────────
 
     {
       id: 'headerHotFood',
@@ -240,10 +274,10 @@ window.shayonaDataUtils = (function () {
       question: 'What mattered most to you today?',
       branch: 'Hot Food|Buffet',
       options: [
-        { value: 'Speed of service',     label: 'Speed of service'     },
+        { value: 'Speed of service', label: 'Speed of service' },
         { value: 'Food quality & taste', label: 'Food quality & taste' },
-        { value: 'Value for money',      label: 'Value for money'      },
-        { value: 'Balanced experience',  label: 'Balanced experience'  },
+        { value: 'Value for money', label: 'Value for money' },
+        { value: 'Balanced experience', label: 'Balanced experience' },
       ],
       required: true,
     },
@@ -255,15 +289,13 @@ window.shayonaDataUtils = (function () {
       question: 'How would you rate your food experience?',
       branch: 'Hot Food|Buffet',
       subRatings: [
-        { key: 'taste', label: 'Food taste'     },
+        { key: 'taste', label: 'Food taste' },
         { key: 'value', label: 'Value for money' },
       ],
       min: 1,
       max: 5,
       required: true,
     },
-
-    // ── SECTION 3: BRANCH C — CATERING ──────────────────────────────────────
 
     {
       id: 'headerCatering',
@@ -281,9 +313,24 @@ window.shayonaDataUtils = (function () {
       branch: 'Catering',
       options: [
         { value: 'Yes, fully clear', label: 'Yes, fully clear', followupLabel: null, followupOptions: [] },
-        { value: 'Partially clear',  label: 'Partially clear',  followupLabel: 'What was missing?', followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other'] },
-        { value: 'Mostly unclear',   label: 'Mostly unclear',   followupLabel: 'What was missing?', followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other'] },
-        { value: 'Not clear at all', label: 'Not clear at all', followupLabel: 'What was missing?', followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other'] },
+        {
+          value: 'Partially clear',
+          label: 'Partially clear',
+          followupLabel: 'What was missing?',
+          followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other']
+        },
+        {
+          value: 'Mostly unclear',
+          label: 'Mostly unclear',
+          followupLabel: 'What was missing?',
+          followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other']
+        },
+        {
+          value: 'Not clear at all',
+          label: 'Not clear at all',
+          followupLabel: 'What was missing?',
+          followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other']
+        },
       ],
       required: true,
     },
@@ -295,21 +342,19 @@ window.shayonaDataUtils = (function () {
       question: 'How can we improve the catering experience?',
       branch: 'Catering',
       options: [
-        { value: 'Online menu / brochure',    label: 'Online menu / brochure'    },
-        { value: 'Dedicated staff member',    label: 'Dedicated staff member'    },
-        { value: 'Faster response time',      label: 'Faster response time'      },
+        { value: 'Online menu / brochure', label: 'Online menu / brochure' },
+        { value: 'Dedicated staff member', label: 'Dedicated staff member' },
+        { value: 'Faster response time', label: 'Faster response time' },
         { value: 'Better signage / guidance', label: 'Better signage / guidance' },
       ],
       required: true,
     },
 
-    // ── SECTION 3: BRANCH D1 — FAILED INTENT ────────────────────────────────
-
     {
       id: 'headerFailedIntent',
       name: 'headerFailedIntent',
       type: 'section-header',
-      text: 'We\'re sorry we couldn\'t serve you today — your feedback helps us improve.',
+      text: 'We\\'re sorry we couldn\\'t serve you today — your feedback helps us improve.',
       branch: 'Failed Intent',
     },
 
@@ -317,24 +362,22 @@ window.shayonaDataUtils = (function () {
       id: 'browsingBarrier',
       name: 'browsingBarrier',
       type: 'radio',
-      question: 'What was the main reason you didn\'t purchase today?',
+      question: 'What was the main reason you didn\\'t purchase today?',
       branch: 'Failed Intent',
       options: [
-        { value: 'Wait or line was too long',      label: 'The wait or line was too long'              },
-        { value: 'No staff available',             label: 'No staff was available to help or take my order' },
-        { value: 'Did not find specific item',     label: 'I did not see the specific item I wanted'   },
-        { value: 'Prices were not clearly marked', label: 'Prices were not clearly marked'             },
+        { value: 'Wait or line was too long', label: 'The wait or line was too long' },
+        { value: 'No staff available', label: 'No staff was available to help or take my order' },
+        { value: 'Did not find specific item', label: 'I did not see the specific item I wanted' },
+        { value: 'Prices were not clearly marked', label: 'Prices were not clearly marked' },
       ],
       required: true,
     },
-
-    // ── SECTION 3: BRANCH D2 — CASUAL BROWSER ───────────────────────────────
 
     {
       id: 'headerBrowsing',
       name: 'headerBrowsing',
       type: 'section-header',
-      text: 'Thanks for stopping by — we\'d love to know what brought you in today.',
+      text: 'Thanks for stopping by — we\\'d love to know what brought you in today.',
       branch: 'Browsing',
     },
 
@@ -345,16 +388,14 @@ window.shayonaDataUtils = (function () {
       question: 'What were you hoping to find today?',
       branch: 'Browsing',
       options: [
-        { value: 'Exploring for the first time',   label: 'Just exploring the café for the first time' },
-        { value: 'Checking menu for future visit',  label: 'Checking the menu for a future visit'       },
-        { value: 'Looking for a specific snack',   label: 'Looking for a specific snack or sweet'      },
-        { value: 'Looking for a gift or souvenir', label: 'Looking for a gift or souvenir'             },
-        { value: 'Checking for seating / space',   label: 'Checking for seating or a place to sit'     },
+        { value: 'Exploring for the first time', label: 'Just exploring the café for the first time' },
+        { value: 'Checking menu for future visit', label: 'Checking the menu for a future visit' },
+        { value: 'Looking for a specific snack', label: 'Looking for a specific snack or sweet' },
+        { value: 'Looking for a gift or souvenir', label: 'Looking for a gift or souvenir' },
+        { value: 'Checking for seating / space', label: 'Checking for seating or a place to sit' },
       ],
       required: false,
     },
-
-    // ── SECTION 4: EMOTIONAL CLOSURE (all users) ────────────────────────────
 
     {
       id: 'finalThoughts',
@@ -363,11 +404,11 @@ window.shayonaDataUtils = (function () {
       question: 'What would you like to share about your visit to Shayona Café?',
       subLabel: 'Optional — select one to begin',
       options: [
-        { value: 'shoutout',    label: 'A shout-out to the team', emoji: '🌟', placeholder: 'A big thank you to '              },
-        { value: 'improvement', label: 'An idea for improvement',  emoji: '💡', placeholder: 'One thing that could be better is ' },
-        { value: 'favourite',   label: 'My favourite part',        emoji: '❤️', placeholder: 'My favourite part was '            },
-        { value: 'issue',       label: 'Something didn\'t work',   emoji: '⚠️', placeholder: 'Something didn\'t work — '        },
-        { value: 'other',       label: 'Something else',           emoji: '📝', placeholder: 'I wanted to share that '           },
+        { value: 'shoutout', label: 'A shout-out to the team', emoji: '🌟', placeholder: 'A big thank you to ' },
+        { value: 'improvement', label: 'An idea for improvement', emoji: '💡', placeholder: 'One thing that could be better is ' },
+        { value: 'favourite', label: 'My favourite part', emoji: '❤️', placeholder: 'My favourite part was ' },
+        { value: 'issue', label: 'Something didn\\'t work', emoji: '⚠️', placeholder: 'Something didn\\'t work — ' },
+        { value: 'other', label: 'Something else', emoji: '📝', placeholder: 'I wanted to share that ' },
       ],
       defaultPlaceholder: 'Share your thoughts about the café here…',
       required: false,
@@ -376,14 +417,13 @@ window.shayonaDataUtils = (function () {
   ];
 
   // ─── BRANCHING LOGIC ─────────────────────────────────────────────────────
-
   function getActiveBranch(formData) {
     const purpose = formData['visitPurpose'] ?? '';
-    if (purpose === 'Grab & Go')                        return 'Grab & Go';
+    if (purpose === 'Grab & Go') return 'Grab & Go';
     if (purpose === 'Hot Food' || purpose === 'Buffet') return 'Hot Food|Buffet';
-    if (purpose === 'Catering')                         return 'Catering';
-    if (purpose === 'Wanted to purchase, but did not')  return 'Failed Intent';
-    if (purpose === 'Browsing')                         return 'Browsing';
+    if (purpose === 'Catering') return 'Catering';
+    if (purpose === 'Wanted to purchase, but did not') return 'Failed Intent';
+    if (purpose === 'Browsing') return 'Browsing';
     return null;
   }
 
@@ -401,6 +441,7 @@ window.shayonaDataUtils = (function () {
     if (!q.branch) return true;
     if (activeBranch === null) return true;
     if (q.branch === 'purchaser') return isPurchaser(activeBranch);
+
     const allowedBranches = q.branch.split('|');
     return allowedBranches.some(b => activeBranch.includes(b));
   }
@@ -436,9 +477,9 @@ window.shayonaDataUtils = (function () {
 
       const rows = q.subRatings.map(sub => {
         const stars = Array.from({ length: q.max }, (_, i) => {
-          const num     = q.max - i;
+          const num = q.max - i;
           const checked = saved[sub.key] === num ? 'checked' : '';
-          const filled  = saved[sub.key] >= num ? '#FBBF24' : '#D1D5DB';
+          const filled = saved[sub.key] >= num ? '#FBBF24' : '#D1D5DB';
           return `
             <input type="radio" id="${q.id}_${sub.key}_${num}" name="${q.id}_${sub.key}" value="${num}" class="visually-hidden" ${checked}>
             <label for="${q.id}_${sub.key}_${num}" class="star option-label"
@@ -501,7 +542,8 @@ window.shayonaDataUtils = (function () {
 
   // ─── QUESTION RENDERERS ──────────────────────────────────────────────────
   const questionRenderers = {
-    'section-header':   sectionHeaderRenderer,
+    ...(baseDataUtils.questionRenderers || {}),
+    'section-header': sectionHeaderRenderer,
     'dual-star-rating': dualStarRatingRenderer,
   };
 
@@ -512,12 +554,29 @@ window.shayonaDataUtils = (function () {
     getNextQuestionIndex,
     otherKey,
     clearAutoAdvance,
+
+    // Optional passthroughs if other files ever look for these
+    getSurveyQuestions() {
+      return surveyQuestionsType3;
+    },
+    shouldShowQuestion,
+    getActiveBranch,
+    scheduleAutoAdvance,
+    applyRadioSelectedStyles,
+    applyChipSelectedStyle,
+    applyStarSelectedStyles,
+    getTextGridCols,
+    getGridMaxWidth,
   };
 
 })();
 
-// ─── PROXY GUARD ─────────────────────────────────────────────────────────────
+// ─── SHAYONA MODE NOTE ──────────────────────────────────────────────────────
+// Do NOT overwrite window.dataUtils here.
+// core.js should merge base dataUtils.questionRenderers with
+// shayonaDataUtils.questionRenderers. Overwriting window.dataUtils with the
+// partial Shayona object removes base renderers like emoji-radio and causes the
+// first-question crash.
 if (window.DEVICECONFIG?.kioskMode === 'shayona') {
-  window.dataUtils = window.shayonaDataUtils;
-  console.info('[shayona-data-util] Proxy guard active — window.dataUtils → shayonaDataUtils');
+  console.info('[shayona-data-util] Shayona overlay active — base dataUtils preserved');
 }

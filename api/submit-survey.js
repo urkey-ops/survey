@@ -1,8 +1,13 @@
 // FILE: api/submit-survey.js
-// VERSION: 4.1.0 - FIXES:
-//   1. hear_about Other text now appended inline: "Instagram, Other: typed text"
-//   2. COLUMN_ORDER_TYPE2 'future_wish' column removed (question no longer exists)
-//   3. processSingleSubmissionType2 future_wish references removed
+// VERSION: 4.2.0
+// CHANGES FROM 4.1.0:
+//   - FIX: Sheet routing now dynamic via getRouteForSurveyType() —
+//     type3 (Shayona Café) no longer silently writes to Sheet1
+//   - ADD: COLUMN_ORDER_TYPE3 with correct shayona-data-util.js question names
+//   - ADD: processSingleSubmissionType3 for all café branches
+//   - FIX: private_key replace regex was over-escaped (/\\\\\\\\n/ → /\\n/)
+//   - REFACTOR: processor + sheetName selection in getRouteForSurveyType()
+//     — adding type4+ requires only a new column order + processor + route entry
 
 import { google } from 'googleapis';
 import { isDuplicate, markAsProcessed, getCacheStats } from './deduplication-check.js';
@@ -17,7 +22,7 @@ const COLUMN_ORDER_TYPE1 = [
   'staff_friendliness',
   'location',
   'age',
-  'hear_about',       // "Instagram, Friend, Other: typed text" — Other inline
+  'hear_about',
   'gift_shop_visit',
   'sync_status',
   'comments',
@@ -25,7 +30,6 @@ const COLUMN_ORDER_TYPE1 = [
   'id',
 ];
 
-// TYPE 2: future_wish removed — question no longer in survey
 const COLUMN_ORDER_TYPE2 = [
   'visit_feeling',
   'experiences',
@@ -34,8 +38,43 @@ const COLUMN_ORDER_TYPE2 = [
   'shayona_reason',
   'expectation_met',
   'expectation_diff',
-  'final_thoughts_category',   // ← was 'final_thoughts'
-  'final_thoughts_text',       // ← new second column
+  'final_thoughts_category',
+  'final_thoughts_text',
+  'sync_status',
+  'timestamp',
+  'id',
+];
+
+// TYPE 3: Shayona Café
+// Names match shayona-data-util.js question `name` fields exactly.
+// Branch columns are blank for submissions from other branches — that's expected.
+const COLUMN_ORDER_TYPE3 = [
+  // ── Global (all visitors) ────────────────────────────────
+  'cafeExperience',
+  'visitPurpose',
+  'waitTime',
+  'waitAcceptable',
+  'waitAcceptable_followup',
+  'flowExperience',
+  // ── Branch A: Grab & Go ──────────────────────────────────
+  'grabGoFinding',
+  'grabGoFinding_followup',
+  'grabGoSpeed',
+  'grabGoSpeed_followup',
+  // ── Branch B: Hot Food / Buffet ──────────────────────────
+  'foodPriority',
+  'foodRating_taste',
+  'foodRating_value',
+  // ── Branch C: Catering ───────────────────────────────────
+  'cateringClarity',
+  'cateringClarity_followup',
+  'cateringImprovement',
+  // ── Branch D: Browsing ───────────────────────────────────
+  'browsingBarrier',
+  // ── Final (all visitors) ─────────────────────────────────
+  'final_thoughts_category',
+  'final_thoughts_text',
+  // ── Meta ─────────────────────────────────────────────────
   'sync_status',
   'timestamp',
   'id',
@@ -45,15 +84,11 @@ const COLUMN_ORDER_TYPE2 = [
 // PROCESSORS
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Process a Type 1 submission into a flat row array.
- */
 function processSingleSubmissionType1(submission) {
   const source = submission;
   const questionTimeSpentString = source.questionTimeSpent
     ? JSON.stringify(source.questionTimeSpent) : '{}';
 
-  // location: saved as { main, other } object from data-util.js radio-with-other
   let locationValue = '';
   if (source.location) {
     if (typeof source.location === 'string') {
@@ -67,25 +102,20 @@ function processSingleSubmissionType1(submission) {
     }
   }
 
-  // hear_about: saved as plain array from data-util.js checkbox-with-other
-  // otherhearabout: saved separately as formData['otherhearabout']
-  // FIX: append Other typed text inline — "Instagram, Friend, Other: typed text"
   let hearAboutValue = '';
   try {
     const hear = source.hear_about;
     if (Array.isArray(hear)) {
-      const items = hear.filter(item => item && typeof item === 'string');
+      const items     = hear.filter(item => item && typeof item === 'string');
       const otherText = (source.otherhearabout || '').trim();
       if (items.includes('Other') && otherText) {
-        // Replace bare 'Other' with 'Other: typed text'
         hearAboutValue = items
           .map(v => v === 'Other' ? `Other: ${otherText}` : v)
           .join(', ');
       } else {
         hearAboutValue = items.join(', ');
       }
-    } else if (hear && typeof hear === 'object' && hear.selected && Array.isArray(hear.selected)) {
-      // Legacy object format fallback
+    } else if (hear && typeof hear === 'object' && Array.isArray(hear.selected)) {
       const selected = hear.selected.filter(item => item && typeof item === 'string');
       if (hear.other && selected.includes('Other')) {
         hearAboutValue = selected
@@ -126,14 +156,9 @@ function processSingleSubmissionType1(submission) {
   return COLUMN_ORDER_TYPE1.map(key => String(processedData[key] ?? ''));
 }
 
-/**
- * Process a Type 2 submission into a flat row array.
- */
 function processSingleSubmissionType2(submission) {
   const source = submission;
 
-  // radio-with-other: saved as { main, other }
-  // Returns "Other: typed text" when Other selected, else main value
   const flattenRadioWithOther = (val) => {
     if (!val) return '';
     if (typeof val === 'string') return val;
@@ -141,15 +166,12 @@ function processSingleSubmissionType2(submission) {
     return val.main || '';
   };
 
-  // radio-with-followup: saved as { main, followup: [] }
-  // Returns main selection only
   const flattenRadioWithFollowup = (val) => {
     if (!val) return '';
     if (typeof val === 'string') return val;
     return val.main || '';
   };
 
-  // radio-with-followup: returns followup array joined as string
   const flattenFollowup = (val) => {
     if (!val) return '';
     if (typeof val === 'object' && Array.isArray(val.followup)) {
@@ -158,7 +180,6 @@ function processSingleSubmissionType2(submission) {
     return '';
   };
 
-  // checkbox-with-other: saved as plain array
   const flattenCheckbox = (val) => {
     if (!val) return '';
     if (Array.isArray(val)) return val.join(', ');
@@ -167,22 +188,145 @@ function processSingleSubmissionType2(submission) {
   };
 
   const processedData = {
-    id:               source.id,
-    timestamp:        source.timestamp || new Date().toISOString(),
-    sync_status:      source.sync_status || 'unsynced',
-    visit_feeling:    source.visit_feeling || source.satisfaction || '',
-    experiences:      flattenCheckbox(source.experiences),
-    standout:         flattenRadioWithOther(source.standout),
-    shayona_intent:   flattenRadioWithFollowup(source.shayona_intent),
-    shayona_reason:   flattenFollowup(source.shayona_intent),
-    expectation_met:  flattenRadioWithFollowup(source.expectation_met),
-    expectation_diff: flattenFollowup(source.expectation_met),
-    // ADD these two:
-final_thoughts_category: source.final_thoughts_category || '',
-final_thoughts_text:     (source.final_thoughts_text    || '').trim(),
+    id:                      source.id,
+    timestamp:               source.timestamp || new Date().toISOString(),
+    sync_status:             source.sync_status || 'unsynced',
+    visit_feeling:           source.visit_feeling || source.satisfaction || '',
+    experiences:             flattenCheckbox(source.experiences),
+    standout:                flattenRadioWithOther(source.standout),
+    shayona_intent:          flattenRadioWithFollowup(source.shayona_intent),
+    shayona_reason:          flattenFollowup(source.shayona_intent),
+    expectation_met:         flattenRadioWithFollowup(source.expectation_met),
+    expectation_diff:        flattenFollowup(source.expectation_met),
+    final_thoughts_category: source.final_thoughts_category || '',
+    final_thoughts_text:     (source.final_thoughts_text || '').trim(),
   };
 
   return COLUMN_ORDER_TYPE2.map(key => String(processedData[key] ?? ''));
+}
+
+/**
+ * Process a Type 3 (Shayona Café) submission into a flat row array.
+ *
+ * Global questions populate for every visitor.
+ * Branch columns (grabGo*, foodRating*, catering*, browsingBarrier)
+ * will be blank for visitors on other branches — that is correct behaviour.
+ *
+ * dual-star-rating (foodRating) is stored as { taste: N, value: N }
+ * under the question name 'foodRating'.
+ *
+ * selector-textarea (finalThoughts) should be flattened to
+ * final_thoughts_category / final_thoughts_text by normalizeSubmissionPayload()
+ * in submit.js before queuing. The raw { category, text } shape is handled
+ * defensively here as a fallback.
+ */
+function processSingleSubmissionType3(submission) {
+  const source = submission;
+
+  // radio-with-followup: main selection only
+  const flattenMain = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string') return val;
+    return val.main || '';
+  };
+
+  // radio-with-followup: followup array → joined string
+  const flattenFollowup = (val) => {
+    if (!val) return '';
+    if (typeof val === 'object' && Array.isArray(val.followup)) {
+      return val.followup.join(', ');
+    }
+    return '';
+  };
+
+  // radio-with-other: "Other: typed text" when applicable
+  const flattenRadioWithOther = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string') return val;
+    if (val.main === 'Other' && val.other) return `Other: ${val.other.trim()}`;
+    return val.main || '';
+  };
+
+  // dual-star-rating stored as { taste: N, value: N } under key 'foodRating'
+  const foodRating = source.foodRating || {};
+
+  const processedData = {
+    id:                      source.id,
+    timestamp:               source.timestamp || new Date().toISOString(),
+    sync_status:             source.sync_status || 'unsynced',
+
+    // ── Global ──────────────────────────────────────────────
+    cafeExperience:          source.cafeExperience || '',
+    visitPurpose:            flattenRadioWithOther(source.visitPurpose),
+    waitTime:                source.waitTime || '',
+    waitAcceptable:          flattenMain(source.waitAcceptable),
+    waitAcceptable_followup: flattenFollowup(source.waitAcceptable),
+    flowExperience:          source.flowExperience || '',
+
+    // ── Branch A: Grab & Go ─────────────────────────────────
+    grabGoFinding:           flattenMain(source.grabGoFinding),
+    grabGoFinding_followup:  flattenFollowup(source.grabGoFinding),
+    grabGoSpeed:             flattenMain(source.grabGoSpeed),
+    grabGoSpeed_followup:    flattenFollowup(source.grabGoSpeed),
+
+    // ── Branch B: Hot Food / Buffet ─────────────────────────
+    // foodRating stored as { taste: N, value: N } — NOT foodQuality
+    foodPriority:            source.foodPriority || '',
+    foodRating_taste:        foodRating.taste  != null ? String(foodRating.taste)  : '',
+    foodRating_value:        foodRating.value  != null ? String(foodRating.value)  : '',
+
+    // ── Branch C: Catering ──────────────────────────────────
+    cateringClarity:         flattenMain(source.cateringClarity),
+    cateringClarity_followup: flattenFollowup(source.cateringClarity),
+    cateringImprovement:     source.cateringImprovement || '',
+
+    // ── Branch D: Browsing ──────────────────────────────────
+    browsingBarrier:         source.browsingBarrier || '',
+
+    // ── Final ────────────────────────────────────────────────
+    // Primary: flat keys written by normalizeSubmissionPayload() in submit.js
+    // Fallback: raw { category, text } shape if normalizer didn't run for type3
+    final_thoughts_category: source.final_thoughts_category
+                               || source.finalThoughts?.category
+                               || '',
+    final_thoughts_text:     (
+                               source.final_thoughts_text
+                               || source.finalThoughts?.text
+                               || ''
+                             ).toString().trim(),
+  };
+
+  return COLUMN_ORDER_TYPE3.map(key => String(processedData[key] ?? ''));
+}
+
+// ═══════════════════════════════════════════════════════════
+// ROUTE RESOLVER
+// Maps surveyType → { sheetName, processor }
+// To add a new type: add COLUMN_ORDER + processor above,
+// then add one entry here. Nothing else changes.
+// ═══════════════════════════════════════════════════════════
+
+function getRouteForSurveyType(surveyType) {
+  const {
+    SHEET_NAME    = 'Sheet1',
+    SHEET_NAME_V2 = 'VisitorFeedbackV2',
+    SHEET_NAME_V3 = 'ShayonaCafe',
+  } = process.env;
+
+  const routes = {
+    type1: { sheetName: SHEET_NAME,    processor: processSingleSubmissionType1 },
+    type2: { sheetName: SHEET_NAME_V2, processor: processSingleSubmissionType2 },
+    type3: { sheetName: SHEET_NAME_V3, processor: processSingleSubmissionType3 },
+  };
+
+  const route = routes[surveyType];
+
+  if (!route) {
+    console.warn(`[SUBMIT] Unknown surveyType "${surveyType}" — defaulting to type1`);
+    return routes['type1'];
+  }
+
+  return route;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -198,8 +342,6 @@ export default async function handler(request, response) {
     SPREADSHEET_ID,
     GOOGLE_SERVICE_ACCOUNT_EMAIL,
     GOOGLE_PRIVATE_KEY,
-    SHEET_NAME    = 'Sheet1',
-    SHEET_NAME_V2 = 'VisitorFeedbackV2',
   } = process.env;
 
   if (!SPREADSHEET_ID || !GOOGLE_SERVICE_ACCOUNT_EMAIL || !GOOGLE_PRIVATE_KEY) {
@@ -212,7 +354,8 @@ export default async function handler(request, response) {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key:  GOOGLE_PRIVATE_KEY.replace(/\\\\n/g, '\\n'),
+      // FIX: was /\\\\\\\\n/g → '\\\\n' (over-escaped, broke on re-pasted keys)
+      private_key:  GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
     },
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
@@ -228,7 +371,6 @@ export default async function handler(request, response) {
       });
     }
 
-    // Reject submissions missing an ID — client retains them for retry
     const missingIdCount = submissions.filter(s => !s.id).length;
     if (missingIdCount > 0) {
       console.error(`[SUBMIT] ❌ ${missingIdCount} submission(s) missing ID — rejecting batch`);
@@ -239,12 +381,10 @@ export default async function handler(request, response) {
       });
     }
 
-    // Determine sheet tab and processor
-    const isType2         = surveyType === 'type2';
-    const activeSheetName = isType2 ? SHEET_NAME_V2 : SHEET_NAME;
-    const processor       = isType2 ? processSingleSubmissionType2 : processSingleSubmissionType1;
+    // Resolve sheet tab + processor from surveyType
+    const { sheetName: activeSheetName, processor } = getRouteForSurveyType(surveyType || 'type1');
 
-    console.log(`[SUBMIT] Processing ${submissions.length} submissions (${surveyType || 'type1'} → ${activeSheetName})`);
+    console.log(`[SUBMIT] Processing ${submissions.length} submission(s) (${surveyType || 'type1'} → "${activeSheetName}")`);
 
     // Deduplication
     const uniqueSubmissions = [];
@@ -260,7 +400,7 @@ export default async function handler(request, response) {
     }
 
     if (duplicateIds.length > 0) {
-      console.log(`[SUBMIT] Filtered ${duplicateIds.length} duplicates`);
+      console.log(`[SUBMIT] Filtered ${duplicateIds.length} duplicate(s)`);
       console.log('[DEDUP] Cache stats:', getCacheStats());
     }
 
@@ -273,7 +413,8 @@ export default async function handler(request, response) {
       });
     }
 
-    // Build rows — track failures individually, never write PROCESSING_ERROR to sheet
+    // Build rows — track failures individually
+    // Never write PROCESSING_ERROR sentinel to the sheet
     const rowsToAppend  = [];
     const processedSubs = [];
     const failedSubs    = [];
@@ -320,7 +461,7 @@ export default async function handler(request, response) {
       resource: { values: rowsToAppend },
     });
 
-    console.log(`[SUBMIT] ✅ Appended ${rowsToAppend.length} rows to "${activeSheetName}":`, appendResult.data);
+    console.log(`[SUBMIT] ✅ Appended ${rowsToAppend.length} row(s) to "${activeSheetName}":`, appendResult.data);
 
     // markAsProcessed ONLY after confirmed sheet append
     processedSubs.forEach(sub => markAsProcessed(sub.id));

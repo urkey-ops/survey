@@ -1,21 +1,10 @@
 // FILE: config/device-config.js
 // PURPOSE: First script in index.html — sets window.DEVICECONFIG before app loads
-// VERSION: 1.1.0
-// CHANGES FROM 1.0.0:
-//   - FIX: First-launch flash — overlay was appended to body AFTER DOMContentLoaded,
-//     meaning the app's own init (index.js) had already fired and called
-//     initializeSurveyState() → showStartScreen() before the overlay was in the DOM.
-//     Fix: inject overlay HTML directly into index.html as a static element (hidden
-//     by default), and show it here via CSS class removal instead of createElement.
-//     Fallback preserved: if static element not found, dynamic injection still works
-//     but overlay is now made visible BEFORE DOMContentLoaded via inline style on
-//     document.documentElement to block any flash.
-//   - FIX: After user picks a mode, call initializeSurveyState() explicitly via
-//     window.uiHandlers or navigationSetup — overlay confirm handler is now
-//     responsible for triggering survey state init (index.js v5.5.0 defers this
-//     on first launch).
-//   - ADD: dispatchEvent('deviceConfigReady') preserved — still needed for
-//     index.js startApp() guard on first launch timing edge cases.
+// VERSION: 1.1.1
+// CHANGES FROM 1.1.0:
+//   - FIX: Corrupt stored config recovery now hides document immediately before
+//     re-showing setup overlay, preventing a possible app flash behind the overlay.
+//   - All first-launch, static overlay, and initializeSurveyState behavior preserved.
 
 (function () {
   const STORAGE_KEY = 'deviceConfig';
@@ -29,6 +18,12 @@
       console.warn('[DEVICE CONFIG] Corrupt stored config — clearing');
       localStorage.removeItem(STORAGE_KEY);
       window.DEVICECONFIG = null;
+
+      // FIX v1.1.1:
+      // Match true first-launch behavior so the app cannot briefly flash
+      // behind the setup overlay during corrupt-config recovery.
+      document.documentElement.style.visibility = 'hidden';
+
       showSetupOverlay();
     }
     return;
@@ -84,9 +79,8 @@
 
           console.log(`[DEVICE CONFIG] ✅ Mode set: "${mode}" — initializing survey state`);
 
-          // Trigger survey state init — index.js v5.5.0 deferred this on
-          // first launch; overlay confirm handler is responsible for calling it.
-          // Try direct module export first, fall back to uiHandlers.
+          // Trigger survey state init — index.js deferred this on first launch;
+          // overlay confirm handler is responsible for calling it.
           if (typeof window._initializeSurveyState === 'function') {
             window._initializeSurveyState();
           } else if (typeof window.uiHandlers?.showStartScreen === 'function') {
@@ -100,17 +94,15 @@
     }
 
     // Preferred path: static #device-setup-overlay already in index.html
-    // (add it to index.html so it's visible before any JS runs — zero flash)
     const existing = document.getElementById('device-setup-overlay');
     if (existing) {
       existing.style.display = 'flex';
-      document.documentElement.style.visibility = ''; // restore — overlay is visible
+      document.documentElement.style.visibility = '';
       attachHandlers(existing);
       return;
     }
 
     // Fallback: inject dynamically on DOMContentLoaded
-    // visibility stays hidden until overlay is appended and shown
     document.addEventListener('DOMContentLoaded', function () {
       const overlay = document.createElement('div');
       overlay.id    = 'device-setup-overlay';

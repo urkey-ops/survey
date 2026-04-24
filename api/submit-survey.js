@@ -1,13 +1,11 @@
 // FILE: api/submit-survey.js
-// VERSION: 4.2.0
-// CHANGES FROM 4.1.0:
-//   - FIX: Sheet routing now dynamic via getRouteForSurveyType() —
-//     type3 (Shayona Café) no longer silently writes to Sheet1
-//   - ADD: COLUMN_ORDER_TYPE3 with correct shayona-data-util.js question names
-//   - ADD: processSingleSubmissionType3 for all café branches
-//   - FIX: private_key replace regex was over-escaped (/\\\\\\\\n/ → /\\n/)
-//   - REFACTOR: processor + sheetName selection in getRouteForSurveyType()
-//     — adding type4+ requires only a new column order + processor + route entry
+// VERSION: 4.3.0
+// CHANGES FROM 4.2.0:
+//   - ADD: 'browsingDiscovery' to COLUMN_ORDER_TYPE3 (after browsingBarrier,
+//     before final_thoughts_category — matches ShayonaCafe sheet header order)
+//   - ADD: browsingDiscovery field in processSingleSubmissionType3 processedData
+//     (Branch D2 — casual browser discovery question)
+//   - No other logic changes
 
 import { google } from 'googleapis';
 import { isDuplicate, markAsProcessed, getCacheStats } from './deduplication-check.js';
@@ -47,7 +45,7 @@ const COLUMN_ORDER_TYPE2 = [
 
 // TYPE 3: Shayona Café
 // Names match shayona-data-util.js question `name` fields exactly.
-// Branch columns are blank for submissions from other branches — that's expected.
+// Branch columns are blank for submissions from other branches — that is expected.
 const COLUMN_ORDER_TYPE3 = [
   // ── Global (all visitors) ────────────────────────────────
   'cafeExperience',
@@ -69,8 +67,10 @@ const COLUMN_ORDER_TYPE3 = [
   'cateringClarity',
   'cateringClarity_followup',
   'cateringImprovement',
-  // ── Branch D: Browsing ───────────────────────────────────
+  // ── Branch D1: Failed Intent (wanted to purchase, did not)
   'browsingBarrier',
+  // ── Branch D2: Casual Browser (just browsing) ────────────
+  'browsingDiscovery',           // ← ADD v4.3.0
   // ── Final (all visitors) ─────────────────────────────────
   'final_thoughts_category',
   'final_thoughts_text',
@@ -209,13 +209,16 @@ function processSingleSubmissionType2(submission) {
  * Process a Type 3 (Shayona Café) submission into a flat row array.
  *
  * Global questions populate for every visitor.
- * Branch columns (grabGo*, foodRating*, catering*, browsingBarrier)
- * will be blank for visitors on other branches — that is correct behaviour.
+ * Branch columns will be blank for visitors on other branches — correct behaviour.
+ *
+ * Branch D is split into two micro-paths:
+ *   browsingBarrier    → 'Wanted to purchase, but did not' (Failed Intent)
+ *   browsingDiscovery  → 'Just browsing'                   (Casual Browser)
  *
  * dual-star-rating (foodRating) is stored as { taste: N, value: N }
  * under the question name 'foodRating'.
  *
- * selector-textarea (finalThoughts) should be flattened to
+ * selector-textarea (finalThoughts) is flattened to
  * final_thoughts_category / final_thoughts_text by normalizeSubmissionPayload()
  * in submit.js before queuing. The raw { category, text } shape is handled
  * defensively here as a fallback.
@@ -256,44 +259,44 @@ function processSingleSubmissionType3(submission) {
     sync_status:             source.sync_status || 'unsynced',
 
     // ── Global ──────────────────────────────────────────────
-    cafeExperience:          source.cafeExperience || '',
-    visitPurpose:            flattenRadioWithOther(source.visitPurpose),
-    waitTime:                source.waitTime || '',
-    waitAcceptable:          flattenMain(source.waitAcceptable),
-    waitAcceptable_followup: flattenFollowup(source.waitAcceptable),
-    flowExperience:          source.flowExperience || '',
+    cafeExperience:           source.cafeExperience || '',
+    visitPurpose:             flattenRadioWithOther(source.visitPurpose),
+    waitTime:                 source.waitTime || '',
+    waitAcceptable:           flattenMain(source.waitAcceptable),
+    waitAcceptable_followup:  flattenFollowup(source.waitAcceptable),
+    flowExperience:           source.flowExperience || '',
 
     // ── Branch A: Grab & Go ─────────────────────────────────
-    grabGoFinding:           flattenMain(source.grabGoFinding),
-    grabGoFinding_followup:  flattenFollowup(source.grabGoFinding),
-    grabGoSpeed:             flattenMain(source.grabGoSpeed),
-    grabGoSpeed_followup:    flattenFollowup(source.grabGoSpeed),
+    grabGoFinding:            flattenMain(source.grabGoFinding),
+    grabGoFinding_followup:   flattenFollowup(source.grabGoFinding),
+    grabGoSpeed:              flattenMain(source.grabGoSpeed),
+    grabGoSpeed_followup:     flattenFollowup(source.grabGoSpeed),
 
     // ── Branch B: Hot Food / Buffet ─────────────────────────
-    // foodRating stored as { taste: N, value: N } — NOT foodQuality
-    foodPriority:            source.foodPriority || '',
-    foodRating_taste:        foodRating.taste  != null ? String(foodRating.taste)  : '',
-    foodRating_value:        foodRating.value  != null ? String(foodRating.value)  : '',
+    foodPriority:             source.foodPriority || '',
+    foodRating_taste:         foodRating.taste  != null ? String(foodRating.taste)  : '',
+    foodRating_value:         foodRating.value  != null ? String(foodRating.value)  : '',
 
     // ── Branch C: Catering ──────────────────────────────────
-    cateringClarity:         flattenMain(source.cateringClarity),
+    cateringClarity:          flattenMain(source.cateringClarity),
     cateringClarity_followup: flattenFollowup(source.cateringClarity),
-    cateringImprovement:     source.cateringImprovement || '',
+    cateringImprovement:      source.cateringImprovement || '',
 
-    // ── Branch D: Browsing ──────────────────────────────────
-    browsingBarrier:         source.browsingBarrier || '',
+    // ── Branch D1: Failed Intent ────────────────────────────
+    browsingBarrier:          source.browsingBarrier   || '',
+
+    // ── Branch D2: Casual Browser ── ADD v4.3.0 ─────────────
+    browsingDiscovery:        source.browsingDiscovery || '',
 
     // ── Final ────────────────────────────────────────────────
-    // Primary: flat keys written by normalizeSubmissionPayload() in submit.js
-    // Fallback: raw { category, text } shape if normalizer didn't run for type3
-    final_thoughts_category: source.final_thoughts_category
-                               || source.finalThoughts?.category
-                               || '',
-    final_thoughts_text:     (
-                               source.final_thoughts_text
-                               || source.finalThoughts?.text
-                               || ''
-                             ).toString().trim(),
+    final_thoughts_category:  source.final_thoughts_category
+                                || source.finalThoughts?.category
+                                || '',
+    final_thoughts_text:      (
+                                source.final_thoughts_text
+                                || source.finalThoughts?.text
+                                || ''
+                              ).toString().trim(),
   };
 
   return COLUMN_ORDER_TYPE3.map(key => String(processedData[key] ?? ''));
@@ -354,7 +357,6 @@ export default async function handler(request, response) {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      // FIX: was /\\\\\\\\n/g → '\\\\n' (over-escaped, broke on re-pasted keys)
       private_key:  GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
     },
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -414,7 +416,6 @@ export default async function handler(request, response) {
     }
 
     // Build rows — track failures individually
-    // Never write PROCESSING_ERROR sentinel to the sheet
     const rowsToAppend  = [];
     const processedSubs = [];
     const failedSubs    = [];

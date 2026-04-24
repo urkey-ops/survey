@@ -1030,3 +1030,62 @@ textarea:focus {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+#device-setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f6f2;
+}
+
+.setup-card {
+  text-align: center;
+  padding: 3rem 2rem;
+  max-width: 500px;
+  width: 90%;
+}
+
+.setup-logo h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.setup-logo p {
+  color: #7a7974;
+  margin-bottom: 2.5rem;
+  font-size: 1.1rem;
+}
+
+.setup-options {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.setup-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 2.5rem;
+  border: 2px solid #dcd9d5;
+  border-radius: 1rem;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s;
+  min-width: 160px;
+}
+
+.setup-btn:hover {
+  border-color: #01696f;
+  box-shadow: 0 4px 16px rgba(1, 105, 111, 0.15);
+}
+
+.setup-icon { font-size: 2.5rem; }
+.setup-label { font-size: 1.1rem; font-weight: 600; }
+.setup-desc  { font-size: 0.875rem; color: #7a7974; }

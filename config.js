@@ -1,18 +1,14 @@
 // FILE: config.js
 // PURPOSE: Central configuration for offline-first iPad kiosk PWA
-// VERSION: 3.2.1
-// CHANGES FROM 3.2.0:
-//   - FIX: KIOSK_CONFIG.KIOSK_ID now resolves dynamically from window.DEVICECONFIG.kioskId
-//     so Temple and Café devices report the correct kiosk ID in sync and analytics payloads.
-//   - CLEANUP: STORAGE_KEY_ANALYTICS canonical fallback aligned to 'surveyAnalytics'
-//     to match client analyticsManager expectations.
-//   - CLEANUP: comments clarified around canonical storage keys.
+// VERSION: 3.3.0
+// CHANGES FROM 3.2.1:
+//   - FIX: Active survey type now falls back to window.DEVICECONFIG.defaultSurveyType
+//     before hardcoded type1, so first-launch Shayona devices correctly boot into type3.
+//   - FIX: getDefaultSurveyType() now resolves dynamically from DEVICECONFIG when available.
+//   - FIX: getSurveyConfig() and related helpers stay aligned with device mode defaults.
+//   - KEEP: One-time Temple/Shayona device setup behavior unchanged.
 
 (function () {
-  // ═══════════════════════════════════════════════════════════
-  // INTERNAL HELPERS
-  // ═══════════════════════════════════════════════════════════
-
   function deepFreeze(obj) {
     if (!obj || typeof obj !== 'object' || Object.isFrozen(obj)) {
       return obj;
@@ -58,22 +54,16 @@
 
   const storageAvailable = isStorageAvailable();
 
-  // ═══════════════════════════════════════════════════════════
-  // STORAGE KEYS
-  // ═══════════════════════════════════════════════════════════
   const STORAGE_KEY_QUEUE                = 'submissionQueue';
   const STORAGE_KEY_QUEUE_V2             = 'submissionQueueV2';
-  const STORAGE_KEY_QUEUE_V3             = 'shayonaQueue';        // Shayona Café
-  const STORAGE_KEY_ANALYTICS            = 'surveyAnalytics';     // canonical default analytics key
-  const STORAGE_KEY_ANALYTICS_V3         = 'shayonaAnalytics';    // Shayona Café analytics
+  const STORAGE_KEY_QUEUE_V3             = 'shayonaQueue';
+  const STORAGE_KEY_ANALYTICS            = 'surveyAnalytics';
+  const STORAGE_KEY_ANALYTICS_V3         = 'shayonaAnalytics';
   const STORAGE_KEY_STATE                = 'kioskState';
   const STORAGE_KEY_LAST_SYNC            = 'lastDataSync';
   const STORAGE_KEY_LAST_ANALYTICS_SYNC  = 'lastAnalyticsSync';
   const STORAGE_KEY_ACTIVE_SURVEY        = 'activeSurveyType';
 
-  // ═══════════════════════════════════════════════════════════
-  // SURVEY TYPE DEFINITIONS
-  // ═══════════════════════════════════════════════════════════
   const SURVEY_TYPES = {
     type1: {
       label:        'Original Survey (V1)',
@@ -95,11 +85,8 @@
     },
   };
 
-  const DEFAULT_SURVEY_TYPE = 'type1';
+  const FALLBACK_SURVEY_TYPE = 'type1';
 
-  // ═══════════════════════════════════════════════════════════
-  // QUEUE & SYNC LIMITS
-  // ═══════════════════════════════════════════════════════════
   const MAX_QUEUE_SIZE               = 250;
   const QUEUE_WARNING_THRESHOLD      = 200;
   const MAX_ANALYTICS_SIZE           = 500;
@@ -118,17 +105,11 @@
   const MAX_RETRIES                  = 3;
   const RETRY_DELAY_MS               = 2000;
 
-  // ═══════════════════════════════════════════════════════════
-  // ENDPOINTS
-  // ═══════════════════════════════════════════════════════════
   const SYNC_ENDPOINT         = '/api/submit-survey';
   const ANALYTICS_ENDPOINT    = '/api/sync-analytics';
   const SURVEY_QUESTIONS_URL  = '/api/get_questions';
   const ERROR_LOG_ENDPOINT    = '/api/log-error';
 
-  // ═══════════════════════════════════════════════════════════
-  // FEATURE FLAGS
-  // ═══════════════════════════════════════════════════════════
   const FEATURES = {
     enableTypewriterEffect: true,
     enableAnalytics:        true,
@@ -138,22 +119,25 @@
     enableDebugCommands:    false,
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // SURVEY HELPERS
-  // ═══════════════════════════════════════════════════════════
   function isValidSurveyType(type) {
     return !!(type && SURVEY_TYPES[type]);
   }
 
+  function getDeviceDefaultSurveyType() {
+    const deviceDefault = window.DEVICECONFIG?.defaultSurveyType;
+    return isValidSurveyType(deviceDefault) ? deviceDefault : FALLBACK_SURVEY_TYPE;
+  }
+
   function getDefaultSurveyType() {
-    return DEFAULT_SURVEY_TYPE;
+    return getDeviceDefaultSurveyType();
   }
 
   function getActiveSurveyType() {
-    if (!storageAvailable) return DEFAULT_SURVEY_TYPE;
-    const stored = safeStorageGet(STORAGE_KEY_ACTIVE_SURVEY);
-    if (stored && isValidSurveyType(stored)) return stored;
-    return DEFAULT_SURVEY_TYPE;
+    if (storageAvailable) {
+      const stored = safeStorageGet(STORAGE_KEY_ACTIVE_SURVEY);
+      if (stored && isValidSurveyType(stored)) return stored;
+    }
+    return getDeviceDefaultSurveyType();
   }
 
   function setActiveSurveyType(type) {
@@ -175,7 +159,7 @@
   }
 
   function getSurveyConfig(type = getActiveSurveyType()) {
-    return SURVEY_TYPES[type] || SURVEY_TYPES[DEFAULT_SURVEY_TYPE];
+    return SURVEY_TYPES[type] || SURVEY_TYPES[getDeviceDefaultSurveyType()] || SURVEY_TYPES[FALLBACK_SURVEY_TYPE];
   }
 
   function getQueueKeyForSurveyType(type = getActiveSurveyType()) {
@@ -183,18 +167,14 @@
   }
 
   function getSheetNameForSurveyType(type = getActiveSurveyType()) {
-    return getSurveyConfig(type)?.sheetName || SURVEY_TYPES[DEFAULT_SURVEY_TYPE].sheetName;
+    return getSurveyConfig(type)?.sheetName || SURVEY_TYPES[getDeviceDefaultSurveyType()]?.sheetName || SURVEY_TYPES[FALLBACK_SURVEY_TYPE].sheetName;
   }
 
   function getAllSurveyTypes() {
     return Object.keys(SURVEY_TYPES);
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // EXPOSE AS window.CONSTANTS (read-only, deeply frozen)
-  // ═══════════════════════════════════════════════════════════
   const CONSTANTS = deepFreeze({
-    // Storage keys
     STORAGE_KEY_QUEUE,
     STORAGE_KEY_QUEUE_V2,
     STORAGE_KEY_QUEUE_V3,
@@ -205,11 +185,9 @@
     STORAGE_KEY_LAST_ANALYTICS_SYNC,
     STORAGE_KEY_ACTIVE_SURVEY,
 
-    // Survey type definitions
     SURVEY_TYPES,
-    DEFAULT_SURVEY_TYPE,
+    DEFAULT_SURVEY_TYPE: FALLBACK_SURVEY_TYPE,
 
-    // Limits & timings
     MAX_QUEUE_SIZE,
     QUEUE_WARNING_THRESHOLD,
     MAX_ANALYTICS_SIZE,
@@ -228,19 +206,14 @@
     MAX_RETRIES,
     RETRY_DELAY_MS,
 
-    // Endpoints
     SYNC_ENDPOINT,
     ANALYTICS_ENDPOINT,
     SURVEY_QUESTIONS_URL,
     ERROR_LOG_ENDPOINT,
 
-    // Feature flags
     FEATURES,
   });
 
-  // ═══════════════════════════════════════════════════════════
-  // KIOSK CONFIGURATION
-  // ═══════════════════════════════════════════════════════════
   const KIOSK_CONFIG = {
     get KIOSK_ID() {
       return window.DEVICECONFIG?.kioskId || 'KIOSK-GWINNETT-001';
@@ -261,16 +234,15 @@
   window.CONSTANTS    = CONSTANTS;
   window.KIOSK_CONFIG = KIOSK_CONFIG;
 
-  // ═══════════════════════════════════════════════════════════
-  // BOOT LOG
-  // ═══════════════════════════════════════════════════════════
   const activeType   = getActiveSurveyType();
   const activeConfig = getSurveyConfig(activeType);
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('⚙️  CONFIG LOADED (v3.2.1)');
+  console.log('⚙️  CONFIG LOADED (v3.3.0)');
   console.log('═══════════════════════════════════════════════════════');
   console.log(`  Kiosk ID      : ${KIOSK_CONFIG.KIOSK_ID}`);
+  console.log(`  Device Mode   : ${window.DEVICECONFIG?.kioskMode || 'unknown'}`);
+  console.log(`  Device Default: ${getDeviceDefaultSurveyType()}`);
   console.log(`  Storage       : ${storageAvailable ? 'Available' : 'Unavailable'}`);
   console.log(`  Active Survey : ${activeType} (${activeConfig?.label})`);
   console.log(`  Queue (T1)    : ${STORAGE_KEY_QUEUE}`);

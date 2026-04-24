@@ -56,7 +56,7 @@
 
   // ─── Feature Flags ──────────────────────────────────────────────────────────
   const FEATURES = CONSTANTS.FEATURES || CONFIG.FEATURES || {
-    enableTypewriterEffect: true,
+    enableTypewriterEffect: false,
     enableAnalytics: true,
     enableOfflineQueue: true,
     enableAdminPanel: true,

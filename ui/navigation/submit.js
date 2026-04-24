@@ -1,14 +1,12 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.6.0
-// CHANGES FROM 3.5.0:
-//   - normalizeSubmissionPayload: handles selector-textarea { category, text } shape
-//     Flattens to two flat fields for sheet compatibility:
-//       final_thoughts_category  (string | '')
-//       final_thoughts_text      (string | '')
-//     Original nested key is removed from payload after flattening.
-//   - hasMeaningfulResponse: handles selector-textarea { category, text } shape
-//     (previously fell through to generic object branch — same fix as dataSync.js)
+// VERSION: 3.7.0
+// CHANGES FROM 3.6.0:
+//   - ADD: normalizeSubmissionPayload handles dual-star-rating { taste, value }
+//     Flattens to individual flat fields for sheet compatibility:
+//       e.g. foodRating_taste: 4, foodRating_value: 3
+//     Original nested key removed after flattening.
+//   - ADD: hasMeaningfulResponse handles dual-star-rating shape
 // DEPENDENCIES: core.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -18,14 +16,15 @@ let resetTriggered = false;
 
 /**
  * Convert UI-captured values into a stable queue/API-safe payload.
- * Keeps original field names but normalizes nested values consistently.
  *
- * selector-textarea is the only type that changes its key structure:
- *   IN:  { final_thoughts: { category: 'thank_you', text: 'Thank you for...' } }
- *   OUT: { final_thoughts_category: 'thank_you', final_thoughts_text: 'Thank you for...' }
- *        (original final_thoughts key removed)
+ * dual-star-rating flattening:
+ *   IN:  { foodRating: { taste: 4, value: 3 } }
+ *   OUT: { foodRating_taste: 4, foodRating_value: 3 }
+ *        (original foodRating key removed)
  *
- * This keeps the Google Sheet columns clean and avoids a JSON blob in one cell.
+ * selector-textarea flattening (unchanged from 3.6.0):
+ *   IN:  { finalThoughts: { category: 'shoutout', text: 'Great!' } }
+ *   OUT: { finalThoughts_category: 'shoutout', finalThoughts_text: 'Great!' }
  */
 function normalizeSubmissionPayload(formData, questions) {
   const normalized = { ...formData };
@@ -33,9 +32,34 @@ function normalizeSubmissionPayload(formData, questions) {
   questions.forEach((q) => {
     const rawValue = normalized[q.name];
 
+    // ── section-header ─────────────────────────────────────────────────────
+    // No data to normalize — skip silently.
+    if (q.type === 'section-header') {
+      delete normalized[q.name]; // remove any accidental key (name === id for headers)
+      return;
+    }
+
+    // ── dual-star-rating ───────────────────────────────────────────────────
+    // Flatten { key1: number, key2: number } → individual flat fields.
+    // Each subRating key becomes: q.name_subKey
+    if (q.type === 'dual-star-rating') {
+      const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
+        ? rawValue
+        : {};
+
+      q.subRatings?.forEach(sub => {
+        const val = valueObj[sub.key];
+        normalized[`${q.name}_${sub.key}`] = (val !== null && val !== undefined)
+          ? Number(val)
+          : '';
+      });
+
+      // Remove the nested object — sheet should never receive it as JSON
+      delete normalized[q.name];
+      return;
+    }
+
     // ── selector-textarea ──────────────────────────────────────────────────
-    // Flatten { category, text } → two separate flat fields.
-    // The nested key is deleted so it never reaches the sheet as a JSON string.
     if (q.type === 'selector-textarea') {
       const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
         ? rawValue
@@ -44,11 +68,8 @@ function normalizeSubmissionPayload(formData, questions) {
       const category = valueObj.category ? String(valueObj.category).trim() : '';
       const text     = typeof valueObj.text === 'string' ? valueObj.text.trim() : '';
 
-      // Flat sheet columns
       normalized[`${q.name}_category`] = category;
       normalized[`${q.name}_text`]     = text;
-
-      // Remove the nested object — sheet should never receive it
       delete normalized[q.name];
       return;
     }
@@ -73,7 +94,7 @@ function normalizeSubmissionPayload(formData, questions) {
 
       normalized[q.name]            = { main, other };
       normalized[`other_${q.name}`] = other;
-      normalized['other' + q.id]    = other; // legacy compat
+      normalized['other' + q.id]    = other;
       return;
     }
 
@@ -97,7 +118,7 @@ function normalizeSubmissionPayload(formData, questions) {
 
       normalized[q.name]            = selected;
       normalized[`other_${q.name}`] = selected.includes('Other') ? otherValue : '';
-      normalized['other' + q.id]    = normalized[`other_${q.name}`]; // legacy compat
+      normalized['other' + q.id]    = normalized[`other_${q.name}`];
       return;
     }
 
@@ -124,14 +145,6 @@ function normalizeSubmissionPayload(formData, questions) {
 
 /**
  * Returns true only if payload contains at least one real survey answer.
- * Excludes metadata/technical fields so blank sessions are never queued.
- *
- * After normalizeSubmissionPayload runs, selector-textarea data exists as
- * flat string fields (final_thoughts_category, final_thoughts_text) so the
- * plain string branch handles them automatically — no special case needed here.
- *
- * This function is also called PRE-normalization in the blank-guard check,
- * so we also handle the raw { category, text } shape defensively.
  */
 function hasMeaningfulResponse(formData = {}) {
   if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
@@ -139,22 +152,10 @@ function hasMeaningfulResponse(formData = {}) {
   }
 
   const technicalKeys = new Set([
-    'id',
-    'submissionId',
-    'sessionId',
-    'timestamp',
-    'completedAt',
-    'submittedAt',
-    'abandonedAt',
-    'abandonedReason',
-    'surveyStartTime',
-    'surveyType',
-    'kioskId',
-    'sync_status',
-    'syncStatus',
-    'questionTimeSpent',
-    'questionStartTimes',
-    'completionTimeSeconds',
+    'id', 'submissionId', 'sessionId', 'timestamp', 'completedAt',
+    'submittedAt', 'abandonedAt', 'abandonedReason', 'surveyStartTime',
+    'surveyType', 'kioskId', 'sync_status', 'syncStatus',
+    'questionTimeSpent', 'questionStartTimes', 'completionTimeSeconds',
     'currentQuestionIndex',
   ]);
 
@@ -162,20 +163,19 @@ function hasMeaningfulResponse(formData = {}) {
     if (technicalKeys.has(key)) return false;
     if (value == null)           return false;
 
-    if (typeof value === 'string') {
-      return value.trim() !== '';
-    }
+    if (typeof value === 'string')  return value.trim() !== '';
+    if (typeof value === 'number')  return true; // 0 is a valid rating
 
-    if (typeof value === 'number') {
-      return true; // 0 is a valid rating
-    }
-
-    if (Array.isArray(value)) {
-      return value.length > 0;
-    }
+    if (Array.isArray(value)) return value.length > 0;
 
     if (typeof value === 'object') {
-      // selector-textarea raw shape (pre-normalization defensive guard)
+      // dual-star-rating raw shape (pre-normalization defensive guard)
+      // { taste: 4, value: 3 } — any non-null sub-key is meaningful
+      if (Object.values(value).some(v => typeof v === 'number')) {
+        return true;
+      }
+
+      // selector-textarea raw shape
       if ('category' in value || 'text' in value) {
         const hasCategory = value.category != null && String(value.category).trim() !== '';
         const hasText     = typeof value.text === 'string' && value.text.trim() !== '';
@@ -199,7 +199,6 @@ function hasMeaningfulResponse(formData = {}) {
 
 /**
  * Submit the completed survey.
- * Called from core.js → goNext() via window.navigationHandler.submitSurvey
  */
 export function submitSurvey() {
   if (completionInProgress) {
@@ -249,7 +248,6 @@ export function submitSurvey() {
     console.log(`[SUBMIT] Queue key   : "${queueKey}"`);
     console.log(`[SUBMIT] Submission  : ${appState.formData.id || '(no id yet)'}`);
 
-    // Normalize first — selector-textarea becomes flat string fields here
     const normalizedFormData = normalizeSubmissionPayload(appState.formData, questions);
     const hasAnswers         = hasMeaningfulResponse(normalizedFormData);
 
@@ -297,10 +295,16 @@ export function submitSurvey() {
     dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
     console.log(`[QUEUE] Added to "${queueKey}" (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
 
-    // Log flattened final_thoughts fields if present (type2 only)
-    if (submissionData.final_thoughts_category !== undefined || submissionData.final_thoughts_text !== undefined) {
-      console.log(`[SUBMIT] final_thoughts_category : "${submissionData.final_thoughts_category || ''}"`);
-      console.log(`[SUBMIT] final_thoughts_text     : "${submissionData.final_thoughts_text     || ''}"`);
+    // Log flattened dual-star fields if present (type3 café)
+    if (submissionData.foodRating_taste !== undefined || submissionData.foodRating_value !== undefined) {
+      console.log(`[SUBMIT] foodRating_taste  : ${submissionData.foodRating_taste ?? ''}`);
+      console.log(`[SUBMIT] foodRating_value  : ${submissionData.foodRating_value ?? ''}`);
+    }
+
+    // Log flattened final_thoughts fields if present (type2 / type3)
+    if (submissionData.finalThoughts_category !== undefined || submissionData.finalThoughts_text !== undefined) {
+      console.log(`[SUBMIT] finalThoughts_category : "${submissionData.finalThoughts_category || ''}"`);
+      console.log(`[SUBMIT] finalThoughts_text     : "${submissionData.finalThoughts_text     || ''}"`);
     }
 
     appState.formData = { ...submissionData };
@@ -392,8 +396,7 @@ function _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appSt
 }
 
 // ─────────────────────────────────────────────────────────────
-// PRIVATE: perform reset — tries every available path in order
-// Never throws — always resets one way or another
+// PRIVATE: perform reset
 // ─────────────────────────────────────────────────────────────
 function _doReset() {
   if (resetTriggered) return;

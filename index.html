@@ -85,6 +85,60 @@
       .admin-active #adminControls {
         width: 100% !important;
       }
+
+      /* Device setup overlay — injected by device-config.js on first launch */
+      #device-setup-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f7f6f2;
+      }
+      .setup-card {
+        text-align: center;
+        padding: 3rem 2rem;
+        max-width: 500px;
+        width: 90%;
+      }
+      .setup-logo h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        color: #1c1b19;
+      }
+      .setup-logo p {
+        color: #7a7974;
+        margin-bottom: 2.5rem;
+        font-size: 1.1rem;
+      }
+      .setup-options {
+        display: flex;
+        gap: 1.5rem;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .setup-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 2rem 2.5rem;
+        border: 2px solid #dcd9d5;
+        border-radius: 1rem;
+        background: #fff;
+        cursor: pointer;
+        transition: border-color 0.18s, box-shadow 0.18s;
+        min-width: 160px;
+      }
+      .setup-btn:hover, .setup-btn:active {
+        border-color: #01696f;
+        box-shadow: 0 4px 16px rgba(1, 105, 111, 0.15);
+      }
+      .setup-icon  { font-size: 2.5rem; }
+      .setup-label { font-size: 1.1rem; font-weight: 600; color: #28251d; }
+      .setup-desc  { font-size: 0.875rem; color: #7a7974; }
     </style>
 </head>
 
@@ -137,12 +191,12 @@
                 </div>
 
                 <div class="admin-actions-grid">
-                    <button id="syncButton" type="button">Sync Data</button>
+                    <button id="syncButton"          type="button">Sync Data</button>
                     <button id="syncAnalyticsButton" type="button">Sync Analytics</button>
-                    <button id="checkUpdateButton" type="button">Check Update</button>
-                    <button id="fixVideoButton" type="button">Fix Video</button>
-                    <button id="adminClearButton" type="button">Clear Local</button>
-                    <button id="hideAdminButton" type="button">Hide</button>
+                    <button id="checkUpdateButton"   type="button">Check Update</button>
+                    <button id="fixVideoButton"      type="button">Fix Video</button>
+                    <button id="adminClearButton"    type="button">Clear Local</button>
+                    <button id="hideAdminButton"     type="button">Hide</button>
                 </div>
             </div>
 
@@ -204,9 +258,7 @@
             clearInterval(window.videoPlaybackInterval);
           }
           const video = document.getElementById('kioskVideo');
-          if (video) {
-            video.pause();
-          }
+          if (video) { video.pause(); }
           console.log('[CLEANUP] ✅ Cleanup complete');
         } catch (err) {
           console.error('[CLEANUP] Error during cleanup:', err);
@@ -214,10 +266,47 @@
       });
     </script>
 
+    <!--
+    ═══════════════════════════════════════════════════════
+    SCRIPT LOAD ORDER — DO NOT REORDER
+    ───────────────────────────────────────────────────────
+    1. device-config.js   — MUST be first, sets window.DEVICECONFIG
+                            Shows setup screen on first launch
+                            All other scripts depend on this
+    2. pwa-update-manager — non-module utility, no dependencies
+    3. config.js          — CONSTANTS, SURVEYTYPES (needs nothing)
+    4. appState.js        — app state shape (needs nothing)
+    5. surveys/*.js       — data utils register on window
+                            Both always loaded; proxy guard in
+                            shayona-data-util.js routes window.dataUtils
+                            to correct util based on DEVICECONFIG
+    6. sync/dataSync.js   — module, needs CONSTANTS + dataUtils
+    7. uiHandlers.js      — module, needs appState + dataUtils
+    8. main/index.js      — module, boots app after deviceConfigReady
+    9. adminAnalytics.js  — standalone, no boot dependency
+    ═══════════════════════════════════════════════════════
+    -->
+
+    <!-- 1. DEVICE CONFIG — must be absolute first -->
+    <script src="config/device-config.js"></script>
+
+    <!-- 2. PWA update manager -->
     <script src="pwa-update-manager.js"></script>
+
+    <!-- 3. App constants -->
     <script src="config.js"></script>
+
+    <!-- 4. App state -->
     <script src="appState.js"></script>
-    <script src="data-util.js"></script>
+
+    <!-- 5. Survey data utils — both always loaded -->
+    <!-- Temple questions + base renderers -->
+    <script src="surveys/data-util.js"></script>
+    <!-- Café questions + section-header + dual-star-rating renderers -->
+    <!-- Proxy guard inside routes window.dataUtils → shayonaDataUtils on café iPad -->
+    <script src="surveys/shayona-data-util.js"></script>
+
+    <!-- 6-8. App modules -->
     <script type="module" src="sync/dataSync.js"></script>
     <script type="module" src="uiHandlers.js"></script>
     <script type="module" src="main/index.js"></script>
@@ -268,17 +357,9 @@
         console.log('[CHECKMARK] Display function executed successfully');
       };
 
-      document.addEventListener('gesturestart', function(e) {
-        e.preventDefault();
-      });
-
-      document.addEventListener('gesturechange', function(e) {
-        e.preventDefault();
-      });
-
-      document.addEventListener('gestureend', function(e) {
-        e.preventDefault();
-      });
+      document.addEventListener('gesturestart',  function(e) { e.preventDefault(); });
+      document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
+      document.addEventListener('gestureend',    function(e) { e.preventDefault(); });
 
       function isTextInputLike(target) {
         if (!target) return false;
@@ -298,29 +379,19 @@
       let lastTouchEnd = 0;
       document.addEventListener('touchend', function(e) {
         const target = e.target;
-
         if (isAdminOrHeaderTarget(target) || isTextInputLike(target) || isInteractiveTarget(target)) {
           lastTouchEnd = Date.now();
           return;
         }
-
         const now = Date.now();
-        if (now - lastTouchEnd <= 300) {
-          e.preventDefault();
-        }
+        if (now - lastTouchEnd <= 300) { e.preventDefault(); }
         lastTouchEnd = now;
       }, { passive: false });
 
       document.addEventListener('touchmove', function(e) {
         const target = e.target;
-
-        if (isAdminOrHeaderTarget(target) || isTextInputLike(target)) {
-          return;
-        }
-
-        if (e.touches && e.touches.length > 1) {
-          e.preventDefault();
-        }
+        if (isAdminOrHeaderTarget(target) || isTextInputLike(target)) { return; }
+        if (e.touches && e.touches.length > 1) { e.preventDefault(); }
       }, { passive: false });
 
       if (window.visualViewport) {
@@ -329,25 +400,23 @@
             0,
             window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop
           );
-
           document.documentElement.style.setProperty('--keyboard-height', keyboardHeight + 'px');
 
           const focused = document.activeElement;
-          if (
-            keyboardHeight > 0 &&
-            focused &&
-            (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT')
-          ) {
+          if (keyboardHeight > 0 && focused &&
+              (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT')) {
             setTimeout(() => {
               focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 100);
           }
         }
-
         window.visualViewport.addEventListener('resize', updateKeyboardHeight);
         window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
       }
     </script>
+
+    <!-- 9. Admin analytics — no boot dependency -->
     <script src="adminAnalytics.js"></script>
+
 </body>
 </html>

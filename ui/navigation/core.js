@@ -1,9 +1,11 @@
 // FILE: ui/navigation/core.js
 // PURPOSE: Core navigation functions (goNext, goPrev, showQuestion)
-// VERSION: 5.5.0
-// CHANGES FROM 5.4.0:
-//   - FIX: resume index clamped to valid question bounds in showQuestion()
-//   - FIX: safeGetLocalStorage / safeSetLocalStorage resolved via window.dataHandlers
+// VERSION: 6.0.0
+// CHANGES FROM 5.5.0:
+//   - ADD: isShayona + utils resolver (reads window.DEVICECONFIG.kioskMode)
+//   - ADD: getQuestions() uses resolved utils (café or temple)
+//   - ADD: goNext() routes through utils.getNextQuestionIndex() if available
+//   - ADD: _renderQuestion() merges shayonaDataUtils.questionRenderers for new types
 //   - no other logic changes
 
 // ─── Module-level render-cancellation state ───────────────────────────────────
@@ -13,13 +15,25 @@ let _renderGeneration = 0;
 // ─── Module-level input focus handler ────────────────────────────────────────
 let _boundInputFocusHandler = null;
 
+// ─── Kiosk mode resolver ─────────────────────────────────────────────────────
+// Called on every use so live config changes (e.g. admin switcher) take effect.
+function _isShayona() {
+  return window.DEVICECONFIG?.kioskMode === 'shayona';
+}
+
+function _getUtils() {
+  return _isShayona() && window.shayonaDataUtils
+    ? window.shayonaDataUtils
+    : window.dataUtils;
+}
+
 /**
  * Get dependencies from global scope
  */
 export function getDependencies() {
   return {
     appState: window.appState,
-    dataUtils: window.dataUtils,
+    dataUtils: _getUtils(),           // always resolves to correct utils
     dataHandlers: window.dataHandlers,
     globals: window.globals,
     typewriterManager: window.typewriterManager,
@@ -34,18 +48,31 @@ export function getDependencies() {
  * Reads active type on every call so type switches take effect immediately.
  */
 export function getQuestions() {
-  const { dataUtils } = getDependencies();
+  const utils = _getUtils();
 
-  if (typeof dataUtils?.getSurveyQuestions === 'function') {
-    return dataUtils.getSurveyQuestions();
+  if (typeof utils?.getSurveyQuestions === 'function') {
+    return utils.getSurveyQuestions();
   }
 
-  if (Array.isArray(dataUtils?.surveyQuestions)) {
-    return dataUtils.surveyQuestions;
+  if (Array.isArray(utils?.surveyQuestions)) {
+    return utils.surveyQuestions;
   }
 
-  console.warn('[NAV] No questions array found in dataUtils');
+  console.warn('[NAV] No questions array found in utils');
   return [];
+}
+
+/**
+ * Resolve the merged renderer map.
+ * Base = window.dataUtils.questionRenderers (temple types)
+ * Overlay = window.shayonaDataUtils.questionRenderers (section-header, dual-star-rating)
+ * On café iPads both layers are merged so all types resolve correctly.
+ */
+function _getRenderers() {
+  const base = window.dataUtils?.questionRenderers ?? {};
+  if (!_isShayona()) return base;
+  const extra = window.shayonaDataUtils?.questionRenderers ?? {};
+  return { ...base, ...extra };   // extra wins on key collision
 }
 
 /**
@@ -213,7 +240,6 @@ function _cancelPendingRender() {
     _pendingRenderTimer = null;
   }
 
-  // Advance generation to invalidate any queued rAF callbacks.
   _renderGeneration++;
 }
 
@@ -221,7 +247,7 @@ export function showQuestion(index) {
   const { globals, appState } = getDependencies();
   const questionContainer = globals?.questionContainer;
 
-  // ── FIX: clamp resume index to valid bounds ──────────────────────────────
+  // ── Clamp resume index to valid bounds ───────────────────────────────────
   const questions = getQuestions();
   if (questions.length > 0 && index >= questions.length) {
     console.warn(
@@ -232,7 +258,6 @@ export function showQuestion(index) {
     appState.currentQuestionIndex = 0;
     saveState();
   }
-  // ────────────────────────────────────────────────────────────────────────
 
   _cancelPendingRender();
 
@@ -243,9 +268,7 @@ export function showQuestion(index) {
 
     _pendingRenderTimer = setTimeout(() => {
       _pendingRenderTimer = null;
-
       if (generation !== _renderGeneration) return;
-
       _renderQuestion(index, generation);
     }, 120);
   } else {
@@ -254,16 +277,15 @@ export function showQuestion(index) {
 }
 
 function _renderQuestion(index, generation) {
-  const { globals, appState, typewriterManager, dataUtils, dataHandlers } = getDependencies();
+  const { globals, appState, typewriterManager, dataHandlers } = getDependencies();
   const questionContainer = globals?.questionContainer;
   const nextBtn = globals?.nextBtn;
   const prevBtn = globals?.prevBtn;
 
   if (generation !== _renderGeneration) return;
 
-  if (dataUtils?.clearAutoAdvance) {
-    dataUtils.clearAutoAdvance();
-  }
+  // clearAutoAdvance from whichever utils is active
+  _getUtils()?.clearAutoAdvance?.();
 
   try {
     if (window.clearErrors) {
@@ -277,7 +299,9 @@ function _renderQuestion(index, generation) {
       throw new Error(`Question at index ${index} is undefined`);
     }
 
-    const renderer = dataUtils.questionRenderers[question.type];
+    // ── Merged renderer lookup (temple base + shayona overlay) ─────────────
+    const renderers = _getRenderers();
+    const renderer = renderers[question.type];
     if (!renderer) {
       throw new Error(`No renderer found for question type: ${question.type}`);
     }
@@ -328,7 +352,6 @@ function _renderQuestion(index, generation) {
 
     if (generation !== _renderGeneration) return;
 
-    // ── FIX: resolve storage helpers via window.dataHandlers ───────────────
     try {
       const { dataHandlers } = getDependencies();
       const questions = getQuestions();
@@ -348,7 +371,6 @@ function _renderQuestion(index, generation) {
     } catch (e) {
       console.error('Could not log error:', e);
     }
-    // ────────────────────────────────────────────────────────────────────────
 
     if (nextBtn) nextBtn.disabled = true;
     if (prevBtn) prevBtn.disabled = true;
@@ -391,7 +413,10 @@ function _renderQuestion(index, generation) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Navigate to the next question or submit survey
+ * Navigate to the next question or submit survey.
+ * On café iPad: routes through shayonaDataUtils.getNextQuestionIndex()
+ * which handles branch skipping based on visitPurpose.
+ * On temple iPad: falls back to currentIndex + 1 (unchanged behaviour).
  */
 export function goNext() {
   const { appState } = getDependencies();
@@ -413,7 +438,16 @@ export function goNext() {
   }
 
   if (appState.currentQuestionIndex < questions.length - 1) {
-    appState.currentQuestionIndex++;
+    // ── Branch-aware next index ─────────────────────────────────────────────
+    const utils = _getUtils();
+    const nextIndex = typeof utils?.getNextQuestionIndex === 'function'
+      ? utils.getNextQuestionIndex(appState.currentQuestionIndex, appState.formData, questions)
+      : appState.currentQuestionIndex + 1;
+
+    appState.currentQuestionIndex = nextIndex < questions.length
+      ? nextIndex
+      : questions.length - 1;
+
     saveState();
     showQuestion(appState.currentQuestionIndex);
   } else {

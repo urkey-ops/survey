@@ -329,9 +329,9 @@ window.shayonaDataUtils = (function () {
     // ── SECTION 4: FINAL QUESTION (all users) ───────────────────────────────
 
     {
-      id: 'finalThoughts',
-      name: 'finalThoughts',
-      type: 'selector-textarea',
+  id: 'finalThoughts',
+  name: 'final_thoughts',   // ← aligns with sheet columns + processor primary keys
+  type: 'selector-textarea',
       question: 'What would you like to share about your visit to Shayona Café?',
       subLabel: 'Optional — select one to begin',
       options: [

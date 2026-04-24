@@ -8,11 +8,16 @@
 //     #device-setup-overlay is still visible before calling showStartScreen().
 //     On first launch the overlay is rendered and visible in the HTML; calling
 //     showStartScreen() before the user picks a mode caused a start-screen
-//     flash behind the overlay. Guard added as a single early-return.
-//   - ADD: isSetupOverlayActive() helper — checks #device-setup-overlay
-//     visibility without importing device-config.js (DOM-only check, safe
-//     to call at any point in the init sequence)
-//   - All other logic, BUG #21 fix, and module structure preserved exactly
+//     flash behind the overlay. Guard added as a single early-return at the
+//     top of initializeSurveyState().
+//   - ADD: isSetupOverlayActive() helper — DOM-only visibility check on
+//     #device-setup-overlay, no imports required, safe to call at any point
+//     in the init sequence.
+//   - ADD: window._initializeSurveyState = initializeSurveyState — exposes
+//     initializeSurveyState on window so device-config.js (non-module IIFE,
+//     cannot ES-import) can call it directly after the user picks a mode on
+//     first launch, without going through window.uiHandlers.
+//   - All other logic, BUG #21 fix, and module structure preserved exactly.
 
 import { goNext, goPrev, showQuestion } from '../ui/navigation/core.js';
 import { showStartScreen }              from '../ui/navigation/startScreen.js';
@@ -24,18 +29,19 @@ let boundPrevHandler   = null;
 // ── Setup overlay guard ───────────────────────────────────────────────────────
 //
 // Returns true if #device-setup-overlay exists in the DOM AND is currently
-// visible (i.e. display is not 'none' and the element has no .hidden class).
-// Used to prevent showStartScreen() firing before the user has selected a
-// device mode on first launch.
+// visible — i.e. display is not 'none', no .hidden class, visibility not
+// hidden. Uses getComputedStyle so it catches both inline and class-based
+// hiding. Called at the top of initializeSurveyState() to prevent
+// showStartScreen() firing before the user has selected a device mode.
 
 function isSetupOverlayActive() {
   const overlay = document.getElementById('device-setup-overlay');
   if (!overlay) return false;
 
   const style = window.getComputedStyle(overlay);
-  return style.display !== 'none'
-    && !overlay.classList.contains('hidden')
-    && overlay.style.visibility !== 'hidden';
+  return style.display      !== 'none'
+    && style.visibility     !== 'hidden'
+    && !overlay.classList.contains('hidden');
 }
 
 // ── Navigation listeners ──────────────────────────────────────────────────────
@@ -113,14 +119,12 @@ export function setupActivityTracking() {
  *
  * FIRST-LAUNCH GUARD (v3.1.0):
  * If #device-setup-overlay is still visible, the user has not yet chosen a
- * device mode. Skip showStartScreen() entirely — the overlay confirm handler
- * is responsible for calling window.uiHandlers.showStartScreen() once the
- * user selects Shayona / Temple and the overlay is hidden.
+ * device mode. Return early — the overlay confirm handler in device-config.js
+ * calls window._initializeSurveyState() after the user selects a mode and
+ * the overlay is hidden.
  */
 export function initializeSurveyState() {
   // ── First-launch guard ────────────────────────────────────────────────────
-  // Must be checked before appState access — overlay may be visible even
-  // before appState is fully hydrated on a fresh install.
   if (isSetupOverlayActive()) {
     console.log('[NAVIGATION] ⏸ Device setup overlay active — deferring survey state init');
     return false;
@@ -178,6 +182,17 @@ export function cleanupNavigationSetup() {
   cleanupNavigationListeners();
   console.log('[NAVIGATION] Navigation listener cleanup complete');
 }
+
+// ── Global bridge for non-module callers ──────────────────────────────────────
+//
+// device-config.js is a plain IIFE (not an ES module) and cannot import
+// initializeSurveyState directly. Exposing it on window lets the overlay
+// confirm handler call window._initializeSurveyState() after the user picks
+// a mode on first launch, without routing through window.uiHandlers.
+//
+// Underscore prefix signals internal use — not part of the public API.
+
+window._initializeSurveyState = initializeSurveyState;
 
 export default {
   setupNavigation,

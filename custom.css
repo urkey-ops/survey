@@ -1089,3 +1089,29 @@ textarea:focus {
 .setup-icon { font-size: 2.5rem; }
 .setup-label { font-size: 1.1rem; font-weight: 600; }
 .setup-desc  { font-size: 0.875rem; color: #7a7974; }
+
+/* Section header slide */
+.section-header-slide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  padding: 2rem 1.5rem;
+  background: var(--orange-light, #fff7ed);
+  border-radius: 1rem;
+  text-align: center;
+}
+.section-header-text {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--orange-dark, #92400e);
+  line-height: 1.4;
+}
+
+/* Dual star rating */
+.dual-star-rating { display: flex; flex-direction: column; gap: 1.25rem; }
+.dual-star-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.dual-star-label { font-size: 1rem; font-weight: 500; color: var(--text-primary); flex-shrink: 0; }
+.dual-star-stars { display: flex; flex-direction: row-reverse; }
+
+

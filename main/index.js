@@ -1,13 +1,13 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.3.0
-// CHANGES FROM 5.2.0:
-//   - FIX: Survey type reconciliation — forces type3 when device mode is
-//     'shayona' and localStorage still holds a stale type1/type2 value.
-//     Applied before setupNavigation() so core.js loads correct questions.
-//   - FIX: showStartScreen guard — calls window.navigationHandler.showStartScreen()
-//     after initializeSurveyState() instead of relying on navigationSetup.js
-//     to find it at module load time (was logging "handler not available").
+// VERSION: 5.4.0
+// CHANGES FROM 5.3.0:
+//   - REMOVE: Step 9 redundant showStartScreen call — navigationSetup.js
+//     v3.0.0 now imports showStartScreen directly from startScreen.js and
+//     calls it inside initializeSurveyState(). Calling it again here caused
+//     a double-fire: two sets of tap listeners attached to #kioskStartScreen,
+//     the second overwriting window.boundStartSurvey and leaving the first
+//     listener orphaned and uncancelable.
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -191,7 +191,7 @@ function startStorageMonitoring() {
 
 function _showStorageAlert(message) {
   if (window.globals?.syncStatusMessage) {
-    window.globals.syncStatusMessage.textContent  = message;
+    window.globals.syncStatusMessage.textContent      = message;
     window.globals.syncStatusMessage.style.color      = '#dc2626';
     window.globals.syncStatusMessage.style.fontWeight = 'bold';
   }
@@ -204,10 +204,6 @@ function _showStorageAlert(message) {
 }
 
 // ── Survey type reconciliation ────────────────────────────────────────────────
-// Ensures the active survey type stored in localStorage matches what the
-// device config requires. On a Shayona iPad, localStorage may still hold
-// 'type1' from a previous session or a fresh default — this corrects it
-// before any survey questions are loaded.
 
 function reconcileSurveyType() {
   const allowed = window.DEVICECONFIG?.allowedSurveyTypes;
@@ -271,10 +267,10 @@ function initialize() {
     console.log('[INIT] ✅ All essential elements found');
 
     // Step 4: Reconcile survey type BEFORE any navigation/survey setup
-    // so core.js loads the correct question set from the start.
     reconcileSurveyType();
 
-    // Step 5: Setup navigation
+    // Step 5: Setup navigation buttons (goNext/goPrev now imported directly
+    // in navigationSetup.js — no longer depends on window.uiHandlers)
     setupNavigation();
 
     // Step 6: Setup activity tracking
@@ -283,36 +279,27 @@ function initialize() {
     // Step 7: Setup admin panel
     setupAdminPanel();
 
-    // Step 8: Initialize survey state (resume or start fresh)
+    // Step 8: Initialize survey state — calls showStartScreen() internally
+    // via direct import in navigationSetup.js v3.0.0. No separate call needed.
     initializeSurveyState();
 
-    // Step 9: Show start screen — called here directly after survey state is
-    // ready so the handler is guaranteed to be registered by navigationHandler.
-    // navigationSetup.js previously called this too early (before registration).
-    if (typeof window.navigationHandler?.showStartScreen === 'function') {
-      window.navigationHandler.showStartScreen();
-      console.log('[INIT] ✅ Start screen shown');
-    } else {
-      console.warn('[INIT] ⚠️ navigationHandler.showStartScreen not available — start screen may not display');
-    }
-
-    // Step 10: Setup network monitoring
+    // Step 9: Setup network monitoring
     setupNetworkMonitoring();
 
-    // Step 11: Setup visibility change handler
+    // Step 10: Setup visibility change handler
     setupVisibilityHandler();
 
-    // Step 12: Setup inactivity visibility handler
+    // Step 11: Setup inactivity visibility handler
     setupInactivityVisibilityHandler();
     console.log('[INIT] ✅ Inactivity visibility handler active');
 
-    // Step 13: (typewriterEffect removed in Phase 2 — step intentionally skipped)
+    // Step 12: (typewriterEffect removed in Phase 2 — step intentionally skipped)
 
-    // Step 14: Start periodic sync
+    // Step 13: Start periodic sync
     startPeriodicSync();
     console.log('[INIT] ✅ Periodic sync started (stable interval)');
 
-    // Step 15: Start heartbeat
+    // Step 14: Start heartbeat
     startHeartbeat();
     console.log('[INIT] ✅ Heartbeat started (15 min, hidden-aware)');
 

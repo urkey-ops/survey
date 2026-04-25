@@ -10,8 +10,8 @@
 //       • main/index.js           (v5.5.0 — isDeviceConfigured guard)
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v29';
-const RUNTIME_CACHE = 'kiosk-runtime-v29';
+const CACHE_NAME    = 'kiosk-survey-v30';
+const RUNTIME_CACHE = 'kiosk-runtime-v30';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation

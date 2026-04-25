@@ -424,6 +424,8 @@ header {
 
 /* Scroll fade hint */
 #surveyContent::after {
+   z-index: -1;              /* ← ADD */
+  pointer-events: none;     /* ← ADD */
   content: '';
   position: sticky;
   bottom: 0;

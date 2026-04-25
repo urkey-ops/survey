@@ -1,23 +1,22 @@
 // FILE: appState.js
-// VERSION: 3.4.2
-// CHANGES FROM 3.4.1:
-//   - CLEANUP: Align fallback state storage key with config.js canonical key ('kioskState')
-//     instead of legacy-only fallback ('kioskAppState').
-//   - CLEANUP: Align fallback analytics key with config.js canonical key ('surveyAnalytics').
-//   - CLEANUP: Align fallback MAX_ANALYTICS_SIZE with config.js value (500).
-//   - KEEP: Legacy migration support for older 'kioskAppState' persisted state.
-//   - No runtime logic changes to survey flow or queue behavior.
+// VERSION: 3.4.3
+// CHANGES FROM 3.4.2:
+//   - FIX B1-02: INACTIVITY_TIMEOUT_MS fallback corrected from 30000 to 60000 (matches config.js)
+//   - FIX B1-03: SYNC_INTERVAL_MS fallback corrected from 900000 to 300000 (matches config.js)
+//   - FIX B1-01: ANALYTICS_SYNC_INTERVAL_MS fallback corrected from 86400000 to 600000 (matches config.js)
+//   - FIX B1-04: FEATURES fallback enableTypewriterEffect corrected from false to true (matches config.js)
+//   - FIX B1-05: Removed spurious MAX_QUEUE_SIZE > 200 boot warning (250 is intentional configured value)
 
 (function () {
   const CONFIG    = window.KIOSK_CONFIG || {};
   const CONSTANTS = window.CONSTANTS   || {};
 
   // ─── Timing ──────────────────────────────────────────────────────────────────
-  const INACTIVITY_TIMEOUT_MS        = CONSTANTS.INACTIVITY_TIMEOUT_MS        || CONFIG.INACTIVITY_TIMEOUT_MS        || 30000;
-  const SYNC_INTERVAL_MS             = CONSTANTS.SYNC_INTERVAL_MS             || CONFIG.SYNC_INTERVAL_MS             || 900000;
+  const INACTIVITY_TIMEOUT_MS        = CONSTANTS.INACTIVITY_TIMEOUT_MS        || CONFIG.INACTIVITY_TIMEOUT_MS        || 60000;   // FIX B1-02: was 30000
+  const SYNC_INTERVAL_MS             = CONSTANTS.SYNC_INTERVAL_MS             || CONFIG.SYNC_INTERVAL_MS             || 300000;  // FIX B1-03: was 900000
   const ADMIN_PANEL_TIMEOUT_MS       = CONSTANTS.ADMIN_PANEL_TIMEOUT_MS       || CONFIG.ADMIN_PANEL_TIMEOUT_MS       || 30000;
   const RESET_DELAY_MS               = CONSTANTS.RESET_DELAY_MS               || CONFIG.RESET_DELAY_MS               || 5000;
-  const ANALYTICS_SYNC_INTERVAL_MS   = CONSTANTS.ANALYTICS_SYNC_INTERVAL_MS   || CONFIG.ANALYTICS_SYNC_INTERVAL_MS   || 86400000;
+  const ANALYTICS_SYNC_INTERVAL_MS   = CONSTANTS.ANALYTICS_SYNC_INTERVAL_MS   || CONFIG.ANALYTICS_SYNC_INTERVAL_MS   || 600000;  // FIX B1-01: was 86400000
   const TYPEWRITER_DURATION_MS       = CONSTANTS.TYPEWRITER_DURATION_MS       || CONFIG.TYPEWRITER_DURATION_MS       || 2000;
   const TEXT_ROTATION_INTERVAL_MS    = CONSTANTS.TEXT_ROTATION_INTERVAL_MS    || CONFIG.TEXT_ROTATION_INTERVAL_MS    || 4000;
   const AUTO_ADVANCE_DELAY_MS        = CONSTANTS.AUTO_ADVANCE_DELAY_MS        || CONFIG.AUTO_ADVANCE_DELAY_MS        || 50;
@@ -55,7 +54,7 @@
 
   // ─── Feature Flags ────────────────────────────────────────────────────────────
   const FEATURES = CONSTANTS.FEATURES || CONFIG.FEATURES || {
-    enableTypewriterEffect: false,
+    enableTypewriterEffect: true,   // FIX B1-04: was false
     enableAnalytics:        true,
     enableOfflineQueue:     true,
     enableAdminPanel:       true,
@@ -188,7 +187,7 @@
     const warnings = [];
     if (SYNC_INTERVAL_MS < 60000)      warnings.push('⚠️  SYNC_INTERVAL_MS < 1 min may cause excessive API calls');
     if (INACTIVITY_TIMEOUT_MS < 10000) warnings.push('⚠️  INACTIVITY_TIMEOUT_MS < 10s may frustrate users');
-    if (MAX_QUEUE_SIZE > 200)          warnings.push('⚠️  MAX_QUEUE_SIZE > 200 may cause localStorage issues');
+    // FIX B1-05: Removed spurious MAX_QUEUE_SIZE > 200 warning — 250 is the intentional configured value
     if (!CONFIG.KIOSK_ID)              warnings.push('⚠️  KIOSK_ID not set — using default');
 
     if (warnings.length > 0) {
@@ -281,7 +280,7 @@
   })();
 
   console.log('\n📱 Kiosk Survey Application Initialized');
-  console.log('   Version       : 3.4.2');
+  console.log('   Version       : 3.4.3');
   console.log(`   State Key     : ${CANONICAL_STORAGE_KEY_STATE}`);
   console.log(`   State         : ${appState.currentQuestionIndex > 0 ? 'RESUMING' : 'FRESH'}`);
   if (appState.currentQuestionIndex > 0) {

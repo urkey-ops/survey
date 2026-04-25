@@ -1,6 +1,6 @@
 // FILE: main/adminSurveyControls.js
 // PURPOSE: Survey type switcher + sync + analytics sync button handlers
-// VERSION: 1.1.0 - trackAdminEvent from adminUtils, guard on empty SURVEY_TYPES
+// VERSION: 1.2.0 - FULL SYNC BLOCKING IMPLEMENTED (prevents data loss on switch)
 // DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS, window.KIOSK_CONFIG
 
 import { adminState } from './adminState.js';
@@ -76,7 +76,46 @@ export function updateAnalyticsButtonState(isOnline) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SURVEY TYPE SWITCHER
+// IDEAL SYNC BLOCKING MODAL
+// ─────────────────────────────────────────────────────────────
+
+async function showSyncBeforeSwitchModal(unsyncedCount) {
+  return new Promise(resolve => {
+    const isOffline = !navigator.onLine;
+    const isSyncing = adminState.syncInProgress;
+    
+    let message = `${unsyncedCount} unsynced record(s) across all queues.\n\n`;
+    if (isOffline) message += '❌ Device is OFFLINE.\n';
+    if (isSyncing) message += '⏳ Sync already in progress.\n';
+    message += 'Sync first to prevent data loss?\n\n';
+    message += '[OK] = SYNC NOW (5s timeout)\n[CANCEL] = SWITCH ANYWAY (⚠️ risk data loss)';
+
+    if (confirm(message)) {
+      // SYNC NOW → 5s timeout
+      console.log('[SWITCH BLOCK] SYNC NOW clicked — starting syncBothQueues...');
+      const syncPromise = window.dataHandlers?.syncData(true, { syncBothQueues: true });
+      const timeoutPromise = new Promise(r => setTimeout(() => r(false), 5000));
+      
+      Promise.race([syncPromise, timeoutPromise]).then(success => {
+        if (success) {
+          console.log('[SWITCH BLOCK] ✅ Sync completed — allowing switch');
+          resolve(true);
+        } else {
+          console.log('[SWITCH BLOCK] ❌ 5s timeout — warn but allow');
+          alert('⚠️ Sync timed out after 5s. Switching anyway (data risk).');
+          resolve(true);
+        }
+      });
+    } else {
+      console.log('[SWITCH BLOCK] SWITCH ANYWAY chosen — warning logged');
+      trackAdminEvent('switch_force_without_sync', { unsyncedCount });
+      resolve(true);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// SURVEY TYPE SWITCHER (FULLY PROTECTED)
 // ─────────────────────────────────────────────────────────────
 
 export function updateSurveyTypeSwitcher() {
@@ -134,7 +173,7 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
     btn.dataset.surveyType = type;
     btn.setAttribute('aria-pressed', currentType === type ? 'true' : 'false');
 
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       resetTimer();
@@ -145,22 +184,28 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         return;
       }
 
+      // 🔥 IDEAL SYNC BLOCKING LOGIC:
+      const unsynced = window.dataHandlers?.countUnsyncedRecords?.() || 0;
+      const isOffline = !navigator.onLine;
+      const isSyncing = adminState.syncInProgress;
+      
+      if (unsynced > 0 || isOffline || isSyncing) {
+        console.log('[SURVEY CONTROLS] 🚫 BLOCK: unsynced=', unsynced, 'offline=', isOffline, 'syncing=', isSyncing);
+        const proceed = await showSyncBeforeSwitchModal(unsynced);
+        if (!proceed) return;
+      }
+
+      // Save partial data (existing logic)
       try {
         const currentSurveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
         const partialData = window.appState?.formData;
         const hasPartialData = partialData && Object.keys(partialData).length > 1;
 
         if (hasPartialData) {
-          // Always read queue key from config — never fall back to a hardcoded string
-          const queueKey =
-            window.CONSTANTS?.SURVEY_TYPES?.[currentSurveyType]?.storageKey;
-
-          if (!queueKey) {
-            console.warn('[SURVEY CONTROLS] ⚠️ No storageKey found for type:', currentSurveyType, '— partial data not saved');
-          } else {
+          const queueKey = window.CONSTANTS?.SURVEY_TYPES?.[currentSurveyType]?.storageKey;
+          if (queueKey) {
             const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
             let existingQueue = [];
-
             try {
               existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
             } catch (_) {
@@ -186,6 +231,7 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         console.warn('[SURVEY CONTROLS] Could not save partial data before type switch:', saveErr);
       }
 
+      // Switch + reload (existing logic)
       if (window.KIOSK_CONFIG?.setActiveSurveyType) {
         window.KIOSK_CONFIG.setActiveSurveyType(type);
       }
@@ -242,11 +288,11 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
     adminControls.appendChild(switcherRow);
   }
 
-  console.log('[SURVEY CONTROLS] ✅ Survey type switcher built');
+  console.log('[SURVEY CONTROLS] ✅ Survey type switcher built (FULL SYNC PROTECTION)');
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON HANDLERS
+// BUTTON HANDLERS (unchanged)
 // ─────────────────────────────────────────────────────────────
 
 export function setupSurveyControls(syncButton, syncAnalyticsButton, resetAutoHideTimer) {

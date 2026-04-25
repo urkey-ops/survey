@@ -1,17 +1,14 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS KIOSK SAFE)
-// VERSION: 9.7.0
-// CHANGES FROM 9.6.0:
-//   - BUMP: CACHE_NAME / RUNTIME_CACHE v28 → v29
-//     Invalidates stale cache for the four files changed in the
-//     first-launch flash fix:
-//       • index.html              (static #device-setup-overlay added)
-//       • config/device-config.js (v1.1.0 — static overlay, visibility guard)
-//       • main/navigationSetup.js (v3.1.0 — isSetupOverlayActive guard)
-//       • main/index.js           (v5.5.0 — isDeviceConfigured guard)
+// VERSION: 9.8.0
+// CHANGES FROM 9.7.0:
+//   - BUMP: CACHE_NAME / RUNTIME_CACHE v29 → v30
+//     Invalidates stale cache for files changed in the start-screen tap fix:
+//       • main/navigationSetup.js (v3.2.0 — window.__surveyStateInitialized guard)
+//       • main/index.js           (v5.7.1 — checks __surveyStateInitialized flag)
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v30';
-const RUNTIME_CACHE = 'kiosk-runtime-v30';
+const CACHE_NAME    = 'kiosk-survey-v31';
+const RUNTIME_CACHE = 'kiosk-runtime-v31';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation
@@ -69,7 +66,6 @@ const CRITICAL_CACHE = [
   '/ui/navigation/videoScheduler.js',
 
   // UI modules - Other
-  // /ui/typewriterEffect.js — REMOVED in Phase 2
   '/ui/validation.js',
   '/uiHandlers.js',
 
@@ -102,7 +98,7 @@ let cleanupStarted = false;
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v9.7 with complete module cache...');
+  console.log('[SW] Installing v9.8 with complete module cache...');
 
   event.waitUntil(
     (async () => {
@@ -159,7 +155,7 @@ self.addEventListener('install', event => {
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v9.7 (complete module cache)');
+      console.log('[SW] ✅ Installed v9.8 (complete module cache)');
     })()
   );
 });
@@ -168,7 +164,7 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v9.7...');
+  console.log('[SW] Activating v9.8...');
 
   event.waitUntil(
     (async () => {
@@ -190,10 +186,10 @@ self.addEventListener('activate', event => {
 
       const clients = await self.clients.matchAll({ type: 'window' });
       clients.forEach(client => {
-        client.postMessage({ type: 'SW_ACTIVATED', version: '9.7' });
+        client.postMessage({ type: 'SW_ACTIVATED', version: '9.8' });
       });
 
-      console.log('[SW] ✅ Activated v9.7 (battery optimized, complete cache)');
+      console.log('[SW] ✅ Activated v9.8 (battery optimized, complete cache)');
     })()
   );
 });

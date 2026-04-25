@@ -35,7 +35,7 @@ function _getStorageKey() {
   return (
     window.CONSTANTS?.STORAGE_KEY_STATE ||
     window.appState?.storageKey ||
-    'kioskAppState'  // ⚠️ SIDE NOTE B2-03: should be 'kioskState' — fix together with B1-10
+    'kioskState'  // ⚠️ SIDE NOTE B2-03: should be 'kioskState' — fix together with B1-10
   );
 }
 

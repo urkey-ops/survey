@@ -1,481 +1,484 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Kiosk Survey</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kiosk Survey</title>
 
-    <meta name="description" content="Share your visit experience through our interactive kiosk survey">
-    <meta name="theme-color" content="#10b981">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Kiosk Survey">
+<meta name="description" content="Share your visit experience through our interactive kiosk survey">
+<meta name="theme-color" content="#10b981">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kiosk Survey">
 
-    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
-    <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
-    <link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144x144.png">
-    <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
+<link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144x144.png">
+<link rel="manifest" href="manifest.json">
 
-    <link rel="stylesheet" href="dist/output.css">
-    <link rel="stylesheet" href="custom.css">
+<link rel="stylesheet" href="dist/output.css">
+<link rel="stylesheet" href="custom.css">
 
-    <style>
-      html, body {
-        overscroll-behavior: none;
-        -webkit-text-size-adjust: 100%;
-      }
+<style>
+html, body {
+overscroll-behavior: none;
+-webkit-text-size-adjust: 100%;
+}
 
-      body, main, section {
-        -webkit-user-select: none;
-        -webkit-touch-callout: none;
-      }
+body, main, section {
+-webkit-user-select: none;
+-webkit-touch-callout: none;
+}
 
-      #kioskStartScreen, #kioskVideo, video {
-        touch-action: auto !important;
-      }
+#kioskStartScreen, #kioskVideo, video {
+touch-action: auto !important;
+}
 
-      header {
-        touch-action: manipulation !important;
-      }
+header {
+touch-action: manipulation !important;
+}
 
-      input, textarea, button, select, label {
-        touch-action: manipulation;
-      }
+input, textarea, button, select, label {
+touch-action: manipulation;
+}
 
-      input, textarea, select {
-        -webkit-user-select: text;
-        user-select: text;
-        font-size: 16px !important;
-      }
+input, textarea, select {
+-webkit-user-select: text;
+user-select: text;
+font-size: 16px !important;
+}
 
-      @keyframes subtle-pulse {
-        0%   { transform: scale(1);     filter: brightness(100%); }
-        50%  { transform: scale(1.025); filter: brightness(110%); }
-        100% { transform: scale(1);     filter: brightness(100%); }
-      }
+@keyframes subtle-pulse {
+0% { transform: scale(1); filter: brightness(100%); }
+50% { transform: scale(1.025); filter: brightness(110%); }
+100% { transform: scale(1); filter: brightness(100%); }
+}
 
-      .animate-pulse {
-        animation: subtle-pulse 6s 3 ease-in-out !important;
-      }
+.animate-pulse {
+animation: subtle-pulse 6s 3 ease-in-out !important;
+}
 
-      .active-press {
-        transform: scale(0.96) !important;
-        opacity: 0.8 !important;
-        transition: transform 0.05s ease-out !important;
-        animation: none !important;
-      }
+.active-press {
+transform: scale(0.96) !important;
+opacity: 0.8 !important;
+transition: transform 0.05s ease-out !important;
+animation: none !important;
+}
 
-      #kioskVideo {
-        transform: none !important;
-        animation: none !important;
-        margin: 0 !important;
-      }
+#kioskVideo {
+transform: none !important;
+animation: none !important;
+margin: 0 !important;
+}
 
-      .admin-active #mainTitle {
-        display: none !important;
-      }
+.admin-active #mainTitle {
+display: none !important;
+}
 
-      .admin-active header {
-        padding: 16px 20px !important;
-      }
+.admin-active header {
+padding: 16px 20px !important;
+}
 
-      .admin-active #adminControls {
-        width: 100% !important;
-      }
+.admin-active #adminControls {
+width: 100% !important;
+}
 
-      /*
-       * Device setup overlay — static in HTML, hidden by default.
-       * device-config.js shows it on first launch by setting display:flex.
-       * On configured launches it is never shown — zero flash.
-       *
-       * display:none here is intentional. device-config.js (the very first
-       * script) sets display:flex immediately if no stored config is found,
-       * before DOMContentLoaded, so the overlay appears before any app JS runs.
-       */
-      #device-setup-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        align-items: center;
-        justify-content: center;
-        background: #f7f6f2;
-      }
-      .setup-card {
-        text-align: center;
-        padding: 3rem 2rem;
-        max-width: 500px;
-        width: 90%;
-      }
-      .setup-logo h1 {
-        font-size: 2rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-        color: #1c1b19;
-      }
-      .setup-logo p {
-        color: #7a7974;
-        margin-bottom: 2.5rem;
-        font-size: 1.1rem;
-      }
-      .setup-options {
-        display: flex;
-        gap: 1.5rem;
-        justify-content: center;
-        flex-wrap: wrap;
-      }
-      .setup-btn {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 2rem 2.5rem;
-        border: 2px solid #dcd9d5;
-        border-radius: 1rem;
-        background: #fff;
-        cursor: pointer;
-        transition: border-color 0.18s, box-shadow 0.18s;
-        min-width: 160px;
-      }
-      .setup-btn:hover, .setup-btn:active {
-        border-color: #01696f;
-        box-shadow: 0 4px 16px rgba(1, 105, 111, 0.15);
-      }
-      .setup-icon  { font-size: 2.5rem; }
-      .setup-label { font-size: 1.1rem; font-weight: 600; color: #28251d; }
-      .setup-desc  { font-size: 0.875rem; color: #7a7974; }
-    </style>
+/*
+* Device setup overlay — static in HTML, hidden by default.
+* device-config.js shows it on first launch by setting display:flex.
+* On configured launches it is never shown — zero flash.
+*
+* display:none here is intentional. device-config.js (the very first
+* script) sets display:flex immediately if no stored config is found,
+* before DOMContentLoaded, so the overlay appears before any app JS runs.
+*/
+#device-setup-overlay {
+display: none;
+position: fixed;
+inset: 0;
+z-index: 9999;
+align-items: center;
+justify-content: center;
+background: #f7f6f2;
+}
+.setup-card {
+text-align: center;
+padding: 3rem 2rem;
+max-width: 500px;
+width: 90%;
+}
+.setup-logo h1 {
+font-size: 2rem;
+font-weight: 700;
+margin-bottom: 0.5rem;
+color: #1c1b19;
+}
+.setup-logo p {
+color: #7a7974;
+margin-bottom: 2.5rem;
+font-size: 1.1rem;
+}
+.setup-options {
+display: flex;
+gap: 1.5rem;
+justify-content: center;
+flex-wrap: wrap;
+}
+.setup-btn {
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 0.5rem;
+padding: 2rem 2.5rem;
+border: 2px solid #dcd9d5;
+border-radius: 1rem;
+background: #fff;
+cursor: pointer;
+transition: border-color 0.18s, box-shadow 0.18s;
+min-width: 160px;
+}
+.setup-btn:hover, .setup-btn:active {
+border-color: #01696f;
+box-shadow: 0 4px 16px rgba(1, 105, 111, 0.15);
+}
+.setup-icon { font-size: 2.5rem; }
+.setup-label { font-size: 1.1rem; font-weight: 600; color: #28251d; }
+.setup-desc { font-size: 0.875rem; color: #7a7974; }
+</style>
 </head>
 
 <body class="min-h-screen">
 
-    <script>
-      window.globals = {};
-    </script>
+<script>
+window.globals = {};
+</script>
 
-    <!--
-    ═══════════════════════════════════════════════════════
-    DEVICE SETUP OVERLAY — static element, hidden by default.
+<!--
+═══════════════════════════════════════════════════════
+DEVICE SETUP OVERLAY — static element, hidden by default.
 
-    Placed as the FIRST element in <body> so it is in the DOM
-    immediately when device-config.js runs (which is a blocking
-    <script> tag, executing synchronously before any module loads).
+Placed as the FIRST element in <body> so it is in the DOM
+immediately when device-config.js runs (which is a blocking
+<script> tag, executing synchronously before any module loads).
 
-    device-config.js checks for stored config:
-      - Config found  → leaves display:none, app boots normally
-      - No config     → sets display:flex immediately (synchronous),
-                        showing this overlay before any other content
-                        renders. Zero flash guaranteed.
+device-config.js checks for stored config:
+- Config found → leaves display:none, app boots normally
+- No config → sets display:flex immediately (synchronous),
+showing this overlay before any other content
+renders. Zero flash guaranteed.
 
-    The overlay confirm handler (in device-config.js) hides this
-    element and calls window._initializeSurveyState() after the
-    user picks a mode.
-    ═══════════════════════════════════════════════════════
-    -->
-    <div id="device-setup-overlay">
-      <div class="setup-card">
-        <div class="setup-logo">
-          <h1>Shayona</h1>
-          <p>Select what this iPad is used for</p>
-        </div>
-        <div class="setup-options">
-          <button class="setup-btn" data-mode="temple">
-            <span class="setup-icon">🛕</span>
-            <span class="setup-label">Temple</span>
-            <span class="setup-desc">Visitor survey kiosk</span>
-          </button>
-          <button class="setup-btn" data-mode="shayona">
-            <span class="setup-icon">☕</span>
-            <span class="setup-label">Shayona Café</span>
-            <span class="setup-desc">Café feedback kiosk</span>
-          </button>
-        </div>
-      </div>
-    </div>
+The overlay confirm handler (in device-config.js) hides this
+element and calls window._initializeSurveyState() after the
+user picks a mode.
+═══════════════════════════════════════════════════════
+-->
+<div id="device-setup-overlay">
+<div class="setup-card">
+<div class="setup-logo">
+<h1>Shayona</h1>
+<p>Select what this iPad is used for</p>
+</div>
+<div class="setup-options">
+<button class="setup-btn" data-mode="temple">
+<span class="setup-icon">🛕</span>
+<span class="setup-label">Temple</span>
+<span class="setup-desc">Visitor survey kiosk</span>
+</button>
+<button class="setup-btn" data-mode="shayona">
+<span class="setup-icon">☕</span>
+<span class="setup-label">Shayona Café</span>
+<span class="setup-desc">Café feedback kiosk</span>
+</button>
+</div>
+</div>
+</div>
 
-    <div id="kioskStartScreen" class="flex flex-col items-center justify-center">
-        <div class="mb-8 content">
-            <h2 class="text-3xl font-bold text-center text-white animate-pulse">
-                Share Your Visit Experience
-            </h2>
-        </div>
+<div id="kioskStartScreen" class="flex flex-col items-center justify-center">
+<div class="mb-8 content">
+<h2 class="text-3xl font-bold text-center text-white animate-pulse">
+Share Your Visit Experience
+</h2>
+</div>
 
-        <video id="kioskVideo"
-               class="max-w-xl max-h-full"
-               autoplay
-               muted
-               playsinline
-               webkit-playsinline
-               preload="auto"
-               disableRemotePlayback
-               x-webkit-airplay="deny">
-            <source src="asset/video/1.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-        </video>
+<video id="kioskVideo"
+class="max-w-xl max-h-full"
+autoplay
+muted
+playsinline
+webkit-playsinline
+preload="auto"
+disableRemotePlayback
+x-webkit-airplay="deny">
+<source src="asset/video/1.mp4" type="video/mp4">
+Your browser does not support the video tag.
+</video>
 
-        <div class="mt-12 content">
-            <p id="rotatingQuestion" class="tap-prompt text-xl text-white font-semibold text-center">
-                Tap anywhere to begin
-            </p>
-        </div>
-    </div>
+<div class="mt-12 content">
+<p id="rotatingQuestion" class="tap-prompt text-xl text-white font-semibold text-center">
+Tap anywhere to begin
+</p>
+</div>
+</div>
 
-    <main class="w-full flex flex-col">
-        <header>
-            <h1 id="mainTitle" data-admin-unlock="true">Share Your Visit Experience</h1>
+<main class="w-full flex flex-col">
+<header>
+<h1 id="mainTitle" data-admin-unlock="true">Share Your Visit Experience</h1>
 
-            <div id="adminControls">
-                <div class="admin-status-row">
-                    <div class="admin-status-group">
-                        <p class="admin-status-pill">
-                            <span class="admin-status-dot"></span>
-                            Unsynced Records: <span id="unsyncedCountDisplay">0</span>
-                        </p>
-                        <span id="syncStatusMessage" class="admin-status-text"></span>
-                    </div>
-                </div>
+<div id="adminControls">
+<div class="admin-status-row">
+<div class="admin-status-group">
+<p class="admin-status-pill">
+<span class="admin-status-dot"></span>
+Unsynced Records: <span id="unsyncedCountDisplay">0</span>
+</p>
+<span id="syncStatusMessage" class="admin-status-text"></span>
+</div>
+</div>
 
-                <div class="admin-actions-grid">
-                    <button id="syncButton"          type="button">Sync Data</button>
-                    <button id="syncAnalyticsButton" type="button">Sync Analytics</button>
-                    <button id="checkUpdateButton"   type="button">Check Update</button>
-                    <button id="fixVideoButton"      type="button">Fix Video</button>
-                    <button id="adminClearButton"    type="button">Clear Local</button>
-                    <button id="hideAdminButton"     type="button">Hide</button>
-                </div>
-            </div>
+<div class="admin-actions-grid">
+<button id="syncButton" type="button">Sync Data</button>
+<button id="syncAnalyticsButton" type="button">Sync Analytics</button>
+<button id="checkUpdateButton" type="button">Check Update</button>
+<button id="fixVideoButton" type="button">Fix Video</button>
+<button id="adminClearButton" type="button">Clear Local</button>
+<button id="hideAdminButton" type="button">Hide</button>
+</div>
+</div>
 
-            <div id="progressBarContainer">
-                <div id="progressBar"></div>
-                <span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
-            </div>
-        </header>
+<div id="progressBarContainer">
+<div id="progressBar"></div>
+<span id="stepCounter" aria-live="polite" aria-atomic="true"></span>
+</div>
+</header>
 
-        <section id="surveyContent" class="flex-1 flex flex-col">
-            <div id="questionContainer" class="flex-1 flex flex-col justify-start"></div>
+<section id="surveyContent" class="flex-1 flex flex-col">
+<div id="questionContainer" class="flex-1 flex flex-col justify-start"></div>
 
-            <div id="buttonContainer" class="flex justify-between items-center">
-                <button id="prevBtn" type="button">Back</button>
-                <button id="nextBtn" type="button">Next</button>
-            </div>
-        </section>
-    </main>
+<div id="buttonContainer" class="flex justify-between items-center">
+<button id="prevBtn" type="button">Back</button>
+<button id="nextBtn" type="button">Next</button>
+</div>
+</section>
+</main>
 
-    <script>
-      window.addEventListener('error', function(e) {
-        console.error('🚨 [GLOBAL ERROR]', e.message, e.filename, e.lineno);
-        try {
-          if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
-            window.dataHandlers.recordAnalytics('app_error', {
-              message: e.message,
-              file: e.filename,
-              line: e.lineno
-            });
-          }
-        } catch (err) {
-          console.error('Failed to log error:', err);
-        }
-        e.preventDefault();
-        return true;
-      });
+<script>
+window.addEventListener('error', function(e) {
+console.error('🚨 [GLOBAL ERROR]', e.message, e.filename, e.lineno);
+try {
+if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
+window.dataHandlers.recordAnalytics('app_error', {
+message: e.message,
+file: e.filename,
+line: e.lineno
+});
+}
+} catch (err) {
+console.error('Failed to log error:', err);
+}
+e.preventDefault();
+return true;
+});
 
-      window.addEventListener('unhandledrejection', function(e) {
-        console.error('🚨 [UNHANDLED PROMISE]', e.reason);
-        try {
-          if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
-            window.dataHandlers.recordAnalytics('promise_error', {
-              reason: String(e.reason)
-            });
-          }
-        } catch (err) {
-          console.error('Failed to log promise error:', err);
-        }
-        e.preventDefault();
-      });
+window.addEventListener('unhandledrejection', function(e) {
+console.error('🚨 [UNHANDLED PROMISE]', e.reason);
+try {
+if (window.dataHandlers && window.dataHandlers.recordAnalytics) {
+window.dataHandlers.recordAnalytics('promise_error', {
+reason: String(e.reason)
+});
+}
+} catch (err) {
+console.error('Failed to log promise error:', err);
+}
+e.preventDefault();
+});
 
-      window.addEventListener('beforeunload', function() {
-        console.log('[CLEANUP] Page unloading - cleaning up...');
-        try {
-          if (window.uiHandlers && window.uiHandlers.clearAllTimers) {
-            window.uiHandlers.clearAllTimers();
-          }
-          if (window.videoPlaybackInterval) {
-            clearInterval(window.videoPlaybackInterval);
-          }
-          const video = document.getElementById('kioskVideo');
-          if (video) { video.pause(); }
-          console.log('[CLEANUP] ✅ Cleanup complete');
-        } catch (err) {
-          console.error('[CLEANUP] Error during cleanup:', err);
-        }
-      });
-    </script>
+window.addEventListener('beforeunload', function() {
+console.log('[CLEANUP] Page unloading - cleaning up...');
+try {
+if (window.uiHandlers && window.uiHandlers.clearAllTimers) {
+window.uiHandlers.clearAllTimers();
+}
+if (window.videoPlaybackInterval) {
+clearInterval(window.videoPlaybackInterval);
+}
+const video = document.getElementById('kioskVideo');
+if (video) { video.pause(); }
+console.log('[CLEANUP] ✅ Cleanup complete');
+} catch (err) {
+console.error('[CLEANUP] Error during cleanup:', err);
+}
+});
+</script>
 
-    <!--
-    ═══════════════════════════════════════════════════════
-    SCRIPT LOAD ORDER — DO NOT REORDER
-    ───────────────────────────────────────────────────────
-    1. device-config.js   — MUST be first, sets window.DEVICECONFIG
-                            Shows #device-setup-overlay (static in HTML)
-                            on first launch via display:flex. All other
-                            scripts depend on this.
-    2. pwa-update-manager — non-module utility, no dependencies
-    3. config.js          — CONSTANTS, SURVEYTYPES (needs nothing)
-    4. appState.js        — app state shape (needs nothing)
-    5. surveys/*.js       — data utils register on window
-                            Both always loaded; proxy guard in
-                            shayona-data-util.js routes window.dataUtils
-                            to correct util based on DEVICECONFIG
-    6. sync/dataSync.js   — module, needs CONSTANTS + dataUtils
-    7. uiHandlers.js      — module, needs appState + dataUtils
-    8. main/index.js      — module, boots app after deviceConfigReady
-    9. adminAnalytics.js  — standalone, no boot dependency
-    ═══════════════════════════════════════════════════════
-    -->
+<!--
+═══════════════════════════════════════════════════════
+SCRIPT LOAD ORDER — DO NOT REORDER
+───────────────────────────────────────────────────────
+1. device-config.js — MUST be first, sets window.DEVICECONFIG
+Shows #device-setup-overlay (static in HTML)
+on first launch via display:flex. All other
+scripts depend on this.
+2. pwa-update-manager — non-module utility, no dependencies
+3. config.js — CONSTANTS, SURVEYTYPES (needs nothing)
+4. appState.js — app state shape (needs nothing)
+5. surveys/*.js — data utils register on window
+Both always loaded; proxy guard in
+shayona-data-util.js routes window.dataUtils
+to correct util based on DEVICECONFIG
+6. sync/dataSync.js — module, needs CONSTANTS + dataUtils
+7. uiHandlers.js — module, needs appState + dataUtils
+8. main/index.js — module, boots app after deviceConfigReady
+9. adminAnalytics.js — standalone, no boot dependency
+═══════════════════════════════════════════════════════
+-->
 
-    <!-- 1. DEVICE CONFIG — must be absolute first -->
-    <script src="config/device-config.js"></script>
+<!-- 1. DEVICE CONFIG — must be absolute first -->
+<script src="config/device-config.js"></script>
 
-    <!-- 2. PWA update manager -->
-    <script src="pwa-update-manager.js"></script>
+<!-- 2. PWA update manager -->
+<script src="pwa-update-manager.js"></script>
 
-    <!-- 3. App constants -->
-    <script src="config.js"></script>
+<!-- 3. App constants -->
+<script src="config.js"></script>
 
-    <!-- 4. App state -->
-    <script src="appState.js"></script>
+<!-- 4. App state -->
+<script src="appState.js"></script>
 
-    <!-- 5. Survey data utils — both always loaded -->
-    <script src="surveys/data-util.js"></script>
-    <script src="surveys/shayona-data-util.js"></script>
+<!-- 5. Survey data utils — both always loaded -->
+<script src="surveys/data-util.js"></script>
+<script src="surveys/shayona-data-util.js"></script>
 
-    <!-- 6-8. App modules -->
-    <script type="module" src="sync/dataSync.js"></script>
-    <script type="module" src="uiHandlers.js"></script>
-    <script type="module" src="main/index.js"></script>
+<!-- 6-8. App modules -->
+<script type="module" src="sync/dataSync.js"></script>
+<script type="module" src="uiHandlers.js"></script>
+<script type="module" src="main/index.js"></script>
 
-    <script>
-      window.showCheckmark = function() {
-        const container = document.getElementById('questionContainer');
-        if (!container) {
-          console.error('[CHECKMARK] questionContainer not found');
-          return;
-        }
+<script>
+window.showCheckmark = function() {
+const container = document.getElementById('questionContainer');
+if (!container) {
+console.error('[CHECKMARK] questionContainer not found');
+return;
+}
 
-        const checkmarkDiv = document.createElement('div');
-        checkmarkDiv.className = 'checkmark-container';
+const checkmarkDiv = document.createElement('div');
+checkmarkDiv.className = 'checkmark-container';
 
-        const circleDiv = document.createElement('div');
-        circleDiv.className = 'checkmark-circle';
+const circleDiv = document.createElement('div');
+circleDiv.className = 'checkmark-circle';
 
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('class', 'checkmark-icon');
-        svg.setAttribute('viewBox', '0 0 60 60');
+const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+svg.setAttribute('class', 'checkmark-icon');
+svg.setAttribute('viewBox', '0 0 60 60');
 
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M15 30 L25 40 L45 20');
-        path.setAttribute('fill', 'none');
-        svg.appendChild(path);
-        circleDiv.appendChild(svg);
+const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+path.setAttribute('d', 'M15 30 L25 40 L45 20');
+path.setAttribute('fill', 'none');
+svg.appendChild(path);
+circleDiv.appendChild(svg);
 
-        const textDiv = document.createElement('div');
-        textDiv.className = 'text-center';
+const textDiv = document.createElement('div');
+textDiv.className = 'text-center';
 
-        const heading = document.createElement('h2');
-        heading.className = 'text-2xl font-bold text-gray-800 mb-2';
-        heading.textContent = 'Thank you for your feedback!';
+const heading = document.createElement('h2');
+heading.className = 'text-2xl font-bold text-gray-800 mb-2';
+heading.textContent = 'Thank you for your feedback!';
 
-        const countdown = document.createElement('p');
-        countdown.id = 'resetCountdown';
-        countdown.className = 'text-gray-500 text-lg font-medium';
-        countdown.textContent = 'Kiosk resetting in 5 seconds...';
+const countdown = document.createElement('p');
+countdown.id = 'resetCountdown';
+countdown.className = 'text-gray-500 text-lg font-medium';
+countdown.textContent = 'Kiosk resetting in 5 seconds...';
 
-        textDiv.appendChild(heading);
-        textDiv.appendChild(countdown);
-        checkmarkDiv.appendChild(circleDiv);
-        checkmarkDiv.appendChild(textDiv);
+textDiv.appendChild(heading);
+textDiv.appendChild(countdown);
+checkmarkDiv.appendChild(circleDiv);
+checkmarkDiv.appendChild(textDiv);
 
-        container.innerHTML = '';
-        container.appendChild(checkmarkDiv);
-        console.log('[CHECKMARK] Display function executed successfully');
-      };
+container.innerHTML = '';
+container.appendChild(checkmarkDiv);
+console.log('[CHECKMARK] Display function executed successfully');
+};
 
-      document.addEventListener('gesturestart',  function(e) { e.preventDefault(); });
-      document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
-      document.addEventListener('gestureend',    function(e) { e.preventDefault(); });
+document.addEventListener('gesturestart',  function(e) { e.preventDefault(); });
+document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
+document.addEventListener('gestureend',    function(e) { e.preventDefault(); });
 
-      function isTextInputLike(target) {
-        if (!target) return false;
-        return !!target.closest('input, textarea, select, [contenteditable="true"]');
-      }
+function isTextInputLike(target) {
+if (!target) return false;
+return !!target.closest('input, textarea, select, [contenteditable="true"]');
+}
 
-      function isInteractiveTarget(target) {
-        if (!target) return false;
-        return !!target.closest('button, a, label, input, textarea, select, [role="button"], [role="link"]');
-      }
+function isInteractiveTarget(target) {
+if (!target) return false;
+return !!target.closest('button, a, label, input, textarea, select, [role="button"], [role="link"]');
+}
 
-      function isAdminOrHeaderTarget(target) {
-        if (!target) return false;
-        return !!target.closest('header, #mainTitle, #adminControls');
-      }
+function isAdminOrHeaderTarget(target) {
+if (!target) return false;
+return !!target.closest('header, #mainTitle, #adminControls');
+}
 
-      // FIX: Start screen taps must never be swallowed by the double-tap
-      // prevention handler. On iOS, e.preventDefault() on touchend blocks
-      // the synthetic click event — meaning the first tap sets lastTouchEnd
-      // and any tap within 300ms after (e.g. a confident single tap) is
-      // silently dropped, making the start screen appear completely unresponsive.
-      function isStartScreenTarget(target) {
-        if (!target) return false;
-        return !!target.closest('#kioskStartScreen');
-      }
+// ✅ FIXED: Pure existence check — no lastTouchEnd side effects,
+// no e.preventDefault(), just return immediately so the browser's
+// native synthetic click fires normally on the start screen.
+function isStartScreenTarget(target) {
+if (!target) return false;
+return !!target.closest('#kioskStartScreen');
+}
 
-      let lastTouchEnd = 0;
-      document.addEventListener('touchend', function(e) {
-        const target = e.target;
+let lastTouchEnd = 0;
+document.addEventListener('touchend', function(e) {
+const target = e.target;
 
-        // Never block start screen taps — let them through unconditionally
-        if (isStartScreenTarget(target))      { lastTouchEnd = Date.now(); return; }
-        if (isAdminOrHeaderTarget(target))    { lastTouchEnd = Date.now(); return; }
-        if (isTextInputLike(target))          { lastTouchEnd = Date.now(); return; }
-        if (isInteractiveTarget(target))      { lastTouchEnd = Date.now(); return; }
+// ✅ CRITICAL FIX: Start screen taps bypass ALL double-tap prevention.
+// Previously, setting lastTouchEnd here meant a fast-but-confident
+// single tap within 300ms of the first one (e.g. on reload) was
+// silently dropped by e.preventDefault() below. Now we return
+// immediately — the browser fires its synthetic click unobstructed.
+if (isStartScreenTarget(target)) return;
 
-        const now = Date.now();
-        if (now - lastTouchEnd <= 300) { e.preventDefault(); }
-        lastTouchEnd = now;
-      }, { passive: false });
+if (isAdminOrHeaderTarget(target)) { lastTouchEnd = Date.now(); return; }
+if (isTextInputLike(target))       { lastTouchEnd = Date.now(); return; }
+if (isInteractiveTarget(target))   { lastTouchEnd = Date.now(); return; }
 
-      document.addEventListener('touchmove', function(e) {
-        const target = e.target;
-        if (isAdminOrHeaderTarget(target) || isTextInputLike(target)) { return; }
-        if (e.touches && e.touches.length > 1) { e.preventDefault(); }
-      }, { passive: false });
+const now = Date.now();
+if (now - lastTouchEnd <= 300) { e.preventDefault(); }
+lastTouchEnd = now;
+}, { passive: false });
 
-      if (window.visualViewport) {
-        function updateKeyboardHeight() {
-          const keyboardHeight = Math.max(
-            0,
-            window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop
-          );
-          document.documentElement.style.setProperty('--keyboard-height', keyboardHeight + 'px');
+document.addEventListener('touchmove', function(e) {
+const target = e.target;
+if (isAdminOrHeaderTarget(target) || isTextInputLike(target)) { return; }
+if (e.touches && e.touches.length > 1) { e.preventDefault(); }
+}, { passive: false });
 
-          const focused = document.activeElement;
-          if (keyboardHeight > 0 && focused &&
-              (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT')) {
-            setTimeout(() => {
-              focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 100);
-          }
-        }
-        window.visualViewport.addEventListener('resize', updateKeyboardHeight);
-        window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
-      }
-    </script>
+if (window.visualViewport) {
+function updateKeyboardHeight() {
+const keyboardHeight = Math.max(
+0,
+window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop
+);
+document.documentElement.style.setProperty('--keyboard-height', keyboardHeight + 'px');
 
-    <!-- 9. Admin analytics — no boot dependency -->
-    <script src="adminAnalytics.js"></script>
+const focused = document.activeElement;
+if (keyboardHeight > 0 && focused &&
+(focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT')) {
+setTimeout(() => {
+focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}, 100);
+}
+}
+window.visualViewport.addEventListener('resize', updateKeyboardHeight);
+window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
+}
+</script>
+
+<!-- 9. Admin analytics — no boot dependency -->
+<script src="adminAnalytics.js"></script>
 
 </body>
 </html>

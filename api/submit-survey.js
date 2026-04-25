@@ -208,15 +208,18 @@ function processSingleSubmissionType2(submission) {
 /**
  * Process a Type 3 (Shayona Café) submission into a flat row array.
  *
+ * FIX v4.3.1:
+ *   submit.js (v3.7.0) normalizes dual-star-rating BEFORE queuing:
+ *     IN:  { foodRating: { taste: 4, value: 3 } }
+ *     OUT: { foodRating_taste: 4, foodRating_value: 3 }  (foodRating key deleted)
+ *
+ *   Previous code read source.foodRating (now always undefined) and derived
+ *   taste/value from it — always producing empty strings in the sheet.
+ *
+ *   Fix: read the flat keys directly from source, exactly as submit.js stores them.
+ *
  * Global questions populate for every visitor.
  * Branch columns will be blank for visitors on other branches — correct behaviour.
- *
- * Branch D is split into two micro-paths:
- *   browsingBarrier    → 'Wanted to purchase, but did not' (Failed Intent)
- *   browsingDiscovery  → 'Just browsing'                   (Casual Browser)
- *
- * dual-star-rating (foodRating) is stored as { taste: N, value: N }
- * under the question name 'foodRating'.
  *
  * selector-textarea (finalThoughts) is flattened to
  * final_thoughts_category / final_thoughts_text by normalizeSubmissionPayload()
@@ -250,8 +253,17 @@ function processSingleSubmissionType3(submission) {
     return val.main || '';
   };
 
-  // dual-star-rating stored as { taste: N, value: N } under key 'foodRating'
-  const foodRating = source.foodRating || {};
+  // FIX v4.3.1: submit.js flattens dual-star-rating before queuing.
+  // source.foodRating no longer exists — read the flat keys directly.
+  // Defensive fallback: if somehow the old nested shape arrives (e.g. a
+  // record queued before the submit.js upgrade), derive from it instead.
+  const legacyFoodRating = source.foodRating || {};
+  const tasteRaw  = source.foodRating_taste  != null && source.foodRating_taste  !== ''
+    ? source.foodRating_taste
+    : (legacyFoodRating.taste  != null ? legacyFoodRating.taste  : '');
+  const valueRaw  = source.foodRating_value  != null && source.foodRating_value  !== ''
+    ? source.foodRating_value
+    : (legacyFoodRating.value  != null ? legacyFoodRating.value  : '');
 
   const processedData = {
     id:                      source.id,
@@ -274,8 +286,9 @@ function processSingleSubmissionType3(submission) {
 
     // ── Branch B: Hot Food / Buffet ─────────────────────────
     foodPriority:             source.foodPriority || '',
-    foodRating_taste:         foodRating.taste  != null ? String(foodRating.taste)  : '',
-    foodRating_value:         foodRating.value  != null ? String(foodRating.value)  : '',
+    // FIX v4.3.1: read flat keys, not source.foodRating nested object
+    foodRating_taste:         tasteRaw !== '' ? String(tasteRaw) : '',
+    foodRating_value:         valueRaw !== '' ? String(valueRaw) : '',
 
     // ── Branch C: Catering ──────────────────────────────────
     cateringClarity:          flattenMain(source.cateringClarity),
@@ -285,7 +298,7 @@ function processSingleSubmissionType3(submission) {
     // ── Branch D1: Failed Intent ────────────────────────────
     browsingBarrier:          source.browsingBarrier   || '',
 
-    // ── Branch D2: Casual Browser ── ADD v4.3.0 ─────────────
+    // ── Branch D2: Casual Browser ───────────────────────────
     browsingDiscovery:        source.browsingDiscovery || '',
 
     // ── Final ────────────────────────────────────────────────

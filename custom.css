@@ -1065,4 +1065,30 @@ textarea:focus {
 
   #buttonContainer { padding-top: 20px; }
   #nextBtn         { min-width: 200px; }
+
+/* ── Visual feedback particles (v6.1.0) ─────────────────────────────────── */
+.option-label:active::before,
+.emoji-radio-group label:active::before,
+.number-scale-group label:active::before,
+label[class*="radio"] label:active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle closest-side at center,
+    rgba(232, 96, 0, 0.4) 0%, 
+    rgba(232, 96, 0, 0.15) 40%, 
+    transparent 70%);
+  animation: feedbackBurst 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes feedbackBurst {
+  to { 
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
 }

@@ -1,19 +1,20 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.7.0
+// VERSION: 5.7.1
 // CHANGES FROM 5.6.0:
-//   - FIX: Start screen tap freeze on first launch (Shayona / Temple picker).
-//     Root cause: device-config.js calls window._initializeSurveyState() after
-//     mode selection, correctly showing the start screen. 500ms later the Path 3
-//     safety net fires, sees DEVICECONFIG.kioskMode is set, and calls
-//     initialize() → initializeSurveyState() a second time. showStartScreen()
-//     re-renders the DOM, replacing the tap listener — leaving the first tap
-//     hitting a detached element that no longer responds.
-//   - FIX: Wrap window._initializeSurveyState via Object.defineProperty setter
-//     so that when device-config.js calls it, `started` is set to true BEFORE
-//     the real function runs. Path 3 safety net already checks `started` — it
-//     now correctly skips when _initializeSurveyState already ran.
-//   - No other logic changes.
+//   - FIX: Start screen tap freeze on first launch.
+//     Root cause: on first launch, device-config.js calls
+//     window._initializeSurveyState() → showStartScreen() (tap listener #1).
+//     Then index.js Path 2 and/or Path 3 also fire, calling initialize() →
+//     initializeSurveyState() → showStartScreen() again (listener #2/#3
+//     replacing #1). First tap hits a dead element.
+//   - FIX: navigationSetup.js v3.2.0 sets window.__surveyStateInitialized = true
+//     on first successful run. index.js now checks this flag before calling
+//     initializeSurveyState() in the "device configured" branch.
+//   - REVERT: Object.defineProperty setter approach from v5.7.0 removed —
+//     navigationSetup.js assigns window._initializeSurveyState as a plain
+//     module-bottom assignment, always overwriting the setter silently.
+//   - All other logic unchanged from v5.6.0.
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -37,10 +38,11 @@ let pendingDataHandlersPoll  = null;
 //   Path 2 — listen for deviceConfigReady (first launch, modules win race)
 //   Path 3 — 500ms safety net (first launch, IIFE won race, event was missed)
 //
-// FIX v5.7.0: window._initializeSurveyState is intercepted via
-// Object.defineProperty so that calling it (from device-config.js after mode
-// selection) marks `started = true` before running. This prevents Path 3 from
-// firing a second initialize() when _initializeSurveyState already handled boot.
+// On first launch all three paths may fire. initialize() is guarded by
+// initializationStarted/Completed so only one full init runs.
+// The remaining race — initializeSurveyState() being called by both
+// device-config.js AND initialize() — is handled by
+// window.__surveyStateInitialized in navigationSetup.js v3.2.0.
 
 function startApp() {
   if (document.readyState === 'loading') {
@@ -51,30 +53,6 @@ function startApp() {
 }
 
 let started = false;
-
-// FIX v5.7.0: Intercept the window._initializeSurveyState assignment made by
-// navigationSetup.js at module load time. Wrap the function so any call to it
-// (e.g. from device-config.js confirm handler) sets `started = true` first.
-// This collapses the 500ms race window: by the time Path 3 checks `started`,
-// it will already be true and skip the duplicate initialize().
-Object.defineProperty(window, '_initializeSurveyState', {
-  configurable: true,
-  set(fn) {
-    Object.defineProperty(window, '_initializeSurveyState', {
-      configurable: true,
-      writable: true,
-      value: function guardedInitializeSurveyState() {
-        if (started) {
-          console.log('[INIT] _initializeSurveyState: already started — skipping duplicate call');
-          return;
-        }
-        started = true;
-        console.log('[INIT] _initializeSurveyState called by device-config — marking started');
-        fn();
-      }
-    });
-  }
-});
 
 function onConfigReady() {
   if (started) return;
@@ -94,8 +72,6 @@ if (window.DEVICECONFIG?.kioskMode) {
 
   // Path 3: Safety net — IIFE may have fired deviceConfigReady before this
   // module's listener was registered. Poll once after 500ms.
-  // v5.7.0: `started` will already be true if _initializeSurveyState ran —
-  // this net correctly skips in that case.
   setTimeout(() => {
     if (!started && window.DEVICECONFIG?.kioskMode) {
       console.log('[INIT] deviceConfigReady was missed — starting via safety net');
@@ -350,17 +326,24 @@ function initialize() {
     // Step 7: Setup admin panel
     setupAdminPanel();
 
-    // Step 8: Initialize survey state — guarded by first-launch check.
+    // Step 8: Initialize survey state.
     //
-    // On first launch: skip — device-setup-overlay is active.
-    //   window._initializeSurveyState (wrapped above) is called by
-    //   device-config.js confirm handler after the user picks a mode.
+    // On first launch: device-config.js confirm handler already called
+    // window._initializeSurveyState() after the user picked a mode.
+    // navigationSetup.js v3.2.0 sets window.__surveyStateInitialized = true
+    // on that first successful call. We check that flag here — if already
+    // done, skip entirely to preserve the tap listener on the live start screen.
     //
-    // On all subsequent launches: proceed normally.
+    // On all subsequent launches (kioskMode pre-configured in localStorage):
+    // flag is not yet set, isDeviceConfigured() is true → call normally.
 
     if (isDeviceConfigured()) {
-      console.log('[INIT] ✅ Device configured — initializing survey state directly');
-      initializeSurveyState();
+      if (window.__surveyStateInitialized) {
+        console.log('[INIT] ✅ Survey state already initialized by device-config — skipping duplicate');
+      } else {
+        console.log('[INIT] ✅ Device configured — initializing survey state directly');
+        initializeSurveyState();
+      }
     } else {
       console.log('[INIT] 🆕 First launch — device-setup-overlay active, deferring survey state init');
     }

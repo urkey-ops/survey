@@ -184,6 +184,11 @@ if (stepCounter && appState.totalQuestions) {
 
   console.log('[NAVIGATION] 🆕 Starting fresh survey');
   showStartScreen();
+  // Progress encouragement text (fresh start)
+const stepCounter = document.getElementById('stepCounter');
+if (stepCounter && window.appState?.totalQuestions) {
+  stepCounter.textContent = `Quick start! (1/${window.appState.totalQuestions})`;
+}
   return true;
 }
 

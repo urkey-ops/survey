@@ -7,8 +7,8 @@
 //       • main/index.js           (v5.7.1 — checks __surveyStateInitialized flag)
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v34';
-const RUNTIME_CACHE = 'kiosk-runtime-v34';
+const CACHE_NAME    = 'kiosk-survey-v35';
+const RUNTIME_CACHE = 'kiosk-runtime-v35';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation

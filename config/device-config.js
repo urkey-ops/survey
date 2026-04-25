@@ -1,11 +1,13 @@
 // FILE: config/device-config.js
 // PURPOSE: First script in index.html — sets window.DEVICECONFIG before app loads
-// VERSION: 1.1.3
-// CHANGES FROM 1.1.2:
-//   - FIX B1-07: Frozen start screen race condition on first device launch
-//     Replaced racey deviceConfigReady dispatch with __surveyStateInitialized guard
-//     + retry loop. Uses navigationSetup.js v3.2.0 flag. Eliminates {once:true} 
-//     listener attach-to-null bug. Verified against service-worker v9.8.0 comments.
+// VERSION: 1.1.4
+// CHANGES FROM 1.1.3:
+//   - FIX B1-07b: Complete frozen start screen fix. Waits for index.js 
+//     initializeElements() to wire window.globals.kioskStartScreen before
+//     calling _initializeSurveyState(). Console trace proves: showStartScreen()
+//     was called before DOM elements existed → {once:true} listeners attached
+//     to null. Now polls explicitly for kioskStartScreen + __surveyStateInitialized.
+//     Single 20ms poll loop (subframe-safe). No module changes required.
 
 (function () {
   const STORAGE_KEY = 'deviceConfig';
@@ -53,43 +55,26 @@
           // Restore visibility — app can now render
           document.documentElement.style.visibility = '';
 
-          console.log(`[DEVICE CONFIG] ✅ Mode set: "${mode}" — initializing survey state`);
+          console.log(`[DEVICE CONFIG] ✅ Mode set: "${mode}" — waiting for DOM wiring`);
 
-          // FIX B1-07: Safe state initialization with __surveyStateInitialized guard
-          const initSurveyState = () => {
-            if (window.__surveyStateInitialized) {
-              console.log('[DEVICE CONFIG] ✅ Using navigationSetup.js guard — calling showStartScreen');
-              window.uiHandlers?.showStartScreen?.();
-              return;
-            }
-
-            if (typeof window._initializeSurveyState === 'function') {
-              console.log('[DEVICE CONFIG] ✅ Found _initializeSurveyState — calling');
-              window._initializeSurveyState();
-              return;
-            }
-
-            if (typeof window.uiHandlers?.showStartScreen === 'function') {
-              console.log('[DEVICE CONFIG] ✅ Found uiHandlers.showStartScreen — calling');
-              window.uiHandlers.showStartScreen();
-              return;
-            }
-
-            // Retry loop — waits for index.js/navigationSetup.js to finish boot
-            console.log('[DEVICE CONFIG] ⏳ Waiting for index.js boot — retrying...');
-            const checkReady = () => {
-              if (window.__surveyStateInitialized && window.uiHandlers?.showStartScreen) {
-                console.log('[DEVICE CONFIG] ✅ Boot complete — showStartScreen()');
-                window.uiHandlers.showStartScreen();
-                return;
+          // FIX B1-07b: Wait for index.js Step 1 (initializeElements()) to wire globals
+          const initSurveyStateSafe = () => {
+            // Explicit DOM readiness check — index.js must complete Step 1 first
+            if (window.globals?.kioskStartScreen && window.__surveyStateInitialized !== true) {
+              console.log('[DEVICE CONFIG] ✅ Globals wired + survey not initialized — calling _initializeSurveyState()');
+              if (typeof window._initializeSurveyState === 'function') {
+                window._initializeSurveyState();
               }
-              setTimeout(checkReady, 50);
-            };
-            checkReady();
+              return;
+            }
+
+            // Still waiting for index.js to finish initializeElements()
+            console.log('[DEVICE CONFIG] ⏳ Waiting for index.js DOM wiring...');
+            setTimeout(initSurveyStateSafe, 20);  // Subframe-safe poll
           };
 
-          // Small defer to let DOM settle + let service worker stabilize
-          setTimeout(initSurveyState, 50);
+          // Initial defer — let service worker settle + modules start loading
+          setTimeout(initSurveyStateSafe, 50);
         });
       });
     }

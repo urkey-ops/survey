@@ -261,16 +261,20 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
       }
 
       trackAdminEvent('survey_type_switched', { surveyType: type });
-      console.log(`[SURVEY CONTROLS] ✅ Survey type switched to: ${type} → sheet: ${config?.sheetName}`);
 
-      setTimeout(() => {
-        if (syncStatusMessage) syncStatusMessage.textContent = '';
-        location.reload();
-      }, 1500);
-    });
+  // ✅ ADD HERE (correct place)
+  localStorage.removeItem('kioskState');
+  console.log('[SURVEY CONTROLS] kioskState cleared before reload — fresh start screen');
 
-    return btn;
-  };
+  setTimeout(() => {
+    if (syncStatusMessage) syncStatusMessage.textContent = '';
+    location.reload();
+  }, 1500);
+
+}); // ✅ CLOSE EVENT LISTENER
+
+return btn; // ✅ OUTSIDE listener
+ }; // ✅ close makeBtn function
 
   // Plug-and-play: reads all types from CONSTANTS, no hardcoding
   Object.entries(surveyTypes).forEach(([type, cfg]) => {

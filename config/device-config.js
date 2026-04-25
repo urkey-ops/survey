@@ -1,11 +1,11 @@
 // FILE: config/device-config.js
 // PURPOSE: First script in index.html — sets window.DEVICECONFIG before app loads
-// VERSION: 1.1.2
-// CHANGES FROM 1.1.1:
-//   - FIX B1-06: Corrupt stored config recovery no longer calls showSetupOverlay()
-//     before the function is defined. Restructured IIFE so all showSetupOverlay()
-//     calls happen after the function declaration, eliminating the ReferenceError
-//     risk in Safari/iOS strict mode that could leave the screen permanently black.
+// VERSION: 1.1.3
+// CHANGES FROM 1.1.2:
+//   - FIX B1-07: Frozen start screen race condition on first device launch
+//     Replaced racey deviceConfigReady dispatch with __surveyStateInitialized guard
+//     + retry loop. Uses navigationSetup.js v3.2.0 flag. Eliminates {once:true} 
+//     listener attach-to-null bug. Verified against service-worker v9.8.0 comments.
 
 (function () {
   const STORAGE_KEY = 'deviceConfig';
@@ -55,19 +55,41 @@
 
           console.log(`[DEVICE CONFIG] ✅ Mode set: "${mode}" — initializing survey state`);
 
-          // Trigger survey state init — index.js deferred this on first launch;
-          // overlay confirm handler is responsible for calling it.
-          if (typeof window._initializeSurveyState === 'function') {
-            window._initializeSurveyState();
-          } else if (typeof window.uiHandlers?.showStartScreen === 'function') {
-            window.uiHandlers.showStartScreen();
-          } else {
-            // Last resort — dispatch event so index.js can react.
-            // NOTE (B1-07 — deferred): This branch is a known weak path.
-            // Will be hardened after reviewing navigationSetup.js.
-            console.warn('[DEVICE CONFIG] ⚠️ _initializeSurveyState and uiHandlers unavailable — dispatching deviceConfigReady as last resort');
-            window.dispatchEvent(new CustomEvent('deviceConfigReady'));
-          }
+          // FIX B1-07: Safe state initialization with __surveyStateInitialized guard
+          const initSurveyState = () => {
+            if (window.__surveyStateInitialized) {
+              console.log('[DEVICE CONFIG] ✅ Using navigationSetup.js guard — calling showStartScreen');
+              window.uiHandlers?.showStartScreen?.();
+              return;
+            }
+
+            if (typeof window._initializeSurveyState === 'function') {
+              console.log('[DEVICE CONFIG] ✅ Found _initializeSurveyState — calling');
+              window._initializeSurveyState();
+              return;
+            }
+
+            if (typeof window.uiHandlers?.showStartScreen === 'function') {
+              console.log('[DEVICE CONFIG] ✅ Found uiHandlers.showStartScreen — calling');
+              window.uiHandlers.showStartScreen();
+              return;
+            }
+
+            // Retry loop — waits for index.js/navigationSetup.js to finish boot
+            console.log('[DEVICE CONFIG] ⏳ Waiting for index.js boot — retrying...');
+            const checkReady = () => {
+              if (window.__surveyStateInitialized && window.uiHandlers?.showStartScreen) {
+                console.log('[DEVICE CONFIG] ✅ Boot complete — showStartScreen()');
+                window.uiHandlers.showStartScreen();
+                return;
+              }
+              setTimeout(checkReady, 50);
+            };
+            checkReady();
+          };
+
+          // Small defer to let DOM settle + let service worker stabilize
+          setTimeout(initSurveyState, 50);
         });
       });
     }

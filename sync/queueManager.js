@@ -1,27 +1,19 @@
 // FILE: sync/queueManager.js
 // PURPOSE: Queue access and maintenance for multi-survey offline storage
-// VERSION: 3.2.0
-// CHANGES FROM 3.1.0:
-//   - FIX: getSurveyTypeConfigs() reads ALL keys from CONSTANTS.SURVEY_TYPES
-//     dynamically — no longer hardcodes type1 + type2 only.
-//     type3 (shayonaQueue) now included in all counts, clears, and validation.
-//   - FIX: updateAdminCount() tooltip built dynamically from all type configs
-//     instead of hardcoded type1/type2 lookups.
-//   - Future-proof: adding type4+ to config.js requires zero changes here.
+// VERSION: 3.2.1
+// CHANGES FROM 3.2.0:
+//   - FIX B2-07: Queue overflow now logs the actual number of records dropped,
+//     not just 'removing oldest' (which implied only one was removed).
+//     slice(-(MAX_QUEUE_SIZE-1)) can drop many records silently if queue
+//     grew beyond MAX_QUEUE_SIZE through a race or config change.
 // DEPENDENCIES: storageUtils.js
 
 import { safeGetLocalStorage, safeSetLocalStorage } from './storageUtils.js';
 
-/**
- * Build the list of all known survey type configs from CONSTANTS.SURVEY_TYPES.
- * Reads keys dynamically — never hardcodes type names.
- * Mirrors the same pattern used in dataSync.js v3.5.0.
- */
 function getSurveyTypeConfigs() {
   const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
   const typeKeys    = Object.keys(surveyTypes);
 
-  // If CONSTANTS hasn't loaded yet, return a minimal type1 entry
   if (typeKeys.length === 0) {
     return [{
       surveyType: 'type1',
@@ -30,7 +22,7 @@ function getSurveyTypeConfigs() {
   }
 
   return typeKeys.map(typeKey => {
-    const cfg        = surveyTypes[typeKey] || {};
+    const cfg         = surveyTypes[typeKey] || {};
     const fallbackKey = typeKey === 'type1'
       ? (window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue')
       : `${typeKey}Queue`;
@@ -74,8 +66,8 @@ function safeRemoveLocalStorage(key) {
 }
 
 function checkQueueHealth(queueSize) {
-  const MAX     = window.CONSTANTS?.MAX_QUEUE_SIZE           || 250;
-  const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD  || 200;
+  const MAX     = window.CONSTANTS?.MAX_QUEUE_SIZE          || 250;
+  const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 200;
 
   if (queueSize >= WARNING) {
     console.warn(`⚠️ [QUEUE WARNING] Queue at ${queueSize}/${MAX} records`);
@@ -107,16 +99,11 @@ function normalizeQueue(rawQueue, key) {
   return normalized;
 }
 
-/**
- * Returns count + key for every configured survey type.
- * Used by countUnsyncedRecords() and updateAdminCount().
- */
 function getCountsByQueue() {
   return getSurveyTypeConfigs().map(({ surveyType, queueKey }) => {
     const queue      = safeGetLocalStorage(queueKey);
     const normalized = normalizeQueue(queue, queueKey);
 
-    // Write back deduplicated version if it changed
     if (Array.isArray(queue) && normalized.length !== queue.length) {
       safeSetLocalStorage(queueKey, normalized);
     }
@@ -131,7 +118,7 @@ function hasValidSubmissionIdentity(submission) {
 
 function hasValidSubmissionTimestamp(submission) {
   return !!(
-    submission?.timestamp  ||
+    submission?.timestamp   ||
     submission?.completedAt ||
     submission?.createdAt   ||
     submission?.submittedAt
@@ -142,10 +129,6 @@ function hasValidSubmissionTimestamp(submission) {
 // EXPORTS
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Get submission queue from localStorage.
- * @param {string} [overrideKey] - Optional explicit storage key
- */
 export function getSubmissionQueue(overrideKey) {
   const key        = getQueueKey(overrideKey);
   const queue      = safeGetLocalStorage(key);
@@ -158,11 +141,6 @@ export function getSubmissionQueue(overrideKey) {
   return normalized;
 }
 
-/**
- * Count unsynced records.
- * With no key: sums across ALL configured survey types (including type3).
- * With a key:  counts only that specific queue.
- */
 export function countUnsyncedRecords(overrideKey) {
   if (overrideKey) {
     return getSubmissionQueue(overrideKey).length;
@@ -171,10 +149,6 @@ export function countUnsyncedRecords(overrideKey) {
   return getCountsByQueue().reduce((sum, item) => sum + item.count, 0);
 }
 
-/**
- * Update the admin panel unsynced count display.
- * Tooltip lists every type dynamically — no hardcoded type names.
- */
 export function updateAdminCount() {
   const counts = getCountsByQueue();
   const total  = counts.reduce((sum, item) => sum + item.count, 0);
@@ -186,7 +160,6 @@ export function updateAdminCount() {
   if (display) {
     display.textContent = String(total);
 
-    // Build tooltip dynamically from all types
     const nonZero = counts.filter(c => c.count > 0);
     display.title = nonZero.length > 0
       ? nonZero.map(c => `${c.surveyType}: ${c.count}`).join(' | ')
@@ -196,11 +169,6 @@ export function updateAdminCount() {
   return total;
 }
 
-/**
- * Add submission to queue.
- * @param {Object} submission
- * @param {string} [overrideKey]
- */
 export function addToQueue(submission, overrideKey) {
   const key            = getQueueKey(overrideKey);
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
@@ -208,13 +176,15 @@ export function addToQueue(submission, overrideKey) {
 
   checkQueueHealth(submissionQueue.length);
 
-  // Deduplicate by id before adding
   if (submission?.id) {
     submissionQueue = submissionQueue.filter(item => item?.id !== submission.id);
   }
 
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-    console.error(`🚨 [QUEUE] Full at ${MAX_QUEUE_SIZE} — removing oldest`);
+    // FIX B2-07: Log actual drop count — slice(-(MAX_QUEUE_SIZE-1)) can drop
+    // many records if queue somehow grew beyond MAX_QUEUE_SIZE.
+    const dropCount = submissionQueue.length - (MAX_QUEUE_SIZE - 1);
+    console.error(`🚨 [QUEUE] Full at ${submissionQueue.length}/${MAX_QUEUE_SIZE} — removing ${dropCount} oldest record(s)`);
     submissionQueue = submissionQueue.slice(-(MAX_QUEUE_SIZE - 1));
   }
 
@@ -225,11 +195,6 @@ export function addToQueue(submission, overrideKey) {
   updateAdminCount();
 }
 
-/**
- * Remove submissions by IDs.
- * @param {string[]} ids
- * @param {string}   [overrideKey]
- */
 export function removeFromQueue(ids, overrideKey) {
   const key             = getQueueKey(overrideKey);
   const submissionQueue = getSubmissionQueue(key);
@@ -239,7 +204,7 @@ export function removeFromQueue(ids, overrideKey) {
     return 0;
   }
 
-  const idsToRemove  = new Set(ids.filter(Boolean));
+  const idsToRemove   = new Set(ids.filter(Boolean));
   const filteredQueue = submissionQueue.filter(sub => !idsToRemove.has(sub?.id));
   const removedCount  = submissionQueue.length - filteredQueue.length;
 
@@ -250,10 +215,6 @@ export function removeFromQueue(ids, overrideKey) {
   return removedCount;
 }
 
-/**
- * Clear entire queue.
- * @param {string} [overrideKey]
- */
 export function clearQueue(overrideKey) {
   const key       = getQueueKey(overrideKey);
   const queueSize = getSubmissionQueue(key).length;
@@ -267,10 +228,6 @@ export function clearQueue(overrideKey) {
   return removed;
 }
 
-/**
- * Validate queue submissions — splits into valid / invalid.
- * @param {string} [overrideKey]
- */
 export function validateQueue(overrideKey) {
   const key   = getQueueKey(overrideKey);
   const queue = getSubmissionQueue(key);

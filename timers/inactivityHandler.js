@@ -1,11 +1,12 @@
 // FILE: timers/inactivityHandler.js
 // PURPOSE: Handle user inactivity detection and auto-reset
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 3.4.1
-// CHANGES FROM 3.4.0:
-//   - ADD: explicit comment that Q1 inactivity discard is intentional product behavior
-//     (treat as bounce, do not save partial queue record if user never progresses past Q1)
-//   - No logic changes
+// VERSION: 3.4.2
+// CHANGES FROM 3.4.1:
+//   - FIX B2-01: INACTIVITY_TIMEOUT_MS fallback corrected from 30000 to 60000 (matches config.js)
+//   - FIX B2-02: SYNC_INTERVAL_MS fallback corrected from 900000 to 300000 (matches config.js)
+//   - FIX B2-04: Partial abandonment now uses dataHandlers.addToQueue() instead of manual
+//     localStorage push — ensures deduplication, health checks, and admin count update
 
 let boundResetInactivityTimer = null;
 let throttleTimeout = null;
@@ -18,12 +19,12 @@ let focusHandlerBound = false;
 
 function getDependencies() {
   return {
-    INACTIVITY_TIMEOUT_MS: window.CONSTANTS?.INACTIVITY_TIMEOUT_MS ?? 30000,
-    SYNC_INTERVAL_MS: window.CONSTANTS?.SYNC_INTERVAL_MS ?? 900000,
-    MAX_QUEUE_SIZE: window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250,
-    appState: window.appState,
+    INACTIVITY_TIMEOUT_MS: window.CONSTANTS?.INACTIVITY_TIMEOUT_MS ?? 60000,  // FIX B2-01: was 30000
+    SYNC_INTERVAL_MS:      window.CONSTANTS?.SYNC_INTERVAL_MS      ?? 300000, // FIX B2-02: was 900000
+    MAX_QUEUE_SIZE:        window.CONSTANTS?.MAX_QUEUE_SIZE         ?? 250,
+    appState:     window.appState,
     dataHandlers: window.dataHandlers,
-    dataUtils: window.dataUtils,
+    dataUtils:    window.dataUtils,
     timerManager: window.timerManager,
   };
 }
@@ -34,7 +35,7 @@ function _getStorageKey() {
   return (
     window.CONSTANTS?.STORAGE_KEY_STATE ||
     window.appState?.storageKey ||
-    'kioskAppState'
+    'kioskAppState'  // ⚠️ SIDE NOTE B2-03: should be 'kioskState' — fix together with B1-10
   );
 }
 
@@ -138,8 +139,8 @@ export function resetInactivityTimer() {
 // ── Inactivity timeout handler ────────────────────────────────────────────────
 
 function handleInactivityTimeout(dataUtils, appState) {
-  const idx = appState.currentQuestionIndex;
-  const questions = getQuestions();
+  const idx             = appState.currentQuestionIndex;
+  const questions       = getQuestions();
   const currentQuestion = questions[idx];
 
   console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion?.id})`);
@@ -173,47 +174,33 @@ function handleInactivityTimeout(dataUtils, appState) {
   stopQuestionTimer(currentQuestion?.id);
 
   const totalTimeSeconds = getTotalSurveyTime();
-  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+  const surveyType       = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
 
   const queueKey =
     window.CONSTANTS?.SURVEY_TYPES?.[surveyType]?.storageKey ||
     window.CONSTANTS?.STORAGE_KEY_QUEUE ||
     'submissionQueue';
 
-  const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
-
   const { dataHandlers } = getDependencies();
-  let submissionQueue = dataHandlers.getSubmissionQueue(queueKey);
 
-  if (!Array.isArray(submissionQueue)) {
-    submissionQueue = [];
-  }
-
-  if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-    console.warn(`[INACTIVITY] Queue full (${MAX_QUEUE_SIZE}) — trimming oldest`);
-    submissionQueue = submissionQueue.slice(-(MAX_QUEUE_SIZE - 1));
-  }
-
-  const timestamp = new Date().toISOString();
+  const timestamp   = new Date().toISOString();
   const partialData = {
     ...appState.formData,
-    id: appState.formData?.id || dataHandlers.generateUUID(),
+    id:                       appState.formData?.id || dataHandlers.generateUUID(),
     surveyType,
-    completionTimeSeconds: totalTimeSeconds,
-    questionTimeSpent: { ...appState.questionTimeSpent },
-    abandonedAt: timestamp,
-    abandonedAtQuestion: currentQuestion?.id,
+    completionTimeSeconds:    totalTimeSeconds,
+    questionTimeSpent:        { ...appState.questionTimeSpent },
+    abandonedAt:              timestamp,
+    abandonedAtQuestion:      currentQuestion?.id,
     abandonedAtQuestionIndex: idx,
-    sync_status: 'unsynced_inactivity',
+    sync_status:              'unsynced_inactivity',
   };
 
-  submissionQueue.push(partialData);
-  dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
+  // FIX B2-04: Use addToQueue() instead of manual push so deduplication,
+  // health checks, and admin count update all run correctly.
+  dataHandlers.addToQueue(partialData, queueKey);
 
-  console.log(
-    `[INACTIVITY] Partial abandonment saved ` +
-    `(queue ${surveyType}: ${submissionQueue.length}/${MAX_QUEUE_SIZE})`
-  );
+  console.log(`[INACTIVITY] Partial abandonment saved to queue "${queueKey}" (${surveyType})`);
 
   try {
     dataHandlers.recordAnalytics('survey_abandoned', {
@@ -244,20 +231,20 @@ export function addInactivityListeners() {
 
   boundResetInactivityTimer = throttledResetInactivityTimer;
 
-  document.addEventListener('mousemove', boundResetInactivityTimer, { passive: true });
-  document.addEventListener('keydown', boundResetInactivityTimer, { passive: true });
+  document.addEventListener('mousemove',  boundResetInactivityTimer, { passive: true });
+  document.addEventListener('keydown',    boundResetInactivityTimer, { passive: true });
   document.addEventListener('touchstart', boundResetInactivityTimer, { passive: true });
-  document.addEventListener('click', boundResetInactivityTimer, { passive: true });
+  document.addEventListener('click',      boundResetInactivityTimer, { passive: true });
 
   console.log('[INACTIVITY] Listeners active (throttled, passive)');
 }
 
 export function removeInactivityListeners() {
   if (boundResetInactivityTimer) {
-    document.removeEventListener('mousemove', boundResetInactivityTimer);
-    document.removeEventListener('keydown', boundResetInactivityTimer);
+    document.removeEventListener('mousemove',  boundResetInactivityTimer);
+    document.removeEventListener('keydown',    boundResetInactivityTimer);
     document.removeEventListener('touchstart', boundResetInactivityTimer);
-    document.removeEventListener('click', boundResetInactivityTimer);
+    document.removeEventListener('click',      boundResetInactivityTimer);
     boundResetInactivityTimer = null;
   }
 
@@ -355,18 +342,10 @@ export function performKioskReset() {
 
   const { appState, dataHandlers } = getDependencies();
 
-  // Cleanup UI listeners
-  if (window.uiHandlers?.cleanupStartScreenListeners) {
-    window.uiHandlers.cleanupStartScreenListeners();
-  }
-  if (window.uiHandlers?.cleanupInputFocusScroll) {
-    window.uiHandlers.cleanupInputFocusScroll();
-  }
-  if (window.uiHandlers?.cleanupIntervals) {
-    window.uiHandlers.cleanupIntervals();
-  }
+  if (window.uiHandlers?.cleanupStartScreenListeners) window.uiHandlers.cleanupStartScreenListeners();
+  if (window.uiHandlers?.cleanupInputFocusScroll)     window.uiHandlers.cleanupInputFocusScroll();
+  if (window.uiHandlers?.cleanupIntervals)            window.uiHandlers.cleanupIntervals();
 
-  // Cleanup video loop to prevent stacking on reset
   try {
     if (typeof window.cleanupVideoLoop === 'function') {
       window.cleanupVideoLoop();
@@ -376,19 +355,17 @@ export function performKioskReset() {
     console.warn('[INACTIVITY] Video loop cleanup failed (non-fatal):', videoErr);
   }
 
-  // Cleanup visibility/focus handlers to prevent duplicate binds on re-init
   cleanupInactivityVisibilityHandler();
-
   _safeRemoveStorageKey();
 
   appState.formData = {
-    id: dataHandlers.generateUUID(),
+    id:        dataHandlers.generateUUID(),
     timestamp: new Date().toISOString(),
   };
   appState.currentQuestionIndex = 0;
-  appState.surveyStartTime = null;
-  appState.questionStartTimes = {};
-  appState.questionTimeSpent = {};
+  appState.surveyStartTime      = null;
+  appState.questionStartTimes   = {};
+  appState.questionTimeSpent    = {};
 
   if (appState.countdownInterval) {
     clearInterval(appState.countdownInterval);
@@ -406,7 +383,6 @@ export function performKioskReset() {
   if (nextBtn) nextBtn.disabled = true;
   if (prevBtn) prevBtn.disabled = true;
 
-  // Re-init admin panel after short delay
   setTimeout(() => {
     try {
       if (typeof window.setupAdminPanel === 'function') {
@@ -417,7 +393,6 @@ export function performKioskReset() {
       console.warn('[INACTIVITY] Admin panel re-init failed:', err);
     }
 
-    // Re-bind visibility/focus handlers after reset
     setupInactivityVisibilityHandler();
     console.log('[INACTIVITY] ✅ Visibility handlers re-bound after reset');
   }, 150);
@@ -454,10 +429,10 @@ function stopQuestionTimer(questionId) {
   if (dataHandlers) {
     dataHandlers.safeSetLocalStorage(_getStorageKey(), {
       currentQuestionIndex: appState.currentQuestionIndex,
-      formData: { ...appState.formData },
-      surveyStartTime: appState.surveyStartTime,
-      questionStartTimes: { ...appState.questionStartTimes },
-      questionTimeSpent: { ...appState.questionTimeSpent },
+      formData:             { ...appState.formData },
+      surveyStartTime:      appState.surveyStartTime,
+      questionStartTimes:   { ...appState.questionStartTimes },
+      questionTimeSpent:    { ...appState.questionTimeSpent },
     });
   }
 }

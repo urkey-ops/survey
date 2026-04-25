@@ -1,12 +1,12 @@
 // FILE: sync/dataSync.js
 // PURPOSE: Core data synchronization - offline-first, queue-based, retry-safe
-// VERSION: 3.5.0
-// CHANGES FROM 3.4.0:
-//   - FIX: getSurveyTypeConfigs() now reads ALL entries from CONSTANTS.SURVEY_TYPES
-//     dynamically instead of hardcoding only type1 + type2.
-//     type3 (shayonaQueue / café) is now included in every sync pass.
-//   - FIX: getTotalUnsyncedAcrossQueues() benefits automatically (uses getSurveyTypeConfigs)
-//   - BUMP: boot log version string
+// VERSION: 3.5.1
+// CHANGES FROM 3.5.0:
+//   - FIX B2-05: Removed redundant second hasMeaningfulResponse() filter pass in
+//     syncSingleQueue(). Records already cleaned by removeMeaninglessRecords() were
+//     being filtered again after validateQueue(), producing dead analytics events
+//     ('blank_records_filtered_second_pass') that could never fire in practice.
+//     filteredValidSubmissions now uses validSubmissions from validateQueue() directly.
 // DEPENDENCIES: storageUtils.js, queueManager.js, analyticsManager.js, networkHandler.js
 
 import {
@@ -60,22 +60,12 @@ function clearSyncStatusLater(delayMs = 3000) {
 
 /**
  * Build the list of all known survey type configs from CONSTANTS.SURVEY_TYPES.
- *
- * IMPORTANT: reads SURVEY_TYPES keys dynamically — never hardcodes type names.
- * Adding a new type to config.js (e.g. type4) is all that's needed;
- * this function picks it up automatically on the next sync cycle.
- *
- * Fallback chain per type:
- *   storageKey  → STORAGE_KEY_QUEUE (type1 only) → '<type>Queue'
- *   sheetName   → 'Sheet1'
- *   label       → type key
+ * Reads keys dynamically — never hardcodes type names.
  */
 function getSurveyTypeConfigs() {
   const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
   const typeKeys    = Object.keys(surveyTypes);
 
-  // If CONSTANTS hasn't loaded yet fall back to a minimal type1 entry
-  // so sync never completely silently fails on boot.
   if (typeKeys.length === 0) {
     return [{
       surveyType: 'type1',
@@ -88,7 +78,6 @@ function getSurveyTypeConfigs() {
   return typeKeys.map(typeKey => {
     const cfg = surveyTypes[typeKey] || {};
 
-    // Default queue key: cfg.storageKey → legacy STORAGE_KEY_QUEUE (type1 only) → '<typeKey>Queue'
     const fallbackKey = typeKey === 'type1'
       ? (window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue')
       : `${typeKey}Queue`;
@@ -139,8 +128,8 @@ function setManualSyncButtonState(isBusy) {
   const syncButton = window.globals?.syncButton;
   if (!syncButton) return;
 
-  syncButton.disabled     = !!isBusy;
-  syncButton.textContent  = isBusy ? 'Syncing...' : 'Sync Data';
+  syncButton.disabled    = !!isBusy;
+  syncButton.textContent = isBusy ? 'Syncing...' : 'Sync Data';
   syncButton.setAttribute('aria-busy', isBusy ? 'true' : 'false');
 }
 
@@ -154,40 +143,17 @@ function getTotalUnsyncedAcrossQueues() {
   }, 0);
 }
 
-/**
- * Determines whether a queued record contains at least one real survey answer.
- *
- * After normalizeSubmissionPayload runs in submit.js, selector-textarea data
- * exists as flat string fields (e.g. final_thoughts_category, final_thoughts_text)
- * so the plain string branch handles them automatically.
- *
- * This function is also called pre-normalization so we handle the raw
- * { category, text } shape defensively.
- */
 function hasMeaningfulResponse(record = {}) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     return false;
   }
 
   const technicalKeys = new Set([
-    'id',
-    'submissionId',
-    'sessionId',
-    'timestamp',
-    'completedAt',
-    'submittedAt',
-    'abandonedAt',
-    'abandonedReason',
-    'surveyStartTime',
-    'surveyType',
-    'kioskId',
-    'sync_status',
-    'syncStatus',
-    'questionTimeSpent',
-    'questionStartTimes',
-    'completionTimeSeconds',
-    'currentQuestionIndex',
-    'isPartial'
+    'id', 'submissionId', 'sessionId', 'timestamp', 'completedAt',
+    'submittedAt', 'abandonedAt', 'abandonedReason', 'surveyStartTime',
+    'surveyType', 'kioskId', 'sync_status', 'syncStatus',
+    'questionTimeSpent', 'questionStartTimes', 'completionTimeSeconds',
+    'currentQuestionIndex', 'isPartial'
   ]);
 
   return Object.entries(record).some(([key, value]) => {
@@ -195,18 +161,16 @@ function hasMeaningfulResponse(record = {}) {
     if (value == null)           return false;
 
     if (typeof value === 'string')  return value.trim() !== '';
-    if (typeof value === 'number')  return true; // 0 is a valid rating
+    if (typeof value === 'number')  return true;
     if (Array.isArray(value))       return value.length > 0;
 
     if (typeof value === 'object') {
-      // selector-textarea raw shape (pre-normalization defensive guard)
       if ('category' in value || 'text' in value) {
         const hasCategory = value.category != null && String(value.category).trim() !== '';
         const hasText     = typeof value.text === 'string' && value.text.trim() !== '';
         return hasCategory || hasText;
       }
 
-      // radio-with-other / radio-with-followup
       if ('main' in value || 'other' in value || 'followup' in value) {
         const main     = typeof value.main  === 'string' ? value.main.trim()  : value.main;
         const other    = typeof value.other === 'string' ? value.other.trim() : value.other;
@@ -441,29 +405,11 @@ async function syncSingleQueue(target, isManual = false) {
 
   const { valid: validSubmissions, invalid: invalidSubmissions } = validateQueue(queueKey);
 
-  const secondPassDropped = [];
-  const filteredValidSubmissions = Array.isArray(validSubmissions)
-    ? validSubmissions.filter((record) => {
-        const keep = hasMeaningfulResponse(record);
-        if (!keep) secondPassDropped.push(record);
-        return keep;
-      })
-    : [];
-
-  if (secondPassDropped.length > 0) {
-    const secondPassIds = secondPassDropped.map(r => r?.id).filter(Boolean);
-    if (secondPassIds.length > 0) {
-      removeFromQueue(secondPassIds, queueKey);
-      console.log(`[DATA SYNC] Removed ${secondPassIds.length} second-pass blank record(s) from "${queueKey}"`);
-    }
-    try {
-      recordAnalytics('blank_records_filtered_second_pass', {
-        surveyType, queueKey, droppedCount: secondPassDropped.length, manual: isManual
-      });
-    } catch (e) { /* non-critical */ }
-  }
-
-  if (!Array.isArray(filteredValidSubmissions) || filteredValidSubmissions.length === 0) {
+  // FIX B2-05: Removed redundant second hasMeaningfulResponse() filter pass.
+  // cleanedQueue already guarantees all records are meaningful after
+  // removeMeaninglessRecords(). validateQueue() splits valid/invalid by
+  // identity + timestamp — no second content filter needed.
+  if (!Array.isArray(validSubmissions) || validSubmissions.length === 0) {
     console.error(`[DATA SYNC] No valid submissions found for ${surveyType}`);
     if (invalidSubmissions?.length > 0) {
       console.warn(`[DATA SYNC] ${invalidSubmissions.length} invalid record(s) filtered out for ${surveyType}`);
@@ -483,7 +429,7 @@ async function syncSingleQueue(target, isManual = false) {
   }
 
   const payload = {
-    submissions: filteredValidSubmissions,
+    submissions: validSubmissions,
     surveyType,
     sheetName,
     kioskId:   window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
@@ -689,12 +635,12 @@ export {
 // BOOT LOG
 // ═══════════════════════════════════════════════════════════
 
-const _allConfigs     = getSurveyTypeConfigs();
-const _bootType       = getActiveSurveyType();
-const _bootConfig     = getQueueConfigByType(_bootType);
+const _allConfigs = getSurveyTypeConfigs();
+const _bootType   = getActiveSurveyType();
+const _bootConfig = getQueueConfigByType(_bootType);
 
 console.log('═══════════════════════════════════════════════════════');
-console.log('🔄 DATA SYNC MODULE LOADED (v3.5.0)');
+console.log('🔄 DATA SYNC MODULE LOADED (v3.5.1)');
 console.log('═══════════════════════════════════════════════════════');
 console.log(`  Active Survey : ${_bootType}`);
 console.log(`  Queue Key     : ${_bootConfig.queueKey}`);

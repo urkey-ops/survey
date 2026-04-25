@@ -2,22 +2,20 @@
 // PURPOSE: Setup navigation buttons and activity tracking
 // DEPENDENCIES: ui/navigation/core.js, ui/navigation/startScreen.js,
 //               window.uiHandlers (inactivity only), window.globals
-// VERSION: 3.1.0
-// CHANGES FROM 3.0.0:
-//   - FIX: First-launch flash — initializeSurveyState() now checks whether
-//     #device-setup-overlay is still visible before calling showStartScreen().
-//     On first launch the overlay is rendered and visible in the HTML; calling
-//     showStartScreen() before the user picks a mode caused a start-screen
-//     flash behind the overlay. Guard added as a single early-return at the
-//     top of initializeSurveyState().
-//   - ADD: isSetupOverlayActive() helper — DOM-only visibility check on
-//     #device-setup-overlay, no imports required, safe to call at any point
-//     in the init sequence.
-//   - ADD: window._initializeSurveyState = initializeSurveyState — exposes
-//     initializeSurveyState on window so device-config.js (non-module IIFE,
-//     cannot ES-import) can call it directly after the user picks a mode on
-//     first launch, without going through window.uiHandlers.
-//   - All other logic, BUG #21 fix, and module structure preserved exactly.
+// VERSION: 3.2.0
+// CHANGES FROM 3.1.0:
+//   - FIX: Start screen tap freeze on first launch.
+//     Root cause: initializeSurveyState() was called multiple times —
+//     once by device-config.js confirm handler (correct), then again by
+//     index.js Path 2 and Path 3 boot paths (duplicate). Each call re-ran
+//     showStartScreen(), replacing the tap listener with a new one attached
+//     to a freshly re-rendered DOM element. The previous listener was lost.
+//   - FIX: Added window.__surveyStateInitialized idempotency flag.
+//     Set to true on the FIRST successful call to initializeSurveyState().
+//     All subsequent calls return early. Flag persists on window so
+//     index.js and device-config.js can both read it without imports.
+//   - All other logic, BUG #21 fix, overlay guard, and module structure
+//     preserved exactly.
 
 import { goNext, goPrev, showQuestion } from '../ui/navigation/core.js';
 import { showStartScreen }              from '../ui/navigation/startScreen.js';
@@ -27,12 +25,6 @@ let boundNextHandler   = null;
 let boundPrevHandler   = null;
 
 // ── Setup overlay guard ───────────────────────────────────────────────────────
-//
-// Returns true if #device-setup-overlay exists in the DOM AND is currently
-// visible — i.e. display is not 'none', no .hidden class, visibility not
-// hidden. Uses getComputedStyle so it catches both inline and class-based
-// hiding. Called at the top of initializeSurveyState() to prevent
-// showStartScreen() firing before the user has selected a device mode.
 
 function isSetupOverlayActive() {
   const overlay = document.getElementById('device-setup-overlay');
@@ -46,9 +38,6 @@ function isSetupOverlayActive() {
 
 // ── Navigation listeners ──────────────────────────────────────────────────────
 
-/**
- * Remove existing navigation listeners if present.
- */
 function cleanupNavigationListeners() {
   const nextBtn = window.globals?.nextBtn;
   const prevBtn = window.globals?.prevBtn;
@@ -66,9 +55,6 @@ function cleanupNavigationListeners() {
   navigationBound  = false;
 }
 
-/**
- * Setup navigation button event listeners.
- */
 export function setupNavigation() {
   const nextBtn = window.globals?.nextBtn;
   const prevBtn = window.globals?.prevBtn;
@@ -78,7 +64,6 @@ export function setupNavigation() {
     return false;
   }
 
-  // goNext and goPrev are imported directly — always available
   cleanupNavigationListeners();
 
   boundNextHandler = (event) => goNext(event);
@@ -93,10 +78,6 @@ export function setupNavigation() {
   return true;
 }
 
-/**
- * Setup inactivity tracking listeners.
- * addInactivityListeners is correctly on window.uiHandlers — keep as-is.
- */
 export function setupActivityTracking() {
   const { addInactivityListeners } = window.uiHandlers || {};
 
@@ -113,32 +94,50 @@ export function setupActivityTracking() {
 /**
  * Initialize survey state — resume in-progress or start fresh.
  *
+ * IDEMPOTENCY GUARD (v3.2.0):
+ * window.__surveyStateInitialized is set to true on the first successful run.
+ * Any subsequent call (from index.js Path 2/3 race, admin reset re-init, etc.)
+ * returns early immediately. This is the single source of truth — it lives on
+ * window so device-config.js, index.js, and any other non-module caller can
+ * all read it without imports.
+ *
+ * To intentionally re-run (e.g. after a kiosk reset), call:
+ *   window.__surveyStateInitialized = false;
+ *   window._initializeSurveyState();
+ *
  * BUG #21 FIX preserved:
  * Resume path explicitly calls addInactivityListeners() after
  * resetInactivityTimer() so listeners are never lost on resume.
  *
- * FIRST-LAUNCH GUARD (v3.1.0):
- * If #device-setup-overlay is still visible, the user has not yet chosen a
- * device mode. Return early — the overlay confirm handler in device-config.js
- * calls window._initializeSurveyState() after the user selects a mode and
- * the overlay is hidden.
+ * FIRST-LAUNCH OVERLAY GUARD (v3.1.0) preserved:
+ * If #device-setup-overlay is still visible, return early.
  */
 export function initializeSurveyState() {
-  // ── First-launch guard ────────────────────────────────────────────────────
+  // ── Idempotency guard (v3.2.0) ────────────────────────────────────────────
+  if (window.__surveyStateInitialized) {
+    console.log('[NAVIGATION] ⏭ Survey state already initialized — skipping duplicate call');
+    return false;
+  }
+
+  // ── First-launch overlay guard (v3.1.0) ───────────────────────────────────
   if (isSetupOverlayActive()) {
     console.log('[NAVIGATION] ⏸ Device setup overlay active — deferring survey state init');
     return false;
   }
 
+  // Mark initialized BEFORE running — prevents re-entrant calls during
+  // showStartScreen() or any async continuation from also passing the guard.
+  window.__surveyStateInitialized = true;
+
   const appState         = window.appState;
   const kioskStartScreen = window.globals?.kioskStartScreen;
   const kioskVideo       = window.globals?.kioskVideo;
 
-  // Inactivity helpers still come from window.uiHandlers (correct location)
   const { resetInactivityTimer, addInactivityListeners } = window.uiHandlers || {};
 
   if (!appState) {
     console.error('[NAVIGATION] appState not available');
+    window.__surveyStateInitialized = false; // allow retry if appState arrives later
     return false;
   }
 
@@ -153,7 +152,6 @@ export function initializeSurveyState() {
       kioskVideo.pause();
     }
 
-    // showQuestion imported directly — always available
     showQuestion(appState.currentQuestionIndex);
 
     if (typeof resetInactivityTimer === 'function') {
@@ -169,15 +167,10 @@ export function initializeSurveyState() {
   }
 
   console.log('[NAVIGATION] 🆕 Starting fresh survey');
-
-  // showStartScreen imported directly — always available
   showStartScreen();
   return true;
 }
 
-/**
- * Cleanup helper for re-init / teardown scenarios.
- */
 export function cleanupNavigationSetup() {
   cleanupNavigationListeners();
   console.log('[NAVIGATION] Navigation listener cleanup complete');
@@ -185,12 +178,9 @@ export function cleanupNavigationSetup() {
 
 // ── Global bridge for non-module callers ──────────────────────────────────────
 //
-// device-config.js is a plain IIFE (not an ES module) and cannot import
-// initializeSurveyState directly. Exposing it on window lets the overlay
-// confirm handler call window._initializeSurveyState() after the user picks
-// a mode on first launch, without routing through window.uiHandlers.
-//
-// Underscore prefix signals internal use — not part of the public API.
+// device-config.js is a plain IIFE and cannot ES-import initializeSurveyState.
+// Exposing on window lets the overlay confirm handler call it directly.
+// Underscore prefix signals internal use.
 
 window._initializeSurveyState = initializeSurveyState;
 

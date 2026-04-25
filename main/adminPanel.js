@@ -316,15 +316,16 @@ function _buildDeviceResetButton(adminControls) {
     margin-top: 4px;
   `;
 
-  resetBtn.addEventListener('click', () => {
-    resetAutoHideTimer();
-    if (confirm('This will reset the kiosk device type.\nThe setup screen will appear on the next reload.\n\nContinue?')) {
-      localStorage.removeItem('deviceConfig');
-      console.log('[ADMIN] 🔄 deviceConfig cleared — reloading for setup screen');
-      trackAdminEvent('device_type_reset');
-      location.reload();
-    }
-  });
+ resetBtn.addEventListener('click', () => {
+  resetAutoHideTimer();
+  if (confirm('This will reset the kiosk device type.\nThe setup screen will appear on the next reload.\n\nContinue?')) {
+    localStorage.removeItem('deviceConfig');
+    localStorage.removeItem('kioskState');  // ← ADD THIS LINE
+    console.log('[ADMIN] 🔄 deviceConfig + kioskState cleared — reloading for setup screen');
+    trackAdminEvent('device_type_reset');
+    location.reload();
+  }
+});
 
   adminControls.appendChild(divider);
   adminControls.appendChild(resetBtn);

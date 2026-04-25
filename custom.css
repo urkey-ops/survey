@@ -1066,11 +1066,11 @@ textarea:focus {
   #buttonContainer { padding-top: 20px; }
   #nextBtn         { min-width: 200px; }
 
-/* ── Visual feedback particles (v6.1.0) ─────────────────────────────────── */
+/* Visual feedback particles (v6.1.0) — Shayona-optimized */
+label:active::before,
 .option-label:active::before,
-.emoji-radio-group label:active::before,
-.number-scale-group label:active::before,
-label[class*="radio"] label:active::before {
+[class*="radio-group"] label:active::before,
+input + label:active::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -1083,12 +1083,4 @@ label[class*="radio"] label:active::before {
   pointer-events: none;
   z-index: 10;
 }
-
-@keyframes feedbackBurst {
-  to { 
-    transform: scale(1.4);
-    opacity: 0;
-  }
-}
-
 }

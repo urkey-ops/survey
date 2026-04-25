@@ -1,26 +1,19 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.6.0
-// CHANGES FROM 5.5.0:
-//   - FIX: First-launch tap freeze — after user picked Shayona/Temple,
-//     start screen showed but taps did nothing until reload. Root cause:
-//     device-config.js (sync IIFE) fires deviceConfigReady before ES modules
-//     finish loading, so the { once: true } listener in index.js was never
-//     registered in time to catch it. Result: initialize() never ran,
-//     setupNavigation() never ran, tap listener never attached.
-//   - REPLACE: Simple { once: true } event listener with a race-proof
-//     3-path boot strategy:
-//       Path 1 — DEVICECONFIG.kioskMode already set (configured device,
-//                every launch after first): startApp() immediately.
-//       Path 2 — deviceConfigReady fires while modules are loading:
-//                onConfigReady() listener catches it and calls startApp().
-//       Path 3 — Safety net: 500ms setTimeout checks whether DEVICECONFIG
-//                was set during that window but the event was missed.
-//                Catches the exact race where IIFE ran before module listener
-//                registered.
-//   - ADD: started flag shared across all three paths — prevents double-init
-//     if both Path 2 and Path 3 fire in quick succession.
-//   - All other logic, guards, heartbeat, storage monitoring unchanged.
+// VERSION: 5.7.0
+// CHANGES FROM 5.6.0:
+//   - FIX: Start screen tap freeze on first launch (Shayona / Temple picker).
+//     Root cause: device-config.js calls window._initializeSurveyState() after
+//     mode selection, correctly showing the start screen. 500ms later the Path 3
+//     safety net fires, sees DEVICECONFIG.kioskMode is set, and calls
+//     initialize() → initializeSurveyState() a second time. showStartScreen()
+//     re-renders the DOM, replacing the tap listener — leaving the first tap
+//     hitting a detached element that no longer responds.
+//   - FIX: Wrap window._initializeSurveyState via Object.defineProperty setter
+//     so that when device-config.js calls it, `started` is set to true BEFORE
+//     the real function runs. Path 3 safety net already checks `started` — it
+//     now correctly skips when _initializeSurveyState already ran.
+//   - No other logic changes.
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -39,19 +32,15 @@ let pendingDataHandlersPoll  = null;
 
 // ── Race-proof boot strategy ──────────────────────────────────────────────────
 //
-// Problem: device-config.js is a synchronous IIFE. On first launch it shows
-// the setup overlay and fires deviceConfigReady AFTER the user picks a mode.
-// ES modules load asynchronously — by the time index.js is parsed and its
-// top-level code runs, the deviceConfigReady event may have already fired
-// (if the user was fast) or the { once: true } listener may not yet be
-// registered (if modules were slow). Either way the old single-listener
-// approach created a race that left the app stuck on the start screen with
-// non-functional taps.
-//
-// Solution: three paths with a shared `started` guard:
+// Three paths with a shared `started` guard:
 //   Path 1 — kioskMode already set → start immediately (normal launch)
 //   Path 2 — listen for deviceConfigReady (first launch, modules win race)
 //   Path 3 — 500ms safety net (first launch, IIFE won race, event was missed)
+//
+// FIX v5.7.0: window._initializeSurveyState is intercepted via
+// Object.defineProperty so that calling it (from device-config.js after mode
+// selection) marks `started = true` before running. This prevents Path 3 from
+// firing a second initialize() when _initializeSurveyState already handled boot.
 
 function startApp() {
   if (document.readyState === 'loading') {
@@ -62,6 +51,30 @@ function startApp() {
 }
 
 let started = false;
+
+// FIX v5.7.0: Intercept the window._initializeSurveyState assignment made by
+// navigationSetup.js at module load time. Wrap the function so any call to it
+// (e.g. from device-config.js confirm handler) sets `started = true` first.
+// This collapses the 500ms race window: by the time Path 3 checks `started`,
+// it will already be true and skip the duplicate initialize().
+Object.defineProperty(window, '_initializeSurveyState', {
+  configurable: true,
+  set(fn) {
+    Object.defineProperty(window, '_initializeSurveyState', {
+      configurable: true,
+      writable: true,
+      value: function guardedInitializeSurveyState() {
+        if (started) {
+          console.log('[INIT] _initializeSurveyState: already started — skipping duplicate call');
+          return;
+        }
+        started = true;
+        console.log('[INIT] _initializeSurveyState called by device-config — marking started');
+        fn();
+      }
+    });
+  }
+});
 
 function onConfigReady() {
   if (started) return;
@@ -81,6 +94,8 @@ if (window.DEVICECONFIG?.kioskMode) {
 
   // Path 3: Safety net — IIFE may have fired deviceConfigReady before this
   // module's listener was registered. Poll once after 500ms.
+  // v5.7.0: `started` will already be true if _initializeSurveyState ran —
+  // this net correctly skips in that case.
   setTimeout(() => {
     if (!started && window.DEVICECONFIG?.kioskMode) {
       console.log('[INIT] deviceConfigReady was missed — starting via safety net');
@@ -90,10 +105,6 @@ if (window.DEVICECONFIG?.kioskMode) {
 }
 
 // ── First-launch detection ────────────────────────────────────────────────────
-//
-// Returns true when the device has already been configured (kioskMode set,
-// allowedSurveyTypes populated). Returns false on a genuine first launch where
-// the device-setup-overlay needs to run first.
 
 function isDeviceConfigured() {
   const cfg = window.DEVICECONFIG;
@@ -325,7 +336,7 @@ function initialize() {
       initializationStarted = false;
       return;
     }
-    console.log('[INIT] ✅ All essential elements found');
+    console.log('[INIT] All essential elements found');
 
     // Step 4: Reconcile survey type BEFORE any navigation/survey setup
     reconcileSurveyType();
@@ -341,24 +352,17 @@ function initialize() {
 
     // Step 8: Initialize survey state — guarded by first-launch check.
     //
-    // On first launch (kioskMode not yet set, allowedSurveyTypes empty):
-    //   Skip initializeSurveyState() entirely. The device-setup-overlay is
-    //   already rendered in the HTML and visible. Its confirm handler must call
-    //   window._initializeSurveyState() AFTER the user picks Shayona / Temple
-    //   and the overlay hides. This prevents the start screen flashing before
-    //   the overlay appears.
+    // On first launch: skip — device-setup-overlay is active.
+    //   window._initializeSurveyState (wrapped above) is called by
+    //   device-config.js confirm handler after the user picks a mode.
     //
-    // On all subsequent launches (kioskMode + allowedSurveyTypes set):
-    //   Proceed normally — showStartScreen() runs inside initializeSurveyState()
-    //   with the correct survey type already active.
+    // On all subsequent launches: proceed normally.
 
     if (isDeviceConfigured()) {
       console.log('[INIT] ✅ Device configured — initializing survey state directly');
       initializeSurveyState();
     } else {
       console.log('[INIT] 🆕 First launch — device-setup-overlay active, deferring survey state init');
-      // window._initializeSurveyState is set by navigationSetup.js at module
-      // load time. device-config.js confirm handler calls it after mode selection.
     }
 
     // Step 9: Setup network monitoring
@@ -370,8 +374,6 @@ function initialize() {
     // Step 11: Setup inactivity visibility handler
     setupInactivityVisibilityHandler();
     console.log('[INIT] ✅ Inactivity visibility handler active');
-
-    // Step 12: (typewriterEffect removed in Phase 2 — step intentionally skipped)
 
     // Step 13: Start periodic sync
     startPeriodicSync();

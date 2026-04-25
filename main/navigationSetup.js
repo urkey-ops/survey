@@ -154,6 +154,22 @@ export function initializeSurveyState() {
 
     showQuestion(appState.currentQuestionIndex);
 
+
+// Progress encouragement text (v3.3.0)
+const stepCounter = document.getElementById('stepCounter');
+if (stepCounter && appState.totalQuestions) {
+  const index = appState.currentQuestionIndex;
+  const total = appState.totalQuestions;
+  const phases = {
+    0: 'Quick start!', 
+    2: 'Nice progress!', 
+    4: 'Halfway!', 
+    6: 'Almost done!'
+  };
+  const phase = phases[Math.floor(index / 2)] || 'Great job!';
+  stepCounter.textContent = `${phase} (${index + 1}/${total})`;
+}
+    
     if (typeof resetInactivityTimer === 'function') {
       resetInactivityTimer();
     }

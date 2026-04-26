@@ -152,27 +152,28 @@ export function initializeSurveyState() {
       kioskVideo.pause();
     }
 
-    showQuestion(appState.currentQuestionIndex);
+    
 
+// Resume path — after showQuestion():
+showQuestion(appState.currentQuestionIndex);
 
-// Progress encouragement text (v3.3.0)
 const stepCounter = document.getElementById('stepCounter');
-if (stepCounter && appState.totalQuestions) {
+if (stepCounter) {
+  const total = window.uiHandlers?.getTotalQuestions?.() 
+    ?? getQuestions().length;  // ← correct source
   const index = appState.currentQuestionIndex;
-  const total = appState.totalQuestions;
-  const phases = {
-    0: 'Quick start!', 
-    2: 'Nice progress!', 
-    4: 'Halfway!', 
-    6: 'Almost done!'
-  };
+  const phases = { 0: 'Quick start!', 2: 'Nice progress!', 4: 'Halfway!', 6: 'Almost done!' };
   const phase = phases[Math.floor(index / 2)] || 'Great job!';
   stepCounter.textContent = `${phase} (${index + 1}/${total})`;
 }
+
+if (typeof resetInactivityTimer === 'function') {
+  resetInactivityTimer();
+}
+
+
+
     
-    if (typeof resetInactivityTimer === 'function') {
-      resetInactivityTimer();
-    }
 
     if (typeof addInactivityListeners === 'function') {
       addInactivityListeners();
@@ -183,12 +184,18 @@ if (stepCounter && appState.totalQuestions) {
   }
 
   console.log('[NAVIGATION] 🆕 Starting fresh survey');
-  showStartScreen();
-  // Progress encouragement text (fresh start)
+
+
+// Fresh start path — after showStartScreen():
+showStartScreen();
+
 const stepCounter = document.getElementById('stepCounter');
-if (stepCounter && window.appState?.totalQuestions) {
-  stepCounter.textContent = `Quick start! (1/${window.appState.totalQuestions})`;
+if (stepCounter) {
+  const total = window.uiHandlers?.getTotalQuestions?.() 
+    ?? getQuestions().length;
+  stepCounter.textContent = `Quick start! (1/${total})`;
 }
+
   return true;
 }
 

@@ -703,7 +703,6 @@ export {
   updateAdminCount,
   recordAnalytics,
   syncAnalytics,
-  syncKioskQueues
 };
 
 // ═══════════════════════════════════════════════════════════

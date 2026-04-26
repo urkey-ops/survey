@@ -1,18 +1,20 @@
 /* FILE: custom.css
-   VERSION: 6.0.0
-   CHANGES FROM 5.7.0:
-   - UNIFY: All token references consistent — removed raw hex duplicates
-   - ADD: text-wrap:balance + overflow-wrap on all option label selectors
-   - ADD: hyphens:none globally on interactive labels
-   - CLEAN: Removed redundant per-component selected-state overrides
-     (global input:checked + label rule now covers all types)
-   - CLEAN: Removed --surface / --border-color one-offs; use existing tokens
-   - CLEAN: Collapsed .location-radio-group + .age-radio-group + .followup-radio-group
-     into shared .text-radio-group rule
-   - FIX: .followup-option-label white-space:nowrap replaced with text-wrap:balance
-   - FIX: section-header-slide color uses --orange-darker (consistent with palette)
-   - FIX: setup-btn hover color unified with --orange token
-   - IMPROVE: Transition variable covers all interactive states
+   VERSION: 7.0.0
+   CHANGES FROM 6.0.0:
+   - ADD: #syncAllButton — primary visible "Sync" button (green, prominent)
+   - ADD: .admin-primary-actions — flex row holding Sync All + Hide + Settings toggle
+   - ADD: #adminSettingsButton — compact ⚙️ icon button that toggles the drawer
+   - ADD: .admin-maintenance-drawer — hidden-by-default drawer containing all
+          rarely-used maintenance controls (Sync Data, Sync Analytics, Check Update,
+          Fix Video, Clear Local, and injected device-reset button)
+   - ADD: .admin-drawer-label — small "Maintenance" section label inside drawer
+   - ADD: .admin-maintenance-open modifier on #adminControls — slides drawer open
+   - ADD: .admin-kiosk-sync-row — compact row for injected kiosk sync button
+   - COMPACT: .admin-actions-grid inside drawer uses repeat(3) columns (unchanged)
+   - COMPACT: .admin-primary-actions collapses gracefully on portrait breakpoint
+   - UNCHANGED: All existing tokens, component styles, survey styles, start screen,
+     progress bar, survey content, button container, option labels, etc.
+   - UNCHANGED: All IDs/classes referenced by JS — no renames, no removals
 */
 
 /* ── Tokens ──────────────────────────────────────────────────────────────── */
@@ -77,6 +79,11 @@
   /* Runtime (set by JS) */
   --keyboard-height:  0px;
   --header-height:    0px;
+
+  /* ── Admin drawer ────────────────────────────────────────────────────── */
+  --drawer-transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                       opacity    0.18s ease,
+                       visibility 0.18s ease;
 }
 
 /* ── Reset ───────────────────────────────────────────────────────────────── */
@@ -212,13 +219,15 @@ header {
   grid-row: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
+  align-items: stretch;
+  gap: 6px;
   min-width: 0;
+  /* Drawer needs a positioned ancestor for absolute children */
 }
 
 #adminControls.hidden { display: none !important; }
 
+/* ── Status row ──────────────────────────────────────────────────────────── */
 .admin-status-row {
   display: flex;
   width: 100%;
@@ -230,7 +239,7 @@ header {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -238,18 +247,19 @@ header {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 11px;
+  padding: 5px 10px;
   border-radius: var(--radius-pill);
   background: rgba(16, 185, 129, 0.10);
   color: #0f172a;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .admin-status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: var(--radius-pill);
   background: #10b981;
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
@@ -257,10 +267,10 @@ header {
 }
 
 .admin-status-text {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.3;
   color: #64748b;
-  min-height: 16px;
+  min-height: 14px;
   text-align: right;
 }
 
@@ -270,7 +280,7 @@ header {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px 10px;
+  padding: 5px 10px;
   border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 700;
@@ -282,12 +292,13 @@ header {
   margin: 0;
 }
 
+/* ── Survey type switcher (injected — layout unchanged) ──────────────────── */
 .survey-type-switcher {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
   background: rgba(248, 250, 252, 0.95);
   border: 1px solid rgba(148, 163, 184, 0.18);
   width: 100%;
@@ -295,7 +306,7 @@ header {
 
 .survey-type-label {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -304,45 +315,206 @@ header {
 
 .survey-type-current {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
 }
 
 .survey-type-pills {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .survey-type-pills button {
-  min-height: 48px;
-  padding: 10px 12px;
+  min-height: 40px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid rgba(2, 132, 199, 0.22);
   background: #fff;
   color: #0369a1;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   transition: var(--transition);
 }
 
 .survey-type-pills button:active { transform: scale(0.98); }
 
+/* ── Kiosk selector row (injected by adminMaintenance.js) ────────────────── */
+.kiosk-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  width: 100%;
+}
+
+/* compact kiosk sync button injected by setupKioskSyncButton() */
+.admin-sync-kiosk {
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-sync-kiosk:active { transform: scale(0.98); opacity: 0.85; }
+
+/* ── Primary visible actions row ─────────────────────────────────────────── */
+/*
+  Contains: #syncAllButton  #hideAdminButton  #adminSettingsButton
+  Always visible. Compact height. Right-aligned.
+*/
+.admin-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+/* Sync All — main CTA, green */
+.admin-sync-all-btn {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(16, 185, 129, 0.30);
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.admin-sync-all-btn:hover  { background: rgba(16, 185, 129, 0.20); }
+.admin-sync-all-btn:active { transform: scale(0.97); opacity: 0.85; }
+
+/* Disabled / in-progress state applied by JS */
+.admin-sync-all-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Hide button */
+.admin-hide-btn {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: rgba(15, 23, 42, 0.04);
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.admin-hide-btn:hover  { background: rgba(15, 23, 42, 0.08); }
+.admin-hide-btn:active { transform: scale(0.97); }
+
+/* Settings / wrench toggle */
+.admin-settings-btn {
+  min-height: 40px;
+  min-width: 40px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(100, 116, 139, 0.18);
+  background: rgba(248, 250, 252, 0.9);
+  color: #475569;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-settings-btn:hover  { background: #f1f5f9; border-color: #94a3b8; }
+.admin-settings-btn:active { transform: scale(0.97); }
+
+/* Highlighted when drawer is open */
+.admin-maintenance-open .admin-settings-btn {
+  background: rgba(100, 116, 139, 0.12);
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+
+/* ── Maintenance drawer ───────────────────────────────────────────────────── */
+/*
+  Hidden by default. Revealed by toggling .admin-maintenance-open
+  on #adminControls (via JS in adminPanel.js).
+  Uses max-height animation so height can transition from 0 → content size.
+*/
+.admin-maintenance-drawer {
+  width: 100%;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--drawer-transition);
+  /* small visual separation */
+  border-top: 0px solid transparent;
+}
+
+/* Open state — triggered by JS adding class to #adminControls */
+.admin-maintenance-open .admin-maintenance-drawer {
+  max-height: 300px;   /* generous ceiling; actual height is ~160px */
+  opacity: 1;
+  visibility: visible;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
+/* Section label inside drawer */
+.admin-drawer-label {
+  margin: 0 0 5px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  text-align: right;
+}
+
+/* Countdown — sits below the primary row */
+#adminCountdown {
+  margin: 0;
+  min-height: 14px;
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: right;
+}
+
+/* ── Actions grid (inside drawer) ────────────────────────────────────────── */
 .admin-actions-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   width: 100%;
 }
 
 .admin-actions-grid button {
-  min-height: 48px;
-  padding: 10px 12px;
+  min-height: 40px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid rgba(15, 23, 42, 0.10);
   background: #f8fafc;
   color: #0f172a;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.1;
   transition: var(--transition);
@@ -350,20 +522,18 @@ header {
 
 .admin-actions-grid button:active { transform: scale(0.98); }
 
+/* Per-button colour overrides — IDs unchanged from v6.0.0 */
 #syncButton          { background: rgba(16,185,129,0.10) !important; border-color: rgba(16,185,129,0.22) !important; color: #047857 !important; }
 #syncAnalyticsButton { background: rgba(59,130,246,0.10) !important; border-color: rgba(59,130,246,0.22) !important; color: #1d4ed8 !important; }
 #checkUpdateButton   { background: rgba(168,85,247,0.10) !important; border-color: rgba(168,85,247,0.22) !important; color: #7c3aed !important; }
 #fixVideoButton      { background: rgba(244,63,94,0.10)  !important; border-color: rgba(244,63,94,0.22)  !important; color: #e11d48 !important; }
 #adminClearButton    { background: rgba(251,191,36,0.12) !important; border-color: rgba(245,158,11,0.26) !important; color: #b45309 !important; }
-#hideAdminButton     { background: rgba(15,23,42,0.04)   !important; border-color: rgba(15,23,42,0.08)   !important; color: #334155 !important; }
 
-#adminCountdown {
-  margin: 0;
-  min-height: 16px;
-  font-size: 11px;
-  color: #94a3b8;
-  text-align: right;
-}
+/*
+  #hideAdminButton — now styled via .admin-hide-btn (see above).
+  The old #hideAdminButton rule is removed; element still has id="hideAdminButton"
+  but the visual style comes from the class. No JS references this for styling.
+*/
 
 /* ── Progress bar ────────────────────────────────────────────────────────── */
 #progressBarContainer {
@@ -424,8 +594,8 @@ header {
 
 /* Scroll fade hint */
 #surveyContent::after {
-   z-index: -1;              /* ← ADD */
-  pointer-events: none;     /* ← ADD */
+  z-index: -1;
+  pointer-events: none;
   content: '';
   position: sticky;
   bottom: 0;
@@ -534,11 +704,8 @@ label[id$="Label"] {
 }
 
 /* ── Option label — base ─────────────────────────────────────────────────── */
-/* Shared by all radio / checkbox / followup / pill types */
 .option-label {
   -webkit-tap-highlight-color: transparent;
-
-  /* Wrapping fix — prevents awkward mid-phrase line breaks */
   text-wrap: balance;
   overflow-wrap: break-word;
   hyphens: none;
@@ -550,7 +717,6 @@ label[id$="Label"] {
 }
 
 /* ── Global selected state ───────────────────────────────────────────────── */
-/* Covers radio, checkbox, followup — single source of truth */
 input.visually-hidden:checked + label,
 input.visually-hidden:checked + .option-label,
 input.visually-hidden:checked + .followup-option-label {
@@ -657,7 +823,6 @@ input.visually-hidden:checked + .followup-option-label {
 }
 
 /* ── Text radio groups (location, age, followup) ─────────────────────────── */
-/* Single shared rule replaces three near-identical blocks */
 .location-radio-group,
 .age-radio-group,
 .followup-radio-group {
@@ -684,8 +849,6 @@ input.visually-hidden:checked + .followup-option-label {
   line-height: 1.3;
   color: var(--text-secondary);
   transition: var(--transition);
-
-  /* Wrap fix */
   text-wrap: balance;
   overflow-wrap: break-word;
   hyphens: none;
@@ -746,8 +909,6 @@ input.visually-hidden:checked + .followup-option-label {
   cursor: pointer;
   color: var(--text-secondary);
   transition: var(--transition);
-
-  /* Wrap fix — replaced white-space:nowrap */
   text-wrap: balance;
   overflow-wrap: break-word;
   hyphens: none;
@@ -1015,6 +1176,8 @@ textarea:focus {
   .admin-status-text,
   #adminCountdown       { text-align: left; }
 
+  .admin-primary-actions { justify-content: flex-start; }
+
   .admin-actions-grid   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .survey-type-pills    { grid-template-columns: 1fr; }
 
@@ -1026,18 +1189,17 @@ textarea:focus {
   }
 }
 
-
-/* ── iPad landscape — primary kiosk target (Updated for compact layout) ───── */
+/* ── iPad landscape — primary kiosk target ───────────────────────────────── */
 @media (orientation: landscape) and (min-width: 900px) {
   :root {
-    --page-v-pad: 8px;   /* Reduced from 12px */
-    --page-h-pad: 16px;  /* Reduced from 24px */
-    --card-gap:    6px;  /* Reduced from 8px */
+    --page-v-pad: 8px;
+    --page-h-pad: 16px;
+    --card-gap:    6px;
   }
 
   header {
-    row-gap: 4px;         /* Reduced from 8px */
-    padding: 8px 16px 0;  /* Tighter internal header spacing */
+    row-gap: 4px;
+    padding: 8px 16px 0;
   }
 
   #mainTitle {
@@ -1045,32 +1207,54 @@ textarea:focus {
     min-height: 28px;
   }
 
-  /* Admin Action Grid improvements */
+  /* Primary action row — tighter on landscape */
+  .admin-primary-actions {
+    gap: 5px;
+  }
+
+  .admin-sync-all-btn,
+  .admin-hide-btn {
+    min-height: 36px;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .admin-settings-btn {
+    min-height: 36px;
+    min-width: 36px;
+    font-size: 15px;
+  }
+
+  /* Drawer grid — slightly tighter on landscape */
   .admin-actions-grid {
-    gap: 4px; /* Tighter button grouping */
+    gap: 4px;
   }
 
   .admin-actions-grid button {
-    min-height: 40px; /* More compact buttons */
+    min-height: 36px;
     padding: 6px 8px;
-    font-size: 12px;
+    font-size: 11px;
+  }
+
+  /* Kiosk sync button */
+  .admin-sync-kiosk {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.75rem;
   }
 
   #surveyContent {
-    /* Stop forced vertical stretching */
     flex: 0 1 auto;
     padding: 12px 16px 10px !important;
     max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 60px - var(--keyboard-height, 0px));
   }
 
   #questionContainer {
-    /* Allow natural content height instead of forcing stretch */
     flex: 0 1 auto;
     padding-bottom: 4px;
   }
 
   #buttonContainer {
-    padding-top: 10px; /* Reduced from 20px */
+    padding-top: 10px;
     margin-top: 10px;
   }
 
@@ -1092,7 +1276,7 @@ textarea:focus {
 
   #nextBtn { min-width: 160px; }
 
-  /* Visual feedback particles (v6.1.0) — Shayona-optimized */
+  /* Visual feedback particles (v6.1.0) */
   label:active::before,
   .option-label:active::before,
   [class*="radio-group"] label:active::before,
@@ -1102,8 +1286,8 @@ textarea:focus {
     inset: 0;
     border-radius: inherit;
     background: radial-gradient(circle closest-side at center,
-      rgba(232, 96, 0, 0.4) 0%, 
-      rgba(232, 96, 0, 0.15) 40%, 
+      rgba(232, 96, 0, 0.4) 0%,
+      rgba(232, 96, 0, 0.15) 40%,
       transparent 70%);
     animation: feedbackBurst 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: none;

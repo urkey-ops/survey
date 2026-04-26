@@ -339,30 +339,54 @@ header {
 
 .survey-type-pills button:active { transform: scale(0.98); }
 
-/* ── Kiosk selector row (injected by adminMaintenance.js) ────────────────── */
-.kiosk-selector-row {
+/* ── Kiosk identity badge (static — replaces old dropdown selector) ──────── */
+/*
+  Read-only. Injected by buildKioskIdentityBadge() in adminMaintenance.js.
+  Shows which kiosk this device is permanently configured as.
+  No hover, no cursor:pointer — information, not a control.
+*/
+.kiosk-identity-badge {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-/* compact kiosk sync button injected by setupKioskSyncButton() */
-.admin-sync-kiosk {
-  width: 100%;
-  padding: 0.45rem 0.75rem;
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
+.kiosk-identity-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
-.admin-sync-kiosk:active { transform: scale(0.98); opacity: 0.85; }
+.kiosk-identity-text {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.kiosk-identity-mode {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.kiosk-identity-id {
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ── Primary visible actions row ─────────────────────────────────────────── */
 /*
@@ -1234,12 +1258,6 @@ textarea:focus {
     min-height: 36px;
     padding: 6px 8px;
     font-size: 11px;
-  }
-
-  /* Kiosk sync button */
-  .admin-sync-kiosk {
-    padding: 0.35rem 0.65rem;
-    font-size: 0.75rem;
   }
 
   #surveyContent {

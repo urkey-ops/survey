@@ -107,6 +107,27 @@ function getAllQueueConfigsWithData() {
   });
 }
 
+/**
+ * Filter all configs by kiosk mode (temple, shayona, giftShop, activity).
+ * Falls back to all queues if mode is unknown.
+ */
+function getSurveyTypeConfigsByMode(mode = 'all') {
+  const all = getSurveyTypeConfigs();
+  if (mode === 'all' || !mode) return all;
+
+  const prefixMap = {
+    temple:     'type',
+    shayona:    'shayona',
+    giftShop:   'gift',
+    activity:   'activity'
+  };
+
+  const prefix = prefixMap[mode];
+  if (!prefix) return all;
+
+  return all.filter(cfg => cfg.surveyType.startsWith(prefix));
+}
+
 function normalizeSyncTargets(syncBothQueues = true) {
   if (syncBothQueues) {
     const configsWithData = getAllQueueConfigsWithData();
@@ -457,7 +478,7 @@ async function syncSingleQueue(target, isManual = false) {
     console.log(`[DATA SYNC] ✅ ${surveyType} → ${sheetName}: synced ${successfulIds.length}, remaining ${remainingCount}`);
 
     return { ok: true, surveyType, queueKey, successfulCount: successfulIds.length, remainingCount };
-  } catch (error) {
+      } catch (error) {
     console.error(`[DATA SYNC] ❌ Queue sync failed for ${surveyType}: ${error.message}`);
     return {
       ok: false, surveyType, queueKey,
@@ -466,6 +487,58 @@ async function syncSingleQueue(target, isManual = false) {
       error:           error.message
     };
   }
+}
+
+
+
+
+// ═══════════════════════════════════════════════════════════
+// SURVEY DATA SYNC (continued)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Sync only queues that match a given kiosk mode (temple, shayona, giftShop, activity, or 'all').
+ * Called from admin panel mode‑specific sync button.
+ * Falls back to global sync if mode is unknown.
+ */
+export async function syncKioskQueues(mode = 'all') {
+  if (!isOnline()) {
+    console.warn(`[DATA SYNC] ❌ Offline; cannot sync ${mode} queues`);
+    updateSyncStatus('Offline. Mode-specific sync skipped.');
+    showUserError('No internet connection. Data saved locally.');
+    clearSyncStatusLater(3000);
+    return false;
+  }
+
+  const configs = getSurveyTypeConfigsByMode(mode);
+  const hasQueues = configs.some(cfg => {
+    const queue = getSubmissionQueue(cfg.queueKey);
+    return Array.isArray(queue) && queue.length > 0;
+  });
+
+  if (!hasQueues) {
+    console.log(`[DATA SYNC] No records for ${mode} queues; nothing to sync.`);
+    updateSyncStatus(`No ${mode} records to sync ✅`);
+    clearSyncStatusLater(3000);
+    return true;
+  }
+
+  let totalSuccessful = 0;
+  let totalRemaining  = 0;
+
+  for (const target of configs) {
+    const result = await syncSingleQueue(target, true);
+    totalSuccessful += result.successfulCount;
+    totalRemaining  += result.remainingCount;
+  }
+
+  updateAdminCount();
+
+  if (totalSuccessful > 0) {
+    console.log(`[DATA SYNC] Mode ${mode}: ${totalSuccessful} synced, ${totalRemaining} remaining`);
+  }
+
+  return totalRemaining === 0;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -612,7 +685,8 @@ window.dataHandlers = {
   stopPeriodicSync,
   checkAndWarnStorageQuota,
   setupNetworkListeners,
-  cleanupNetworkListeners
+  cleanupNetworkListeners,
+  syncKioskQueues
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -628,7 +702,8 @@ export {
   countUnsyncedRecords,
   updateAdminCount,
   recordAnalytics,
-  syncAnalytics
+  syncAnalytics,
+  syncKioskQueues
 };
 
 // ═══════════════════════════════════════════════════════════

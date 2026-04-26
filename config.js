@@ -1,12 +1,15 @@
 // FILE: config.js
 // PURPOSE: Central configuration for offline-first iPad kiosk PWA
-// VERSION: 3.3.0
-// CHANGES FROM 3.2.1:
-//   - FIX: Active survey type now falls back to window.DEVICECONFIG.defaultSurveyType
-//     before hardcoded type1, so first-launch Shayona devices correctly boot into type3.
-//   - FIX: getDefaultSurveyType() now resolves dynamically from DEVICECONFIG when available.
-//   - FIX: getSurveyConfig() and related helpers stay aligned with device mode defaults.
-//   - KEEP: One-time Temple/Shayona device setup behavior unchanged.
+// VERSION: 3.4.0
+// CHANGES FROM 3.3.0:
+//   - RENAME: Survey type labels changed to operational names staff can read.
+//     type1: 'Original Survey (V1)'  → 'Visitor Survey'
+//     type2: 'Visitor Feedback V2'   → 'Event / Weekend Survey'
+//     type3: 'Shayona Café'          → 'Café Feedback'
+//     These labels appear in the admin panel survey-type switcher pills.
+//     Developer version identifiers were meaningless to kiosk staff.
+//   - UNCHANGED: Everything else — all storage keys, all constants, all
+//     helper functions, KIOSK_CONFIG, CONSTANTS shape, boot log.
 
 (function () {
   function deepFreeze(obj) {
@@ -66,19 +69,19 @@
 
   const SURVEY_TYPES = {
     type1: {
-      label:        'Original Survey (V1)',
+      label:        'Visitor Survey',          // was: 'Original Survey (V1)'
       sheetName:    'Sheet1',
       storageKey:   STORAGE_KEY_QUEUE,
       analyticsKey: STORAGE_KEY_ANALYTICS,
     },
     type2: {
-      label:        'Visitor Feedback V2',
+      label:        'Event / Weekend Survey',  // was: 'Visitor Feedback V2'
       sheetName:    'VisitorFeedbackV2',
       storageKey:   STORAGE_KEY_QUEUE_V2,
       analyticsKey: STORAGE_KEY_ANALYTICS,
     },
     type3: {
-      label:        'Shayona Café',
+      label:        'Café Feedback',           // was: 'Shayona Café'
       sheetName:    'ShayonaCafe',
       storageKey:   STORAGE_KEY_QUEUE_V3,
       analyticsKey: STORAGE_KEY_ANALYTICS_V3,
@@ -238,7 +241,7 @@
   const activeConfig = getSurveyConfig(activeType);
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('⚙️  CONFIG LOADED (v3.3.0)');
+  console.log('⚙️  CONFIG LOADED (v3.4.0)');
   console.log('═══════════════════════════════════════════════════════');
   console.log(`  Kiosk ID      : ${KIOSK_CONFIG.KIOSK_ID}`);
   console.log(`  Device Mode   : ${window.DEVICECONFIG?.kioskMode || 'unknown'}`);

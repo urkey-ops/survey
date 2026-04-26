@@ -318,7 +318,7 @@ function _buildDeviceResetButton(adminControls) {
 
  resetBtn.addEventListener('click', () => {
   resetAutoHideTimer();
-  if (confirm('This will reset the kiosk device type.\nThe setup screen will appear on the next reload.\n\nContinue?')) {
+  if (confirm('This will reset the kiosk device type.\\nThe setup screen will appear on the next reload.\\n\\nContinue?')) {
     localStorage.removeItem('deviceConfig');
     localStorage.removeItem('kioskState');  // ← ADD THIS LINE
     console.log('[ADMIN] 🔄 deviceConfig + kioskState cleared — reloading for setup screen');
@@ -330,6 +330,47 @@ function _buildDeviceResetButton(adminControls) {
   adminControls.appendChild(divider);
   adminControls.appendChild(resetBtn);
   console.log('[ADMIN] ✅ Device reset button added');
+}
+
+// ─────────────────────────────────────────────────────────────
+// KIOSK MODE SELECTOR EVENT
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Wire the kiosk mode selector in the admin panel.
+ * When user changes mode, reload queues and charts.
+ * Relies on:
+ *   - adminMaintenance.js exports: loadKioskQueues(mode)
+ *   - HTML: <select id="kioskSelector">
+ */
+function bindKioskSelector() {
+  const kioskSelector = document.getElementById('kioskSelector');
+  if (!kioskSelector) {
+    console.warn('[ADMIN] ⚠️ kioskSelector not found; loadKioskQueues will not bind');
+    return;
+  }
+
+  const listener = (e) => {
+    resetAutoHideTimer();
+    const mode = e.target.value;
+    console.log(`[ADMIN] 🧩 Kiosk mode changed to: ${mode}`);
+    window.loadKioskQueues?.(mode);
+  };
+
+  kioskSelector.removeEventListener('change', listener);
+  kioskSelector.addEventListener('change', listener);
+  console.log('[ADMIN] ✅ Kiosk mode selector wired');
+}
+
+function unbindKioskSelector() {
+  const kioskSelector = document.getElementById('kioskSelector');
+  if (!kioskSelector) return;
+
+  const listener = kioskSelector._changeListener;
+  if (listener) {
+    kioskSelector.removeEventListener('change', listener);
+    kioskSelector._changeListener = null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -401,6 +442,9 @@ export function setupAdminPanel() {
   // ── Device reset button — always present on both iPads ───────────────────
   _buildDeviceResetButton(adminControls);
 
+  // ── Kiosk mode selector event ────────────────────────────────────────────
+  bindKioskSelector();
+
   onlineHandler = () => {
     console.log('[ADMIN] 🌐 Connection restored');
     if (adminState.adminPanelVisible) updateAllButtonStates();
@@ -419,16 +463,16 @@ export function setupAdminPanel() {
   window.setupAdminPanel   = setupAdminPanel;
   window.cleanupAdminPanel = cleanupAdminPanel;
 
-  console.log('═══════════════════════════════════════════════════════');
-  console.log(`🎛️ ADMIN PANEL CONFIGURED (${VERSION} — modular split)`);
-  console.log('═══════════════════════════════════════════════════════');
-  console.log('  Mode:           Offline-First iPad Kiosk PWA');
-  console.log(`  Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
-  console.log(`  Device mode:    ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
-  console.log(`  Survey types:   ${(allowedTypes.length > 0 ? allowedTypes : ['type1']).join(', ')}`);
-  console.log(`  Active Survey:  ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
-  console.log(`  Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
-  console.log('═══════════════════════════════════════════════════════');
+ console.log('═══════════════════════════════════════════════════════');
+console.log(`🎛️ ADMIN PANEL CONFIGURED (${VERSION} — modular split)`);
+console.log('═══════════════════════════════════════════════════════');
+console.log('  Mode:           Offline-First iPad Kiosk PWA');
+console.log(`  Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
+console.log(`  Device mode:    ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
+console.log(`  Survey types:   ${(allowedTypes.length > 0 ? allowedTypes : ['type1']).join(', ')}`);
+console.log(`  Active Survey:  ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
+console.log(`  Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
+console.log('═══════════════════════════════════════════════════════');
 }
 
 export function cleanupAdminPanel() {

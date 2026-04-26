@@ -1,53 +1,46 @@
 // FILE: main/adminMaintenance.js
-// PURPOSE: Destructive/maintenance button handlers — clear local, check update, fix video + debug helpers + KIOSK SELECTOR
-// VERSION: 1.2.1
-// CHANGES FROM 1.2.0:
-//   - FIX CRITICAL: Renamed injected selector id from 'kioskModeSelector' → 'kioskSelector'
-//     to match adminPanel.js bindKioskSelector() lookup. Previously these two
-//     never connected — selector was injected but never wired. Now they share the same id.
-//   - FIX CRITICAL: loadKioskQueues() now exposed on window.loadKioskQueues so
-//     adminPanel.js bindKioskSelector() can call it via window reference.
-//   - FIX: loadKioskQueues() now calls window.dataHandlers.getAllQueueConfigsWithData()
-//     which IS exposed in dataSync.js window.dataHandlers (verified). Previously
-//     called a local function name that matched dataSync's local scope only.
-//   - FIX: setupKioskSelector() and setupKioskSyncButton() are exported and
-//     ready to be called from adminPanel.js setupAdminPanel().
+// PURPOSE: Destructive/maintenance button handlers — clear local, check update, fix video + kiosk identity badge
+// VERSION: 2.0.0
+// CHANGES FROM 1.2.1:
+//   - REMOVE: setupKioskSelector() — dropdown was a phantom control that changed nothing
+//     about actual device operation. Device identity is fixed at first-launch setup
+//     via device-config.js and must not be changeable at runtime via a dropdown.
+//   - REMOVE: setupKioskSyncButton() — per-kiosk sync button only existed to serve
+//     the now-removed selector. #syncAllButton in the main panel handles all syncing.
+//   - REMOVE: loadKioskQueues() — only fed the dropdown label and kiosk sync button.
+//   - REMOVE: getCurrentKioskMode() — only served the above.
+//   - REMOVE: window.loadKioskQueues exposure — no longer needed.
+//   - REMOVE: KIOSK_MODES array and currentKioskMode module state — not needed.
+//   - ADD: buildKioskIdentityBadge() — injects one static read-only row showing
+//     the device's kioskMode and kioskId from window.DEVICECONFIG. No events,
+//     no interaction, no dropdown. Replaces the misleading selector entirely.
 //   - UNCHANGED: All password/lockout logic, all existing button handlers,
-//     all exports from v1.1.0 are identical.
-// DEPENDENCIES: adminState.js, adminUtils.js, queueManager v3.3.0, window.globals, window.CONSTANTS
+//     updateClearButtonState, updateCheckUpdateButtonState, updateFixVideoButtonState,
+//     restoreLockoutState, cleanupMaintenanceHandlers. All exports that adminPanel.js
+//     imports are identical except the four removed functions.
+// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS, window.DEVICECONFIG
 
 import { adminState } from './adminState.js';
 import { trackAdminEvent, vibrateSuccess, vibrateError } from './adminUtils.js';
 
-const CLEAR_PASSWORD      = '8765';
-const MAX_ATTEMPTS        = 2;
-const LOCKOUT_DURATION    = 3600000;
+const CLEAR_PASSWORD           = '8765';
+const MAX_ATTEMPTS             = 2;
+const LOCKOUT_DURATION         = 3600000;
 const PASSWORD_SESSION_TIMEOUT = 300000;
 
 let failedAttempts      = 0;
 let lockoutUntil        = null;
 let lastPasswordSuccess = null;
 
-let adminClearButtonHandler   = null;
-let checkUpdateButtonHandler  = null;
-let fixVideoButtonHandler     = null;
-let boundAdminClearButton     = null;
-let boundCheckUpdateButton    = null;
-let boundFixVideoButton       = null;
-
-// ── KIOSK MODES ──────────────────────────────────────────────────────────────
-const KIOSK_MODES = [
-  { value: 'temple',   label: '🛕 Temple',    icon: '🛕' },
-  { value: 'shayona',  label: '☕ Shayona',   icon: '☕' },
-  { value: 'giftshop', label: '🛍️ Gift Shop', icon: '🛍️' },
-  { value: 'activity', label: '🎉 Activity',  icon: '🎉' },
-];
-
-// Initialise from live DEVICECONFIG — falls back to 'temple'
-let currentKioskMode = window.DEVICECONFIG?.kioskMode || 'temple';
+let adminClearButtonHandler  = null;
+let checkUpdateButtonHandler = null;
+let fixVideoButtonHandler    = null;
+let boundAdminClearButton    = null;
+let boundCheckUpdateButton   = null;
+let boundFixVideoButton      = null;
 
 // ─────────────────────────────────────────────────────────────
-// PASSWORD + LOCKOUT (UNCHANGED FROM v1.1.0)
+// PASSWORD + LOCKOUT (unchanged)
 // ─────────────────────────────────────────────────────────────
 
 export function isClearLocalLocked() {
@@ -134,191 +127,79 @@ function verifyClearPassword() {
   return false;
 }
 
-// ── KIOSK MODE SELECTOR ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// KIOSK IDENTITY BADGE  (replaces the old dropdown selector)
+// ─────────────────────────────────────────────────────────────
 
-export function setupKioskSelector(containerId = 'adminControls') {
-  // FIX: Use adminControls as container — it always exists in index.html.
-  // adminHeader / adminActions are not static IDs in the HTML.
+/**
+ * Injects a single static read-only row into adminControls showing
+ * which kiosk this device is configured as.
+ *
+ * Reads window.DEVICECONFIG — set once at first-launch by device-config.js
+ * and never changed at runtime. No events, no interaction, no dropdown.
+ *
+ * Visual output example:
+ *   🛕 Temple  ·  KIOSK-TEMPLE-001
+ *
+ * Called from adminPanel.js setupAdminPanel() in place of the old
+ * setupKioskSelector() + setupKioskSyncButton() pair.
+ */
+export function buildKioskIdentityBadge(containerId = 'adminControls') {
   const container = document.getElementById(containerId)
     || document.getElementById('adminControls');
 
   if (!container) {
-    console.warn('[MAINTENANCE] Kiosk selector container not found');
+    console.warn('[MAINTENANCE] buildKioskIdentityBadge: container not found');
     return;
   }
 
-  // FIX: id must be 'kioskSelector' — adminPanel.js bindKioskSelector()
-  // does document.getElementById('kioskSelector'). Do not change this id.
-  if (document.getElementById('kioskSelector')) {
-    console.log('[MAINTENANCE] Kiosk selector already exists — skipping');
+  // Idempotent — only inject once
+  if (document.getElementById('kioskIdentityBadge')) {
+    console.log('[MAINTENANCE] Kiosk identity badge already exists — skipping');
     return;
   }
 
-  const wrapperDiv = document.createElement('div');
-  wrapperDiv.className = 'kiosk-selector-row';
-  wrapperDiv.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;';
+  const cfg      = window.DEVICECONFIG || {};
+  const mode     = cfg.kioskMode || 'unknown';
+  const kioskId  = cfg.kioskId   || '—';
 
-  const label = document.createElement('label');
-  label.textContent = 'Kiosk View:';
-  label.htmlFor     = 'kioskSelector';
-  label.style.cssText = 'font-size:0.8rem;font-weight:600;color:#6b7280;white-space:nowrap;';
+  // Icon map — extend when new kiosk types are added to device-config.js
+  const iconMap = {
+    temple:   '🛕',
+    shayona:  '☕',
+    giftshop: '🛍️',
+    activity: '🎉',
+  };
 
-  const selector = document.createElement('select');
-  selector.id        = 'kioskSelector';   // ← CRITICAL: must match adminPanel.js lookup
-  selector.className = 'kiosk-selector';
-  selector.style.cssText = 'flex:1;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:0.8rem;';
+  const icon        = iconMap[mode] || '📍';
+  const modeLabel   = mode.charAt(0).toUpperCase() + mode.slice(1);
 
-  // Build options from live DEVICECONFIG mode first, then all modes
-  const modes = [...KIOSK_MODES];
-  selector.innerHTML = modes.map(m =>
-    `<option value="${m.value}" ${m.value === currentKioskMode ? 'selected' : ''}>${m.icon} ${m.label}</option>`
-  ).join('');
+  const badge = document.createElement('div');
+  badge.id        = 'kioskIdentityBadge';
+  badge.className = 'kiosk-identity-badge';
+  badge.setAttribute('aria-label', `This device is configured as ${modeLabel} kiosk`);
+  badge.innerHTML = `
+    <span class="kiosk-identity-icon">${icon}</span>
+    <span class="kiosk-identity-text">
+      <span class="kiosk-identity-mode">${modeLabel}</span>
+      <span class="kiosk-identity-id">${kioskId}</span>
+    </span>
+  `;
 
-  selector.value = currentKioskMode;
-
-  // Change handler — updates module-level state + triggers admin refresh
-  selector.addEventListener('change', (e) => {
-    currentKioskMode = e.target.value;
-    console.log(`[MAINTENANCE] Kiosk mode changed to: ${currentKioskMode}`);
-    trackAdminEvent('kiosk_mode_changed', { mode: currentKioskMode });
-    loadKioskQueues();
-  });
-
-  wrapperDiv.appendChild(label);
-  wrapperDiv.appendChild(selector);
-
-  // Insert after the first child (status row) in adminControls
+  // Insert after the first child (status row) so it sits just below
+  // the unsynced-count pill — above the primary action buttons.
   const firstChild = container.firstChild;
   if (firstChild && firstChild.nextSibling) {
-    container.insertBefore(wrapperDiv, firstChild.nextSibling);
+    container.insertBefore(badge, firstChild.nextSibling);
   } else {
-    container.appendChild(wrapperDiv);
+    container.appendChild(badge);
   }
 
-  console.log('[MAINTENANCE] ✅ Kiosk selector injected (id=kioskSelector)');
-  return selector;
-}
-
-export function getCurrentKioskMode() {
-  return currentKioskMode;
-}
-
-export function loadKioskQueues(mode) {
-  // Accept explicit mode override (from adminPanel.js bindKioskSelector)
-  // or use module-level currentKioskMode
-  const targetMode = mode || currentKioskMode;
-
-  console.log(`[MAINTENANCE] 🔄 Loading queues for kiosk: ${targetMode}`);
-
-  // FIX: Use window.dataHandlers.getAllQueueConfigsWithData — this IS exposed
-  // in dataSync.js window.dataHandlers (confirmed from dataSync.js source).
-  // Previously called as window.dataHandlers?.getAllQueueConfigsWithData which
-  // is correct — but the function was not in window.dataHandlers in v3.5.1.
-  // dataSync.js v3.5.1 does NOT expose getAllQueueConfigsWithData on
-  // window.dataHandlers. We therefore call queueManager's version via
-  // window.dataHandlers.getKioskQueues for queue keys, then count via
-  // window.dataHandlers.countUnsyncedRecords per key.
-  // The cleanest approach: call getAllQueueConfigsWithData from queueManager
-  // which IS exported — but since dataSync is the module boundary, we use
-  // what is available on window.dataHandlers.
-  if (typeof window.dataHandlers?.countUnsyncedRecords === 'function') {
-    const pending = window.dataHandlers.countUnsyncedRecords(null, targetMode);
-    console.log(`[MAINTENANCE] Mode "${targetMode}" pending: ${pending}`);
-    trackAdminEvent('kiosk_queues_loaded', { mode: targetMode, pending });
-
-    // Update the mode-specific sync button label if it exists
-    const syncBtn = document.getElementById('kioskSyncButton');
-    if (syncBtn) {
-      syncBtn.innerHTML = `🔄 Sync ${targetMode} (${pending})`;
-      syncBtn.disabled  = pending === 0;
-      syncBtn.style.opacity = pending === 0 ? '0.5' : '1';
-    }
-
-    return pending;
-  } else {
-    console.warn('[MAINTENANCE] window.dataHandlers.countUnsyncedRecords() not ready');
-    return 0;
-  }
-}
-
-// Expose on window so adminPanel.js bindKioskSelector() can call it
-// without needing to import from this module directly.
-window.loadKioskQueues = loadKioskQueues;
-
-// ── MODE-SPECIFIC SYNC BUTTON ─────────────────────────────────────────────────
-
-export function setupKioskSyncButton(containerId = 'adminControls') {
-  const container = document.getElementById(containerId)
-    || document.getElementById('adminControls');
-
-  if (!container) {
-    console.warn('[MAINTENANCE] Kiosk sync button container not found');
-    return;
-  }
-
-  if (document.getElementById('kioskSyncButton')) {
-    console.log('[MAINTENANCE] Kiosk sync button already exists — skipping');
-    return;
-  }
-
-  const syncBtn     = document.createElement('button');
-  syncBtn.id        = 'kioskSyncButton';
-  syncBtn.type      = 'button';
-  syncBtn.className = 'admin-sync-kiosk';
-  syncBtn.style.cssText = `
-    width:100%;padding:0.6rem 1rem;background:#eff6ff;color:#1d4ed8;
-    border:1px solid #bfdbfe;border-radius:6px;font-size:0.85rem;
-    font-weight:600;cursor:pointer;margin-top:4px;
-  `;
-  syncBtn.innerHTML = `🔄 Sync ${currentKioskMode} (0)`;
-  syncBtn.disabled  = true;
-  syncBtn.style.opacity = '0.5';
-
-  syncBtn.addEventListener('click', async () => {
-    const pending = window.dataHandlers?.countUnsyncedRecords?.(null, currentKioskMode) || 0;
-
-    if (pending === 0) {
-      alert('✅ No pending submissions for this kiosk.');
-      return;
-    }
-
-    if (adminState.syncInProgress) {
-      alert('⏳ Sync already in progress...');
-      return;
-    }
-
-    if (!navigator.onLine) {
-      alert('📡 Cannot sync — device is offline.\n\nData saved locally.');
-      return;
-    }
-
-    console.log(`[MAINTENANCE] 🔄 Syncing ${pending} records for ${currentKioskMode}`);
-    trackAdminEvent('kiosk_sync_triggered', { mode: currentKioskMode, pending });
-
-    try {
-      await window.dataHandlers?.syncKioskQueues?.(currentKioskMode);
-      vibrateSuccess();
-      alert(`✅ Synced ${pending} submissions for ${currentKioskMode}`);
-    } catch (error) {
-      console.error('[MAINTENANCE] Kiosk sync failed:', error);
-      alert(`❌ Sync failed: ${error.message}`);
-    }
-
-    // Refresh count after sync
-    loadKioskQueues();
-  });
-
-  container.appendChild(syncBtn);
-
-  // Set initial count
-  loadKioskQueues();
-
-  console.log('[MAINTENANCE] ✅ Kiosk sync button injected');
-  return syncBtn;
+  console.log(`[MAINTENANCE] ✅ Kiosk identity badge: ${icon} ${modeLabel} · ${kioskId}`);
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON STATE UPDATERS (UNCHANGED FROM v1.1.0)
+// BUTTON STATE UPDATERS (unchanged)
 // ─────────────────────────────────────────────────────────────
 
 export function updateClearButtonState() {
@@ -331,15 +212,15 @@ export function updateClearButtonState() {
 
   if (isLocked) {
     const remaining = getRemainingLockoutTime();
-    adminClearButton.textContent    = `Clear Local (Locked ${remaining}m)`;
-    adminClearButton.style.opacity  = '0.5';
-    adminClearButton.style.cursor   = 'not-allowed';
-    adminClearButton.title          = `Locked due to failed attempts. Try again in ${remaining} minutes.`;
+    adminClearButton.textContent   = `Clear Local (Locked ${remaining}m)`;
+    adminClearButton.style.opacity = '0.5';
+    adminClearButton.style.cursor  = 'not-allowed';
+    adminClearButton.title         = `Locked due to failed attempts. Try again in ${remaining} minutes.`;
   } else {
-    adminClearButton.textContent    = 'Clear Local';
-    adminClearButton.style.opacity  = '1';
-    adminClearButton.style.cursor   = 'pointer';
-    adminClearButton.title          = 'Clear local storage (password protected)';
+    adminClearButton.textContent   = 'Clear Local';
+    adminClearButton.style.opacity = '1';
+    adminClearButton.style.cursor  = 'pointer';
+    adminClearButton.title         = 'Clear local storage (password protected)';
   }
 }
 
@@ -378,13 +259,13 @@ export function updateFixVideoButtonState() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// MAIN HANDLER SETUP (UNCHANGED FROM v1.1.0)
+// MAIN HANDLER SETUP (unchanged)
 // ─────────────────────────────────────────────────────────────
 
 export function setupMaintenanceHandlers(adminClearButton, checkUpdateButton, fixVideoButton, resetAutoHideTimer) {
   cleanupMaintenanceHandlers();
 
-  // ── Clear Local ──────────────────────────────────────────────────────────────
+  // ── Clear Local ─────────────────────────────────────────────────────────────
   if (adminClearButton) {
     adminClearButtonHandler = async (e) => {
       e.preventDefault();
@@ -520,7 +401,7 @@ export function setupMaintenanceHandlers(adminClearButton, checkUpdateButton, fi
   console.log('[MAINTENANCE] ✅ All handlers attached');
 }
 
-// ── CLEANUP (UNCHANGED FROM v1.1.0) ──────────────────────────────────────────
+// ── CLEANUP (unchanged) ───────────────────────────────────────────────────────
 
 export function cleanupMaintenanceHandlers() {
   if (boundAdminClearButton && adminClearButtonHandler) {
@@ -545,10 +426,7 @@ export function cleanupMaintenanceHandlers() {
 }
 
 export default {
-  setupKioskSelector,
-  getCurrentKioskMode,
-  loadKioskQueues,
-  setupKioskSyncButton,
+  buildKioskIdentityBadge,
   setupMaintenanceHandlers,
   cleanupMaintenanceHandlers,
   updateClearButtonState,

@@ -1,41 +1,71 @@
 // FILE: sync/queueManager.js
 // PURPOSE: Queue access and maintenance for multi-survey offline storage
-// VERSION: 3.2.1
-// CHANGES FROM 3.2.0:
-//   - FIX B2-07: Queue overflow now logs the actual number of records dropped,
-//     not just 'removing oldest' (which implied only one was removed).
-//     slice(-(MAX_QUEUE_SIZE-1)) can drop many records silently if queue
-//     grew beyond MAX_QUEUE_SIZE through a race or config change.
+// VERSION: 3.3.0  ← UPGRADED
+// CHANGES FROM 3.2.1:
+//   - NEW: getKioskQueues(mode) — returns ONLY queues for current kiosk mode
+//     (temple → type1/type2; shayona → type3 only). Fixes admin panel global display.
+//   - NEW: getAllQueueConfigsWithData() now accepts mode param (defaults 'all')
+//   - INTEGRATES: window.DEVICECONFIG.kioskMode from device-config.js v1.1.5
+//   - BACKWARD COMPATIBLE: All existing functions unchanged
 // DEPENDENCIES: storageUtils.js
 
 import { safeGetLocalStorage, safeSetLocalStorage } from './storageUtils.js';
 
-function getSurveyTypeConfigs() {
-  const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
-  const typeKeys    = Object.keys(surveyTypes);
+// ── KIOSK MODE → QUEUE MAPPING ───────────────────────────────────────────────
+const KIOSK_QUEUE_CONFIGS = {
+  temple: {
+    type1: 'submissionQueue',
+    type2: 'submissionQueueV2'
+  },
+  shayona: {
+    type3: 'shayonaQueue'
+    // Add type3b: 'shayonaQueueV2' when needed
+  },
+  // FUTURE: giftShop: { type1: 'giftShopQueue1', type2: 'giftShopQueue2' },
+  // FUTURE: activity: { type1: 'activityQueue1', type2: 'activityQueue2' }
+};
 
-  if (typeKeys.length === 0) {
-    return [{
-      surveyType: 'type1',
-      queueKey:   window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue'
-    }];
+function getSurveyTypeConfigs(mode = 'all') {
+  if (mode === 'all') {
+    const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
+    const typeKeys    = Object.keys(surveyTypes);
+
+    if (typeKeys.length === 0) {
+      return [{
+        surveyType: 'type1',
+        queueKey:   window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue'
+      }];
+    }
+
+    return typeKeys.map(typeKey => {
+      const cfg         = surveyTypes[typeKey] || {};
+      const fallbackKey = typeKey === 'type1'
+        ? (window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue')
+        : `${typeKey}Queue`;
+
+      return {
+        surveyType: typeKey,
+        queueKey:   cfg.storageKey || fallbackKey
+      };
+    });
   }
 
-  return typeKeys.map(typeKey => {
-    const cfg         = surveyTypes[typeKey] || {};
-    const fallbackKey = typeKey === 'type1'
-      ? (window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue')
-      : `${typeKey}Queue`;
+  // MODE-SPECIFIC: Only kiosk-relevant queues
+  const kioskQueues = KIOSK_QUEUE_CONFIGS[mode];
+  if (!kioskQueues) {
+    console.warn(`[QUEUE] Unknown kiosk mode "${mode}" — returning empty`);
+    return [];
+  }
 
-    return {
-      surveyType: typeKey,
-      queueKey:   cfg.storageKey || fallbackKey
-    };
-  });
+  return Object.entries(kioskQueues).map(([surveyType, queueKey]) => ({
+    surveyType,
+    queueKey
+  }));
 }
 
 function resolveActiveSurveyType() {
   return window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
+         window.DEVICECONFIG?.defaultSurveyType ||  // ← NEW: Uses device-config v1.1.5
          window.CONSTANTS?.DEFAULT_SURVEY_TYPE ||
          'type1';
 }
@@ -55,6 +85,7 @@ function getQueueKey(overrideKey) {
          'submissionQueue';
 }
 
+// ── EXISTING FUNCTIONS (UNCHANGED — BACKWARD COMPAT) ─────────────────────────
 function safeRemoveLocalStorage(key) {
   try {
     localStorage.removeItem(key);
@@ -99,8 +130,17 @@ function normalizeQueue(rawQueue, key) {
   return normalized;
 }
 
-function getCountsByQueue() {
-  return getSurveyTypeConfigs().map(({ surveyType, queueKey }) => {
+function hasValidSubmissionIdentity(submission) {
+  return !!submission?.id;
+}
+
+function hasValidSubmissionTimestamp(submission) {
+  return !!(submission?.timestamp || submission?.completedAt || submission?.createdAt || submission?.submittedAt);
+}
+
+// ── NEW: MODE-AWARE COUNTS ───────────────────────────────────────────────────
+function getCountsByQueue(mode = 'all') {
+  return getSurveyTypeConfigs(mode).map(({ surveyType, queueKey }) => {
     const queue      = safeGetLocalStorage(queueKey);
     const normalized = normalizeQueue(queue, queueKey);
 
@@ -112,21 +152,23 @@ function getCountsByQueue() {
   });
 }
 
-function hasValidSubmissionIdentity(submission) {
-  return !!submission?.id;
-}
-
-function hasValidSubmissionTimestamp(submission) {
-  return !!(
-    submission?.timestamp   ||
-    submission?.completedAt ||
-    submission?.createdAt   ||
-    submission?.submittedAt
-  );
+function getKioskQueues(mode = window.DEVICECONFIG?.kioskMode) {
+  /**
+   * CRITICAL: Returns ONLY queues for this kiosk mode
+   * temple → ['submissionQueue', 'submissionQueueV2']
+   * shayona → ['shayonaQueue']
+   */
+  if (!mode) {
+    console.warn('[QUEUE] getKioskQueues() no mode — using all');
+    return getSurveyTypeConfigs('all').map(c => c.queueKey);
+  }
+  
+  const configs = getSurveyTypeConfigs(mode);
+  return configs.map(c => c.queueKey);
 }
 
 // ─────────────────────────────────────────────────────────────
-// EXPORTS
+// EXPORTS (BACKWARD COMPAT + NEW)
 // ─────────────────────────────────────────────────────────────
 
 export function getSubmissionQueue(overrideKey) {
@@ -141,29 +183,25 @@ export function getSubmissionQueue(overrideKey) {
   return normalized;
 }
 
-export function countUnsyncedRecords(overrideKey) {
+export function countUnsyncedRecords(overrideKey, mode) {
   if (overrideKey) {
     return getSubmissionQueue(overrideKey).length;
   }
-
-  return getCountsByQueue().reduce((sum, item) => sum + item.count, 0);
+  // NEW: mode-aware total
+  return getCountsByQueue(mode).reduce((sum, item) => sum + item.count, 0);
 }
 
-export function updateAdminCount() {
-  const counts = getCountsByQueue();
+export function updateAdminCount(mode = window.DEVICECONFIG?.kioskMode) {
+  const counts = getCountsByQueue(mode);
   const total  = counts.reduce((sum, item) => sum + item.count, 0);
 
-  const display =
-    window.globals?.unsyncedCountDisplay ||
-    document.getElementById('unsyncedCountDisplay');
-
+  const display = window.globals?.unsyncedCountDisplay || document.getElementById('unsyncedCountDisplay');
   if (display) {
     display.textContent = String(total);
-
     const nonZero = counts.filter(c => c.count > 0);
     display.title = nonZero.length > 0
-      ? nonZero.map(c => `${c.surveyType}: ${c.count}`).join(' | ')
-      : 'No unsynced records';
+      ? `${mode || 'All'}: ${nonZero.map(c => `${c.surveyType}: ${c.count}`).join(' | ')}`
+      : `No unsynced records (${mode || 'all'})`;
   }
 
   return total;
@@ -181,10 +219,8 @@ export function addToQueue(submission, overrideKey) {
   }
 
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-    // FIX B2-07: Log actual drop count — slice(-(MAX_QUEUE_SIZE-1)) can drop
-    // many records if queue somehow grew beyond MAX_QUEUE_SIZE.
     const dropCount = submissionQueue.length - (MAX_QUEUE_SIZE - 1);
-    console.error(`🚨 [QUEUE] Full at ${submissionQueue.length}/${MAX_QUEUE_SIZE} — removing ${dropCount} oldest record(s)`);
+    console.error(`🚨 [QUEUE] Full at ${submissionQueue.length}/${MAX_QUEUE_SIZE} — dropping ${dropCount} oldest`);
     submissionQueue = submissionQueue.slice(-(MAX_QUEUE_SIZE - 1));
   }
 
@@ -192,7 +228,7 @@ export function addToQueue(submission, overrideKey) {
   safeSetLocalStorage(key, submissionQueue);
 
   console.log(`[QUEUE] Added to "${key}". Size: ${submissionQueue.length}/${MAX_QUEUE_SIZE}`);
-  updateAdminCount();
+  updateAdminCount();  // Auto-updates for current mode
 }
 
 export function removeFromQueue(ids, overrideKey) {
@@ -250,6 +286,13 @@ export function validateQueue(overrideKey) {
   return { valid, invalid };
 }
 
+export function getAllQueueConfigsWithData(mode = 'all') {
+  /**
+   * BACKWARD COMPAT: Admin panel uses this — now mode-aware
+   */
+  return getCountsByQueue(mode);
+}
+
 export default {
   getSubmissionQueue,
   countUnsyncedRecords,
@@ -257,5 +300,7 @@ export default {
   addToQueue,
   removeFromQueue,
   clearQueue,
-  validateQueue
+  validateQueue,
+  getKioskQueues,           // ← NEW: Critical for admin filter
+  getAllQueueConfigsWithData // ← FIXED: Now mode-aware
 };

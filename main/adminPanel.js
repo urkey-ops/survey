@@ -1,22 +1,21 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel shell — show/hide, unlock gesture, auto-hide, online indicator, orchestration
-// VERSION: 9.0.0
-// CHANGES FROM 8.3.0:
-//   - ADD: wireSyncAllButton() — wires #syncAllButton (new HTML element) to call
-//     window.dataHandlers.syncData() + window.dataHandlers.syncAnalytics() in sequence.
-//     Reuses adminState.syncInProgress + adminState.analyticsInProgress flags so
-//     existing updateSyncButtonState / updateAnalyticsButtonState logic stays correct.
-//   - ADD: wireSettingsButton() — wires #adminSettingsButton to toggle class
-//     .admin-maintenance-open on #adminControls, which CSS uses to reveal/hide
-//     #admin-maintenance-drawer via max-height transition. Also toggles aria-expanded.
-//   - ADD: _relocateDeviceResetButton() — after _buildDeviceResetButton() appends
-//     #adminDeviceResetBtn to #adminControls, this helper moves it into
-//     #admin-maintenance-drawer so it lives with the other maintenance controls.
-//   - ADD: cleanup for syncAllButton and settingsButton event listeners in cleanupAdminPanel().
-//   - UNCHANGED: All existing imports, constants, state, countdown/auto-hide,
-//     show/hide, button state updaters, 5-tap unlock, hide button, kiosk selector
-//     wiring, setupAdminPanel structure, cleanupAdminPanel. Zero changes to any
-//     logic that was working in v8.3.0.
+// VERSION: 9.1.0
+// CHANGES FROM 9.0.0:
+//   - REMOVE: setupKioskSelector() call — replaced by buildKioskIdentityBadge()
+//   - REMOVE: setupKioskSyncButton() call — per-kiosk sync button removed;
+//     #syncAllButton in main panel handles all syncing
+//   - REMOVE: bindKioskSelector() function — nothing left to bind
+//   - REMOVE: unbindKioskSelector() function — nothing left to unbind
+//   - REMOVE: unbindKioskSelector() call in cleanupAdminPanel()
+//   - REMOVE: loadKioskQueues, getCurrentKioskMode, setupKioskSelector,
+//     setupKioskSyncButton imports from adminMaintenance.js — all removed
+//   - ADD: buildKioskIdentityBadge import from adminMaintenance.js
+//   - ADD: buildKioskIdentityBadge() call in setupAdminPanel() replacing the
+//     two removed setup calls — single line, no wiring needed (static badge)
+//   - UNCHANGED: Everything else — unlock gesture, hide button, sync all button,
+//     settings/drawer toggle, survey controls, maintenance handlers, device reset
+//     button relocation, network listeners, countdown, all state management
 // DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js
 
 import { adminState, resetAdminState } from './adminState.js';
@@ -38,18 +37,15 @@ import {
   updateFixVideoButtonState,
   setupMaintenanceHandlers,
   cleanupMaintenanceHandlers,
-  setupKioskSelector,
-  getCurrentKioskMode,
-  loadKioskQueues,
-  setupKioskSyncButton,
+  buildKioskIdentityBadge,
 } from './adminMaintenance.js';
 
 // ─────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
-const VERSION              = 'v9.0.0';
-const AUTO_HIDE_DELAY      = 20000;
+const VERSION                   = 'v9.1.0';
+const AUTO_HIDE_DELAY           = 20000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
 const STUCK_FLAG_TIMEOUT_MS     = 60000;
 
@@ -67,15 +63,13 @@ let onlineHandler          = null;
 let offlineHandler         = null;
 let hideAdminButtonHandler = null;
 let boundHideAdminButton   = null;
-
-// ── NEW in v9.0.0 ─────────────────────────────────────────────
 let syncAllButtonHandler   = null;
 let boundSyncAllButton     = null;
 let settingsButtonHandler  = null;
 let boundSettingsButton    = null;
 
 // ─────────────────────────────────────────────────────────────
-// STUCK FLAG RESET (unchanged)
+// STUCK FLAG RESET
 // ─────────────────────────────────────────────────────────────
 
 function resetStuckFlagsIfNeeded() {
@@ -99,7 +93,7 @@ function resetStuckFlagsIfNeeded() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// COUNTDOWN + AUTO-HIDE (unchanged)
+// COUNTDOWN + AUTO-HIDE
 // ─────────────────────────────────────────────────────────────
 
 function updateCountdown() {
@@ -144,14 +138,13 @@ function clearManagedTimers() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SHOW / HIDE (unchanged)
+// SHOW / HIDE
 // ─────────────────────────────────────────────────────────────
 
 function hideAdminPanel() {
   const adminControls = window.globals?.adminControls;
   if (adminControls) {
     adminControls.classList.add('hidden');
-    // Also close the maintenance drawer when panel hides
     adminControls.classList.remove('admin-maintenance-open');
     document.body.classList.remove('admin-active');
   }
@@ -188,11 +181,6 @@ function showAdminPanel() {
 
   updateAllButtonStates();
   updateSurveyTypeSwitcher();
-
-  // Refresh kiosk queue count whenever panel opens
-  loadKioskQueues();
-
-  // Refresh syncAllButton state on open
   _updateSyncAllButtonState(navigator.onLine);
 
   startAutoHideTimer();
@@ -203,7 +191,7 @@ function showAdminPanel() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON STATES (unchanged)
+// BUTTON STATES
 // ─────────────────────────────────────────────────────────────
 
 function updateOnlineIndicator() {
@@ -228,34 +216,30 @@ function updateAllButtonStates() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SYNC ALL BUTTON — NEW in v9.0.0
+// SYNC ALL BUTTON
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Update visual state of #syncAllButton based on online/in-progress flags.
- * Called from updateAllButtonStates() and after sync operations complete.
- */
 function _updateSyncAllButtonState(isOnline) {
   const btn = document.getElementById('syncAllButton');
   if (!btn) return;
 
-  const isBusy = adminState.syncInProgress || adminState.analyticsInProgress;
+  const isBusy        = adminState.syncInProgress || adminState.analyticsInProgress;
   const shouldDisable = !isOnline || isBusy;
 
   btn.disabled = shouldDisable;
-  btn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  btn.setAttribute('aria-busy',     isBusy        ? 'true' : 'false');
   btn.setAttribute('aria-disabled', shouldDisable ? 'true' : 'false');
 
   if (isBusy) {
-    btn.textContent = 'Syncing…';
+    btn.textContent   = 'Syncing…';
     btn.style.opacity = '0.7';
     btn.style.cursor  = 'wait';
   } else if (!isOnline) {
-    btn.textContent = 'Sync (Offline)';
+    btn.textContent   = 'Sync (Offline)';
     btn.style.opacity = '0.5';
     btn.style.cursor  = 'not-allowed';
   } else {
-    btn.textContent = 'Sync';
+    btn.textContent   = 'Sync';
     btn.style.opacity = '1';
     btn.style.cursor  = 'pointer';
   }
@@ -267,15 +251,7 @@ function _updateSyncAllButtonState(isOnline) {
       : 'Sync all data and analytics to server';
 }
 
-/**
- * Wire #syncAllButton click handler.
- * Calls syncData() (all queues) then syncAnalytics() sequentially.
- * Uses existing adminState flags to prevent double-fire.
- * Does NOT touch window.globals.syncButton or window.globals.syncAnalyticsButton
- * — those elements still exist in the drawer with their own handlers intact.
- */
 function wireSyncAllButton() {
-  // Clean up previous binding if re-wired
   if (boundSyncAllButton && syncAllButtonHandler) {
     boundSyncAllButton.removeEventListener('click', syncAllButtonHandler);
     syncAllButtonHandler = null;
@@ -307,11 +283,11 @@ function wireSyncAllButton() {
     console.log('[ADMIN] 🔄 Sync All triggered (data + analytics)');
     trackAdminEvent('sync_all_triggered');
 
-    // ── Phase 1: Sync data ───────────────────────────────────────────────────
+    // ── Phase 1: Sync data ─────────────────────────────────────────────────
     adminState.syncInProgress = true;
     adminState.syncStartedAt  = Date.now();
     _updateSyncAllButtonState(true);
-    updateSyncButtonState(true); // keep drawer button in sync too
+    updateSyncButtonState(true);
 
     try {
       if (window.dataHandlers?.syncData) {
@@ -331,11 +307,11 @@ function wireSyncAllButton() {
       updateSyncButtonState(navigator.onLine);
     }
 
-    // ── Phase 2: Sync analytics ──────────────────────────────────────────────
+    // ── Phase 2: Sync analytics ────────────────────────────────────────────
     adminState.analyticsInProgress = true;
     adminState.analyticsStartedAt  = Date.now();
     _updateSyncAllButtonState(true);
-    updateAnalyticsButtonState(true); // keep drawer button in sync too
+    updateAnalyticsButtonState(true);
 
     try {
       if (window.dataHandlers?.syncAnalytics) {
@@ -343,11 +319,9 @@ function wireSyncAllButton() {
         console.log('[ADMIN] ✅ Sync All — analytics phase complete');
       } else {
         console.error('[ADMIN] ❌ syncAnalytics not available');
-        // Non-fatal — data already synced
       }
     } catch (err) {
       console.error('[ADMIN] ❌ Sync All — analytics phase failed:', err);
-      // Non-fatal — data sync succeeded
     } finally {
       adminState.analyticsInProgress = false;
       adminState.analyticsStartedAt  = null;
@@ -365,16 +339,10 @@ function wireSyncAllButton() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SETTINGS / DRAWER TOGGLE — NEW in v9.0.0
+// SETTINGS / DRAWER TOGGLE
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Wire #adminSettingsButton to toggle .admin-maintenance-open on #adminControls.
- * CSS handles the actual show/hide of #admin-maintenance-drawer via max-height.
- * Also updates aria-expanded on the button and aria-hidden on the drawer.
- */
 function wireSettingsButton() {
-  // Clean up previous binding
   if (boundSettingsButton && settingsButtonHandler) {
     boundSettingsButton.removeEventListener('click', settingsButtonHandler);
     settingsButtonHandler = null;
@@ -397,7 +365,6 @@ function wireSettingsButton() {
 
     const isOpen = adminControls.classList.toggle('admin-maintenance-open');
 
-    // Sync aria attributes
     btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 
     const drawer = document.getElementById('admin-maintenance-drawer');
@@ -413,18 +380,9 @@ function wireSettingsButton() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// DEVICE RESET BUTTON RELOCATION — NEW in v9.0.0
+// DEVICE RESET BUTTON RELOCATION
 // ─────────────────────────────────────────────────────────────
 
-/**
- * _buildDeviceResetButton() in v8.x appended #adminDeviceResetBtn directly
- * to adminControls, making it visible in the main panel. In v9.0.0 we want
- * it inside the maintenance drawer.
- *
- * Strategy: call the original builder (unchanged), then immediately move the
- * injected element into #admin-maintenance-drawer. This avoids modifying
- * _buildDeviceResetButton() itself and keeps its click handler intact.
- */
 function _relocateDeviceResetButton() {
   const resetBtn = document.getElementById('adminDeviceResetBtn');
   const drawer   = document.getElementById('admin-maintenance-drawer');
@@ -439,7 +397,6 @@ function _relocateDeviceResetButton() {
     return;
   }
 
-  // Also move the <hr> divider that was injected just before the button
   const prevSibling = resetBtn.previousElementSibling;
   if (prevSibling && prevSibling.tagName === 'HR') {
     drawer.appendChild(prevSibling);
@@ -450,7 +407,7 @@ function _relocateDeviceResetButton() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// HIDE BUTTON (unchanged)
+// HIDE BUTTON
 // ─────────────────────────────────────────────────────────────
 
 function bindHideButton(hideAdminButton) {
@@ -475,7 +432,7 @@ function bindHideButton(hideAdminButton) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 5-TAP UNLOCK GESTURE (unchanged)
+// 5-TAP UNLOCK GESTURE
 // ─────────────────────────────────────────────────────────────
 
 function isAdminTitleTapTarget(target) {
@@ -543,7 +500,7 @@ function unbindAdminUnlock() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// DEVICE RESET BUTTON BUILDER (unchanged from v8.3.0)
+// DEVICE RESET BUTTON BUILDER
 // ─────────────────────────────────────────────────────────────
 
 function _buildDeviceResetButton(adminControls) {
@@ -573,51 +530,9 @@ function _buildDeviceResetButton(adminControls) {
     }
   });
 
-  // Append to adminControls as before — _relocateDeviceResetButton() will
-  // move it into the drawer immediately after this call returns.
   adminControls.appendChild(divider);
   adminControls.appendChild(resetBtn);
   console.log('[ADMIN] ✅ Device reset button added');
-}
-
-// ─────────────────────────────────────────────────────────────
-// KIOSK MODE SELECTOR WIRING (unchanged from v8.3.0)
-// ─────────────────────────────────────────────────────────────
-
-function bindKioskSelector() {
-  const kioskSelector = document.getElementById('kioskSelector');
-  if (!kioskSelector) {
-    console.warn('[ADMIN] ⚠️ kioskSelector not found — was setupKioskSelector() called first?');
-    return;
-  }
-
-  if (kioskSelector._kioskChangeListener) {
-    kioskSelector.removeEventListener('change', kioskSelector._kioskChangeListener);
-    kioskSelector._kioskChangeListener = null;
-  }
-
-  const listener = (e) => {
-    resetAutoHideTimer();
-    const mode = e.target.value;
-    console.log(`[ADMIN] 🧩 Kiosk mode changed to: ${mode}`);
-    loadKioskQueues(mode);
-    trackAdminEvent('kiosk_selector_changed', { mode });
-  };
-
-  kioskSelector._kioskChangeListener = listener;
-  kioskSelector.addEventListener('change', listener);
-  console.log('[ADMIN] ✅ Kiosk mode selector wired');
-}
-
-function unbindKioskSelector() {
-  const kioskSelector = document.getElementById('kioskSelector');
-  if (!kioskSelector) return;
-
-  if (kioskSelector._kioskChangeListener) {
-    kioskSelector.removeEventListener('change', kioskSelector._kioskChangeListener);
-    kioskSelector._kioskChangeListener = null;
-    console.log('[ADMIN] 🧹 Kiosk selector unbound');
-  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -661,6 +576,9 @@ export function setupAdminPanel() {
   adminState.autoHideStartTime = null;
 
   // ── Survey type switcher ──────────────────────────────────────────────────
+  // Shown only when device has more than one allowed survey type.
+  // Temple: ['type1','type2'] → two pills shown with operational labels.
+  // Shayona: ['type3'] → switcher hidden entirely (single type device).
   const allowedTypes = window.DEVICECONFIG?.allowedSurveyTypes ?? [];
   if (allowedTypes.length > 1) {
     buildSurveyTypeSwitcher(adminControls, resetAutoHideTimer);
@@ -669,25 +587,30 @@ export function setupAdminPanel() {
     console.log('[ADMIN] ℹ️ Single survey type — switcher hidden');
   }
 
-  // ── Kiosk selector injection ──────────────────────────────────────────────
-  setupKioskSelector('adminControls');
+  // ── Kiosk identity badge ──────────────────────────────────────────────────
+  // Static read-only badge showing which kiosk this device is configured as.
+  // Reads window.DEVICECONFIG.kioskMode + kioskId — set once at first-launch,
+  // never changeable at runtime. Replaces the old dropdown selector (which
+  // changed nothing about actual device operation) and the paired per-kiosk
+  // sync button (redundant — #syncAllButton covers all syncing on this device).
+  buildKioskIdentityBadge('adminControls');
 
   // ── Unlock + hide button ──────────────────────────────────────────────────
   bindAdminUnlock();
   bindHideButton(window.globals?.hideAdminButton);
 
-  // ── NEW v9.0.0: Wire primary action buttons ───────────────────────────────
+  // ── Primary action buttons ────────────────────────────────────────────────
   wireSyncAllButton();
   wireSettingsButton();
 
-  // ── Drawer button handlers (syncButton, syncAnalyticsButton) ─────────────
+  // ── Drawer: survey sync buttons (Sync Data, Sync Analytics) ──────────────
   setupSurveyControls(
     window.globals?.syncButton,
     window.globals?.syncAnalyticsButton,
     resetAutoHideTimer
   );
 
-  // ── Maintenance button handlers ───────────────────────────────────────────
+  // ── Drawer: maintenance button handlers ───────────────────────────────────
   setupMaintenanceHandlers(
     window.globals?.adminClearButton,
     window.globals?.checkUpdateButton,
@@ -695,15 +618,9 @@ export function setupAdminPanel() {
     resetAutoHideTimer
   );
 
-  // ── Device reset button — build then relocate into drawer ────────────────
-  // Build into adminControls first (unchanged builder), then immediately
-  // move into #admin-maintenance-drawer so it is hidden by default.
+  // ── Drawer: device reset button — build then move into drawer ────────────
   _buildDeviceResetButton(adminControls);
   _relocateDeviceResetButton();
-
-  // ── Kiosk sync button + selector wiring ──────────────────────────────────
-  setupKioskSyncButton('adminControls');
-  bindKioskSelector();
 
   // ── Network listeners ─────────────────────────────────────────────────────
   onlineHandler = () => {
@@ -730,7 +647,7 @@ export function setupAdminPanel() {
   console.log('  Mode:             Offline-First iPad Kiosk PWA');
   console.log(`  Auto-hide:        ${AUTO_HIDE_DELAY / 1000}s`);
   console.log(`  Device mode:      ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
-  console.log(`  Kiosk selector:   ${document.getElementById('kioskSelector') ? '✅' : '❌'}`);
+  console.log(`  Identity badge:   ${document.getElementById('kioskIdentityBadge') ? '✅' : '❌'}`);
   console.log(`  Sync All button:  ${document.getElementById('syncAllButton') ? '✅' : '❌'}`);
   console.log(`  Settings button:  ${document.getElementById('adminSettingsButton') ? '✅' : '❌'}`);
   console.log(`  Maint. drawer:    ${document.getElementById('admin-maintenance-drawer') ? '✅' : '❌'}`);
@@ -750,7 +667,6 @@ export function cleanupAdminPanel() {
   offlineHandler = null;
 
   unbindAdminUnlock();
-  unbindKioskSelector();
 
   if (boundHideAdminButton && hideAdminButtonHandler) {
     boundHideAdminButton.removeEventListener('click', hideAdminButtonHandler);
@@ -758,7 +674,6 @@ export function cleanupAdminPanel() {
     boundHideAdminButton   = null;
   }
 
-  // ── NEW v9.0.0: clean up new button listeners ─────────────────────────────
   if (boundSyncAllButton && syncAllButtonHandler) {
     boundSyncAllButton.removeEventListener('click', syncAllButtonHandler);
     syncAllButtonHandler = null;

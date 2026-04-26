@@ -1,14 +1,14 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS KIOSK SAFE)
 // VERSION: 9.8.0
-// CHANGES FROM 9.7.0: - 40 was correct before admin related updates
+// CHANGES FROM 9.7.0: - 43 was correct before admin related updates
 //   - BUMP: CACHE_NAME / RUNTIME_CACHE v29 → v30
 //     Invalidates stale cache for files changed in the start-screen tap fix:
 //       • main/navigationSetup.js (v3.2.0 — window.__surveyStateInitialized guard)
 //       • main/index.js           (v5.7.1 — checks __surveyStateInitialized flag)
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v43';
-const RUNTIME_CACHE = 'kiosk-runtime-v43';
+const CACHE_NAME    = 'kiosk-survey-v44';
+const RUNTIME_CACHE = 'kiosk-runtime-v44';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Critical files that MUST be cached for offline operation

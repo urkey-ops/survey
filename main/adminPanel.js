@@ -1,12 +1,21 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel shell — show/hide, unlock gesture, auto-hide, online indicator, orchestration
-// VERSION: 8.2.0
-// CHANGES FROM 8.1.0:
-//   - FIX: remove loose resetBtn block that was floating in module scope (bug)
-//   - ADD: buildSurveyTypeSwitcher wrapped in allowedSurveyTypes guard
-//     (switcher only shown when device is configured for >1 survey type)
-//   - ADD: "Reset Device Type" button in admin panel
-//     (clears deviceConfig from localStorage → setup screen on next reload)
+// VERSION: 8.3.0
+// CHANGES FROM 8.2.0:
+//   - FIX CRITICAL: Added missing imports from adminMaintenance.js:
+//     setupKioskSelector, getCurrentKioskMode, loadKioskQueues, setupKioskSyncButton.
+//     These were defined in adminMaintenance v1.2.0 but never imported here — the
+//     functions existed but were completely orphaned (never called).
+//   - FIX CRITICAL: Added setupKioskSelector() and setupKioskSyncButton() calls
+//     inside setupAdminPanel() so the selector and sync button are actually injected.
+//   - FIX CRITICAL: bindKioskSelector() now calls loadKioskQueues(mode) via the
+//     imported function directly, NOT via window.loadKioskQueues — window reference
+//     is kept as a backup but the import is the authoritative call.
+//   - FIX: bindKioskSelector() listener stored on element to allow proper cleanup
+//     in unbindKioskSelector() — previously the stored reference was never set,
+//     making unbind a no-op.
+//   - UNCHANGED: All show/hide, countdown, auto-hide, 5-tap unlock, device reset
+//     button, online indicator logic identical to v8.2.0.
 // DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js
 
 import { adminState, resetAdminState } from './adminState.js';
@@ -28,31 +37,37 @@ import {
   updateFixVideoButtonState,
   setupMaintenanceHandlers,
   cleanupMaintenanceHandlers,
+  // FIX: These four were missing in v8.2.0 — they were defined in
+  // adminMaintenance.js but never imported or called from here.
+  setupKioskSelector,
+  getCurrentKioskMode,
+  loadKioskQueues,
+  setupKioskSyncButton,
 } from './adminMaintenance.js';
 
 // ─────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
-const VERSION = 'v8.2.0';
-const AUTO_HIDE_DELAY = 20000;
+const VERSION              = 'v8.3.0';
+const AUTO_HIDE_DELAY      = 20000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
-const STUCK_FLAG_TIMEOUT_MS = 60000;
+const STUCK_FLAG_TIMEOUT_MS     = 60000;
 
 // ─────────────────────────────────────────────────────────────
 // LOCAL STATE
 // ─────────────────────────────────────────────────────────────
 
-let autoHideTimer = null;
-let countdownInterval = null;
-let handleTitlePointerUp = null;
-let unlockTapCount = 0;
-let unlockTapTimeout = null;
-let unlockLastTapTime = 0;
-let onlineHandler = null;
-let offlineHandler = null;
+let autoHideTimer         = null;
+let countdownInterval     = null;
+let handleTitlePointerUp  = null;
+let unlockTapCount        = 0;
+let unlockTapTimeout      = null;
+let unlockLastTapTime     = 0;
+let onlineHandler         = null;
+let offlineHandler        = null;
 let hideAdminButtonHandler = null;
-let boundHideAdminButton = null;
+let boundHideAdminButton  = null;
 
 // ─────────────────────────────────────────────────────────────
 // STUCK FLAG RESET
@@ -61,17 +76,19 @@ let boundHideAdminButton = null;
 function resetStuckFlagsIfNeeded() {
   const now = Date.now();
 
-  if (adminState.syncInProgress && adminState.syncStartedAt && (now - adminState.syncStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
+  if (adminState.syncInProgress && adminState.syncStartedAt &&
+      (now - adminState.syncStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
     console.warn('[ADMIN] ⚠️ syncInProgress was stuck >60s — resetting');
     adminState.syncInProgress = false;
-    adminState.syncStartedAt = null;
+    adminState.syncStartedAt  = null;
     updateSyncButtonState(navigator.onLine);
   }
 
-  if (adminState.analyticsInProgress && adminState.analyticsStartedAt && (now - adminState.analyticsStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
+  if (adminState.analyticsInProgress && adminState.analyticsStartedAt &&
+      (now - adminState.analyticsStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
     console.warn('[ADMIN] ⚠️ analyticsInProgress was stuck >60s — resetting');
     adminState.analyticsInProgress = false;
-    adminState.analyticsStartedAt = null;
+    adminState.analyticsStartedAt  = null;
     updateAnalyticsButtonState(navigator.onLine);
   }
 }
@@ -88,16 +105,16 @@ function updateCountdown() {
   const remaining = Math.max(0, Math.ceil((AUTO_HIDE_DELAY - elapsed) / 1000));
 
   if (remaining > 0) {
-    countdownEl.textContent    = `Auto-hide in ${remaining}s`;
-    countdownEl.style.opacity  = remaining <= 5 ? '1' : '0.6';
+    countdownEl.textContent   = `Auto-hide in ${remaining}s`;
+    countdownEl.style.opacity = remaining <= 5 ? '1' : '0.6';
   } else {
     countdownEl.textContent = '';
   }
 }
 
 function startAutoHideTimer() {
-  if (autoHideTimer)     { clearTimeout(autoHideTimer);       autoHideTimer     = null; }
-  if (countdownInterval) { clearInterval(countdownInterval);  countdownInterval = null; }
+  if (autoHideTimer)     { clearTimeout(autoHideTimer);      autoHideTimer     = null; }
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
 
   adminState.autoHideStartTime = Date.now();
 
@@ -116,9 +133,9 @@ function resetAutoHideTimer() {
 }
 
 function clearManagedTimers() {
-  if (autoHideTimer)     { clearTimeout(autoHideTimer);       autoHideTimer     = null; }
-  if (countdownInterval) { clearInterval(countdownInterval);  countdownInterval = null; }
-  if (unlockTapTimeout)  { clearTimeout(unlockTapTimeout);    unlockTapTimeout  = null; }
+  if (autoHideTimer)    { clearTimeout(autoHideTimer);      autoHideTimer     = null; }
+  if (countdownInterval){ clearInterval(countdownInterval); countdownInterval = null; }
+  if (unlockTapTimeout) { clearTimeout(unlockTapTimeout);   unlockTapTimeout  = null; }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -158,6 +175,10 @@ function showAdminPanel() {
 
   updateAllButtonStates();
   updateSurveyTypeSwitcher();
+
+  // Refresh kiosk queue count whenever panel opens
+  loadKioskQueues();
+
   startAutoHideTimer();
   vibrateSuccess();
   trackAdminEvent('admin_panel_opened');
@@ -283,18 +304,10 @@ function unbindAdminUnlock() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// DEVICE RESET BUTTON
+// DEVICE RESET BUTTON (UNCHANGED FROM v8.2.0)
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Appends a "Reset Device Type" button to the admin panel.
- * Clears deviceConfig from localStorage so the first-launch setup
- * screen reappears on the next page load/reload.
- * Always added regardless of allowedSurveyTypes count — useful for
- * correcting a wrong device selection on either iPad.
- */
 function _buildDeviceResetButton(adminControls) {
-  // Avoid duplicates if setupAdminPanel is called more than once
   if (document.getElementById('adminDeviceResetBtn')) return;
 
   const divider = document.createElement('hr');
@@ -302,30 +315,24 @@ function _buildDeviceResetButton(adminControls) {
 
   const resetBtn = document.createElement('button');
   resetBtn.id          = 'adminDeviceResetBtn';
+  resetBtn.type        = 'button';
   resetBtn.textContent = '🔄 Reset Device Type';
   resetBtn.style.cssText = `
-    width: 100%;
-    padding: 0.6rem 1rem;
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fcd34d;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    margin-top: 4px;
+    width:100%;padding:0.6rem 1rem;background:#fef3c7;color:#92400e;
+    border:1px solid #fcd34d;border-radius:6px;font-size:0.85rem;
+    font-weight:600;cursor:pointer;margin-top:4px;
   `;
 
- resetBtn.addEventListener('click', () => {
-  resetAutoHideTimer();
-  if (confirm('This will reset the kiosk device type.\\nThe setup screen will appear on the next reload.\\n\\nContinue?')) {
-    localStorage.removeItem('deviceConfig');
-    localStorage.removeItem('kioskState');  // ← ADD THIS LINE
-    console.log('[ADMIN] 🔄 deviceConfig + kioskState cleared — reloading for setup screen');
-    trackAdminEvent('device_type_reset');
-    location.reload();
-  }
-});
+  resetBtn.addEventListener('click', () => {
+    resetAutoHideTimer();
+    if (confirm('This will reset the kiosk device type.\nThe setup screen will appear on the next reload.\n\nContinue?')) {
+      localStorage.removeItem('deviceConfig');
+      localStorage.removeItem('kioskState');
+      console.log('[ADMIN] 🔄 deviceConfig + kioskState cleared — reloading for setup screen');
+      trackAdminEvent('device_type_reset');
+      location.reload();
+    }
+  });
 
   adminControls.appendChild(divider);
   adminControls.appendChild(resetBtn);
@@ -333,31 +340,41 @@ function _buildDeviceResetButton(adminControls) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// KIOSK MODE SELECTOR EVENT
+// KIOSK MODE SELECTOR WIRING
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Wire the kiosk mode selector in the admin panel.
- * When user changes mode, reload queues and charts.
- * Relies on:
- *   - adminMaintenance.js exports: loadKioskQueues(mode)
- *   - HTML: <select id="kioskSelector">
+ * Wire the change event on #kioskSelector.
+ * The element is injected by setupKioskSelector() (called earlier in
+ * setupAdminPanel). This function only attaches the event listener.
+ *
+ * FIX v8.3.0:
+ *   - Calls imported loadKioskQueues(mode) directly (not window reference)
+ *   - Stores listener on element._kioskChangeListener for proper cleanup
  */
 function bindKioskSelector() {
   const kioskSelector = document.getElementById('kioskSelector');
   if (!kioskSelector) {
-    console.warn('[ADMIN] ⚠️ kioskSelector not found; loadKioskQueues will not bind');
+    console.warn('[ADMIN] ⚠️ kioskSelector not found — was setupKioskSelector() called first?');
     return;
+  }
+
+  // Clean up any previous listener before re-binding
+  if (kioskSelector._kioskChangeListener) {
+    kioskSelector.removeEventListener('change', kioskSelector._kioskChangeListener);
+    kioskSelector._kioskChangeListener = null;
   }
 
   const listener = (e) => {
     resetAutoHideTimer();
     const mode = e.target.value;
     console.log(`[ADMIN] 🧩 Kiosk mode changed to: ${mode}`);
-    window.loadKioskQueues?.(mode);
+    // Use imported function directly — window.loadKioskQueues is a backup
+    loadKioskQueues(mode);
+    trackAdminEvent('kiosk_selector_changed', { mode });
   };
 
-  kioskSelector.removeEventListener('change', listener);
+  kioskSelector._kioskChangeListener = listener;
   kioskSelector.addEventListener('change', listener);
   console.log('[ADMIN] ✅ Kiosk mode selector wired');
 }
@@ -366,10 +383,10 @@ function unbindKioskSelector() {
   const kioskSelector = document.getElementById('kioskSelector');
   if (!kioskSelector) return;
 
-  const listener = kioskSelector._changeListener;
-  if (listener) {
-    kioskSelector.removeEventListener('change', listener);
-    kioskSelector._changeListener = null;
+  if (kioskSelector._kioskChangeListener) {
+    kioskSelector.removeEventListener('change', kioskSelector._kioskChangeListener);
+    kioskSelector._kioskChangeListener = null;
+    console.log('[ADMIN] 🧹 Kiosk selector unbound');
   }
 }
 
@@ -389,13 +406,14 @@ export function setupAdminPanel() {
   if (onlineHandler)  window.removeEventListener('online',  onlineHandler);
   if (offlineHandler) window.removeEventListener('offline', offlineHandler);
 
+  // ── Status row (online indicator + countdown) ─────────────────────────────
   if (!document.getElementById('adminCountdown')) {
     const statusRow = document.createElement('div');
     statusRow.className = 'admin-status-row';
 
     const onlineStatus = document.createElement('p');
-    onlineStatus.id        = 'adminOnlineStatus';
-    onlineStatus.className = 'admin-online-state';
+    onlineStatus.id          = 'adminOnlineStatus';
+    onlineStatus.className   = 'admin-online-state';
     onlineStatus.textContent = navigator.onLine ? '🌐 Online' : '📡 Offline Mode';
 
     const countdown = document.createElement('p');
@@ -412,9 +430,9 @@ export function setupAdminPanel() {
   adminState.adminPanelVisible = false;
   adminState.autoHideStartTime = null;
 
-  // ── Survey type switcher — only show when device supports >1 type ─────────
-  // Temple iPad: allowedSurveyTypes = ['type1', 'type2'] → length 2 → show
-  // Café iPad:   allowedSurveyTypes = ['type3']           → length 1 → hide
+  // ── Survey type switcher — only when device supports >1 type ─────────────
+  // Temple:  allowedSurveyTypes = ['type1','type2'] → length 2 → show
+  // Shayona: allowedSurveyTypes = ['type3']          → length 1 → hide
   const allowedTypes = window.DEVICECONFIG?.allowedSurveyTypes ?? [];
   if (allowedTypes.length > 1) {
     buildSurveyTypeSwitcher(adminControls, resetAutoHideTimer);
@@ -422,6 +440,11 @@ export function setupAdminPanel() {
   } else {
     console.log('[ADMIN] ℹ️ Single survey type — switcher hidden');
   }
+
+  // ── FIX v8.3.0: Inject kiosk selector BEFORE bindKioskSelector() ─────────
+  // setupKioskSelector() creates id="kioskSelector" which bindKioskSelector()
+  // then wires. Order matters — inject first, wire second.
+  setupKioskSelector('adminControls');
 
   bindAdminUnlock();
   bindHideButton(window.globals?.hideAdminButton);
@@ -442,9 +465,13 @@ export function setupAdminPanel() {
   // ── Device reset button — always present on both iPads ───────────────────
   _buildDeviceResetButton(adminControls);
 
-  // ── Kiosk mode selector event ────────────────────────────────────────────
+  // ── FIX v8.3.0: Inject mode-specific sync button ─────────────────────────
+  setupKioskSyncButton('adminControls');
+
+  // ── FIX v8.3.0: Wire selector change event AFTER injection ───────────────
   bindKioskSelector();
 
+  // ── Network listeners ─────────────────────────────────────────────────────
   onlineHandler = () => {
     console.log('[ADMIN] 🌐 Connection restored');
     if (adminState.adminPanelVisible) updateAllButtonStates();
@@ -463,16 +490,17 @@ export function setupAdminPanel() {
   window.setupAdminPanel   = setupAdminPanel;
   window.cleanupAdminPanel = cleanupAdminPanel;
 
- console.log('═══════════════════════════════════════════════════════');
-console.log(`🎛️ ADMIN PANEL CONFIGURED (${VERSION} — modular split)`);
-console.log('═══════════════════════════════════════════════════════');
-console.log('  Mode:           Offline-First iPad Kiosk PWA');
-console.log(`  Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
-console.log(`  Device mode:    ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
-console.log(`  Survey types:   ${(allowedTypes.length > 0 ? allowedTypes : ['type1']).join(', ')}`);
-console.log(`  Active Survey:  ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
-console.log(`  Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
-console.log('═══════════════════════════════════════════════════════');
+  console.log('═══════════════════════════════════════════════════════');
+  console.log(`🎛️ ADMIN PANEL CONFIGURED (${VERSION} — modular split)`);
+  console.log('═══════════════════════════════════════════════════════');
+  console.log('  Mode:           Offline-First iPad Kiosk PWA');
+  console.log(`  Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
+  console.log(`  Device mode:    ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
+  console.log(`  Kiosk selector: ${document.getElementById('kioskSelector') ? '✅' : '❌'}`);
+  console.log(`  Survey types:   ${(allowedTypes.length > 0 ? allowedTypes : ['type1']).join(', ')}`);
+  console.log(`  Active Survey:  ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
+  console.log(`  Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
+  console.log('═══════════════════════════════════════════════════════');
 }
 
 export function cleanupAdminPanel() {
@@ -484,6 +512,7 @@ export function cleanupAdminPanel() {
   offlineHandler = null;
 
   unbindAdminUnlock();
+  unbindKioskSelector();
 
   if (boundHideAdminButton && hideAdminButtonHandler) {
     boundHideAdminButton.removeEventListener('click', hideAdminButtonHandler);

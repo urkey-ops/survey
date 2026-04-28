@@ -49,13 +49,9 @@ export function recordAnalytics(eventType, data = {}) {
     const timestamp = new Date().toISOString();
     const appState  = window.appState;
 
-    analytics.push({
-      timestamp,
-      eventType,
-      surveyId: appState?.formData?.id,
-      kioskId:  window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
-      ...data
-    });
+   // After:
+import { buildAnalyticsEvent } from '../main/contracts.js';
+analytics.push(buildAnalyticsEvent(eventType, data));
 
     if (analytics.length > MAX_ANALYTICS_SIZE) {
       const excess = analytics.length - MAX_ANALYTICS_SIZE;

@@ -1,7 +1,13 @@
 // FILE: main/adminSurveyControls.js
 // PURPOSE: Survey type switcher + sync + analytics sync button handlers
-// VERSION: 1.2.0 - FULL SYNC BLOCKING IMPLEMENTED (prevents data loss on switch)
-// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS, window.KIOSK_CONFIG
+// VERSION: 1.2.1
+// CHANGES FROM 1.2.0:
+//   - FIX 3: Survey type pills now filtered by allowedSurveyTypes from DEVICECONFIG
+//            — prevents staff switching a temple kiosk to a café survey
+//   - FIX 5: countUnsyncedRecords now receives kioskMode so ALL queues for this
+//            device are summed — fixes "0 unsynced" false-negative on type2-only devices
+// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS,
+//               window.KIOSK_CONFIG, window.DEVICECONFIG
 
 import { adminState } from './adminState.js';
 import { trackAdminEvent } from './adminUtils.js';
@@ -83,7 +89,7 @@ async function showSyncBeforeSwitchModal(unsyncedCount) {
   return new Promise(resolve => {
     const isOffline = !navigator.onLine;
     const isSyncing = adminState.syncInProgress;
-    
+
     let message = `${unsyncedCount} unsynced record(s) across all queues.\n\n`;
     if (isOffline) message += '❌ Device is OFFLINE.\n';
     if (isSyncing) message += '⏳ Sync already in progress.\n';
@@ -95,7 +101,7 @@ async function showSyncBeforeSwitchModal(unsyncedCount) {
       console.log('[SWITCH BLOCK] SYNC NOW clicked — starting syncBothQueues...');
       const syncPromise = window.dataHandlers?.syncData(true, { syncBothQueues: true });
       const timeoutPromise = new Promise(r => setTimeout(() => r(false), 5000));
-      
+
       Promise.race([syncPromise, timeoutPromise]).then(success => {
         if (success) {
           console.log('[SWITCH BLOCK] ✅ Sync completed — allowing switch');
@@ -185,10 +191,13 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
       }
 
       // 🔥 IDEAL SYNC BLOCKING LOGIC:
-      const unsynced = window.dataHandlers?.countUnsyncedRecords?.() || 0;
+      // FIX 5: Pass kioskMode so countUnsyncedRecords sums ALL queues for this device.
+      // Without mode, temple kiosk with records only in type2 queue showed "0 unsynced".
+      const kioskMode = window.DEVICECONFIG?.kioskMode;
+      const unsynced  = window.dataHandlers?.countUnsyncedRecords?.(null, kioskMode) || 0;
       const isOffline = !navigator.onLine;
       const isSyncing = adminState.syncInProgress;
-      
+
       if (unsynced > 0 || isOffline || isSyncing) {
         console.log('[SURVEY CONTROLS] 🚫 BLOCK: unsynced=', unsynced, 'offline=', isOffline, 'syncing=', isSyncing);
         const proceed = await showSyncBeforeSwitchModal(unsynced);
@@ -262,24 +271,34 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
 
       trackAdminEvent('survey_type_switched', { surveyType: type });
 
-  // ✅ ADD HERE (correct place)
-  localStorage.removeItem('kioskState');
-  console.log('[SURVEY CONTROLS] kioskState cleared before reload — fresh start screen');
+      // ✅ ADD HERE (correct place)
+      localStorage.removeItem('kioskState');
+      console.log('[SURVEY CONTROLS] kioskState cleared before reload — fresh start screen');
 
-  setTimeout(() => {
-    if (syncStatusMessage) syncStatusMessage.textContent = '';
-    location.reload();
-  }, 1500);
+      setTimeout(() => {
+        if (syncStatusMessage) syncStatusMessage.textContent = '';
+        location.reload();
+      }, 1500);
 
-}); // ✅ CLOSE EVENT LISTENER
+    }); // ✅ CLOSE EVENT LISTENER
 
-return btn; // ✅ OUTSIDE listener
- }; // ✅ close makeBtn function
+    return btn; // ✅ OUTSIDE listener
+  }; // ✅ close makeBtn function
 
-  // Plug-and-play: reads all types from CONSTANTS, no hardcoding
-  Object.entries(surveyTypes).forEach(([type, cfg]) => {
-    btnGroup.appendChild(makeBtn(type, cfg.label || type));
-  });
+  // FIX 3: Filter by allowedSurveyTypes — only show pills for types this kiosk supports.
+  // Prevents staff from switching a temple kiosk to café survey.
+  const kioskMode = window.DEVICECONFIG?.kioskMode;
+  const allowed   = new Set(
+    window.DEVICECONFIG?.CONFIGS?.[kioskMode]?.allowedSurveyTypes ||
+    window.DEVICECONFIG?.allowedSurveyTypes ||
+    Object.keys(surveyTypes)
+  );
+
+  Object.entries(surveyTypes)
+    .filter(([type]) => allowed.has(type))
+    .forEach(([type, cfg]) => {
+      btnGroup.appendChild(makeBtn(type, cfg.label || type));
+    });
 
   switcherRow.appendChild(label);
   switcherRow.appendChild(currentLabel);

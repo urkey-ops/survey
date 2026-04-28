@@ -268,9 +268,18 @@ function startSurvey(e) {
 
     pauseVideo();
 
-    if (!appState.formData.id) {
-      appState.formData.id = dataHandlers.generateUUID();
-    }
+ if (!appState.formData.id) {
+  // generateUUID has no dependencies — call directly rather than
+  // routing through dataHandlers which may not be assembled yet
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    appState.formData.id = crypto.randomUUID();
+  } else {
+    appState.formData.id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+}
 
     if (!appState.formData.timestamp) {
       appState.formData.timestamp = new Date().toISOString();

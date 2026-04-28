@@ -335,14 +335,16 @@ export async function handleSubmit(deps = null) {
       });
     }
 
-    _renderCheckmarkAndCountdown({
-      questionContainer,
-      surveyType: SURVEY_TYPE,
-      config: queueConfig,
-      onReset: () => {
-        if (!resetTriggered) _doReset(resolvedDeps);
-      },
-    });
+  // NEW:
+if (typeof window.showCheckmark === 'function') {
+  window.showCheckmark();
+} else if (questionContainer) {
+  questionContainer.innerHTML = '<div style="text-align:center;padding:2rem;"><p>✅ Thank you for your feedback!</p></div>';
+}
+
+setTimeout(() => {
+  if (!resetTriggered) _doReset(resolvedDeps);
+}, 5000);
 
     saveState(resolvedDeps);
     console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);

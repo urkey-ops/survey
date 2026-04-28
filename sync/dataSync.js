@@ -107,25 +107,28 @@ function getAllQueueConfigsWithData() {
   });
 }
 
+// Replace this function in sync/dataSync.js:
+
 /**
- * Filter all configs by kiosk mode (temple, shayona, giftShop, activity).
- * Falls back to all queues if mode is unknown.
+ * Filter configs by kiosk mode using DEVICECONFIG.allowedSurveyTypes as authority.
+ * FIX 2: Deleted prefixMap. Uses DEVICECONFIG directly — no string-prefix matching.
+ * Adding a new type to config.js + device-config.js is now sufficient.
+ * Falls back to all queues if mode is unknown or 'all'.
  */
 function getSurveyTypeConfigsByMode(mode = 'all') {
   const all = getSurveyTypeConfigs();
   if (mode === 'all' || !mode) return all;
 
-  const prefixMap = {
-    temple:     'type',
-    shayona:    'shayona',
-    giftShop:   'gift',
-    activity:   'activity'
-  };
+  const allowed = new Set(
+    window.DEVICECONFIG?.CONFIGS?.[mode]?.allowedSurveyTypes || []
+  );
 
-  const prefix = prefixMap[mode];
-  if (!prefix) return all;
+  if (allowed.size === 0) {
+    console.warn(`[DATA SYNC] No allowedSurveyTypes for mode "${mode}" — falling back to all queues`);
+    return all;
+  }
 
-  return all.filter(cfg => cfg.surveyType.startsWith(prefix));
+  return all.filter(cfg => allowed.has(cfg.surveyType));
 }
 
 function normalizeSyncTargets(syncBothQueues = true) {

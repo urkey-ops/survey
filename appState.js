@@ -1,11 +1,10 @@
 // FILE: appState.js
-// VERSION: 3.4.3
-// CHANGES FROM 3.4.2:
-//   - FIX B1-02: INACTIVITY_TIMEOUT_MS fallback corrected from 30000 to 60000 (matches config.js)
-//   - FIX B1-03: SYNC_INTERVAL_MS fallback corrected from 900000 to 300000 (matches config.js)
-//   - FIX B1-01: ANALYTICS_SYNC_INTERVAL_MS fallback corrected from 86400000 to 600000 (matches config.js)
-//   - FIX B1-04: FEATURES fallback enableTypewriterEffect corrected from false to true (matches config.js)
-//   - FIX B1-05: Removed spurious MAX_QUEUE_SIZE > 200 boot warning (250 is intentional configured value)
+// VERSION: 3.4.4
+// CHANGES FROM 3.4.3:
+//   - FIX 6: Storage keys now use ?? (no silent fallbacks) + console.error on missing
+//   - FIX 6: API endpoints now use ?? (no silent fallbacks) + console.error on missing
+//   - FIX 6: MAX_QUEUE_SIZE now uses ?? (no silent fallback) + console.error on missing
+//   - FIX 6: MAX_ANALYTICS_SIZE retains ?? fallback of 500 (analytics event cap is safe to default)
 
 (function () {
   const CONFIG    = window.KIOSK_CONFIG || {};
@@ -30,10 +29,19 @@
   const RETRY_DELAY_MS = CONSTANTS.RETRY_DELAY_MS || CONFIG.RETRY_DELAY_MS || 2000;
 
   // ─── Queue limits ─────────────────────────────────────────────────────────────
-  const MAX_QUEUE_SIZE     = CONSTANTS.MAX_QUEUE_SIZE     || CONFIG.MAX_QUEUE_SIZE     || 250;
-  const MAX_ANALYTICS_SIZE = CONSTANTS.MAX_ANALYTICS_SIZE || CONFIG.MAX_ANALYTICS_SIZE || 500;
+  // FIX 6: Queue size limit must not silently fall back — wrong value = data dropped silently.
+  const MAX_QUEUE_SIZE = CONSTANTS.MAX_QUEUE_SIZE ?? CONFIG.MAX_QUEUE_SIZE;
+  if (!MAX_QUEUE_SIZE) {
+    console.error('[STATE] CRITICAL: CONSTANTS.MAX_QUEUE_SIZE missing — config.js not loaded or cache stale');
+  }
+
+  const MAX_ANALYTICS_SIZE = CONSTANTS.MAX_ANALYTICS_SIZE ?? CONFIG.MAX_ANALYTICS_SIZE ?? 500;
 
   // ─── Storage keys ─────────────────────────────────────────────────────────────
+  // FIX 6: Storage keys must NOT have silent fallbacks — a wrong key means
+  // offline data written to a key that sync never reads (silent 24h data loss).
+  // Loud errors here surface cache/load failures immediately in the console.
+
   const CANONICAL_STORAGE_KEY_STATE =
     CONSTANTS.STORAGE_KEY_STATE ||
     CONFIG.STORAGE_KEY_STATE ||
@@ -41,16 +49,49 @@
 
   const LEGACY_STORAGE_KEY_STATE = 'kioskAppState';
 
-  const STORAGE_KEY_QUEUE               = CONSTANTS.STORAGE_KEY_QUEUE               || CONFIG.STORAGE_KEY_QUEUE               || 'submissionQueue';
-  const STORAGE_KEY_ANALYTICS           = CONSTANTS.STORAGE_KEY_ANALYTICS           || CONFIG.STORAGE_KEY_ANALYTICS           || 'surveyAnalytics';
-  const STORAGE_KEY_LAST_SYNC           = CONSTANTS.STORAGE_KEY_LAST_SYNC           || CONFIG.STORAGE_KEY_LAST_SYNC           || 'lastDataSync';
-  const STORAGE_KEY_LAST_ANALYTICS_SYNC = CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC || CONFIG.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
+  const STORAGE_KEY_QUEUE = CONSTANTS.STORAGE_KEY_QUEUE ?? CONFIG.STORAGE_KEY_QUEUE;
+  if (!STORAGE_KEY_QUEUE) {
+    console.error('[STATE] CRITICAL: CONSTANTS.STORAGE_KEY_QUEUE missing — config.js not loaded or cache stale');
+  }
+
+  const STORAGE_KEY_ANALYTICS = CONSTANTS.STORAGE_KEY_ANALYTICS ?? CONFIG.STORAGE_KEY_ANALYTICS;
+  if (!STORAGE_KEY_ANALYTICS) {
+    console.error('[STATE] CRITICAL: CONSTANTS.STORAGE_KEY_ANALYTICS missing — config.js not loaded or cache stale');
+  }
+
+  const STORAGE_KEY_LAST_SYNC = CONSTANTS.STORAGE_KEY_LAST_SYNC ?? CONFIG.STORAGE_KEY_LAST_SYNC;
+  if (!STORAGE_KEY_LAST_SYNC) {
+    console.error('[STATE] CRITICAL: CONSTANTS.STORAGE_KEY_LAST_SYNC missing — config.js not loaded or cache stale');
+  }
+
+  const STORAGE_KEY_LAST_ANALYTICS_SYNC = CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC ?? CONFIG.STORAGE_KEY_LAST_ANALYTICS_SYNC;
+  if (!STORAGE_KEY_LAST_ANALYTICS_SYNC) {
+    console.error('[STATE] CRITICAL: CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC missing — config.js not loaded or cache stale');
+  }
 
   // ─── API Endpoints ────────────────────────────────────────────────────────────
-  const SYNC_ENDPOINT        = CONSTANTS.SYNC_ENDPOINT        || CONFIG.SYNC_ENDPOINT        || '/api/submit-survey';
-  const ANALYTICS_ENDPOINT   = CONSTANTS.ANALYTICS_ENDPOINT   || CONFIG.ANALYTICS_ENDPOINT   || '/api/sync-analytics';
-  const SURVEY_QUESTIONS_URL = CONSTANTS.SURVEY_QUESTIONS_URL || CONFIG.SURVEY_QUESTIONS_URL || '/api/get_questions';
-  const ERROR_LOG_ENDPOINT   = CONSTANTS.ERROR_LOG_ENDPOINT   || CONFIG.ERROR_LOG_ENDPOINT   || '/api/log-error';
+  // FIX 6: Endpoints must NOT have silent fallbacks — a wrong endpoint means
+  // all sync attempts silently hit the wrong URL for the full day.
+
+  const SYNC_ENDPOINT = CONSTANTS.SYNC_ENDPOINT ?? CONFIG.SYNC_ENDPOINT;
+  if (!SYNC_ENDPOINT) {
+    console.error('[STATE] CRITICAL: CONSTANTS.SYNC_ENDPOINT missing — config.js not loaded or cache stale');
+  }
+
+  const ANALYTICS_ENDPOINT = CONSTANTS.ANALYTICS_ENDPOINT ?? CONFIG.ANALYTICS_ENDPOINT;
+  if (!ANALYTICS_ENDPOINT) {
+    console.error('[STATE] CRITICAL: CONSTANTS.ANALYTICS_ENDPOINT missing — config.js not loaded or cache stale');
+  }
+
+  const SURVEY_QUESTIONS_URL = CONSTANTS.SURVEY_QUESTIONS_URL ?? CONFIG.SURVEY_QUESTIONS_URL;
+  if (!SURVEY_QUESTIONS_URL) {
+    console.error('[STATE] CRITICAL: CONSTANTS.SURVEY_QUESTIONS_URL missing — config.js not loaded or cache stale');
+  }
+
+  const ERROR_LOG_ENDPOINT = CONSTANTS.ERROR_LOG_ENDPOINT ?? CONFIG.ERROR_LOG_ENDPOINT;
+  if (!ERROR_LOG_ENDPOINT) {
+    console.error('[STATE] CRITICAL: CONSTANTS.ERROR_LOG_ENDPOINT missing — config.js not loaded or cache stale');
+  }
 
   // ─── Feature Flags ────────────────────────────────────────────────────────────
   const FEATURES = CONSTANTS.FEATURES || CONFIG.FEATURES || {
@@ -280,7 +321,7 @@
   })();
 
   console.log('\n📱 Kiosk Survey Application Initialized');
-  console.log('   Version       : 3.4.3');
+  console.log('   Version       : 3.4.4');
   console.log(`   State Key     : ${CANONICAL_STORAGE_KEY_STATE}`);
   console.log(`   State         : ${appState.currentQuestionIndex > 0 ? 'RESUMING' : 'FRESH'}`);
   if (appState.currentQuestionIndex > 0) {

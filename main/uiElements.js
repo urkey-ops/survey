@@ -35,6 +35,22 @@ export function initializeElements() {
   window.globals.adminQueueCount      = document.getElementById('adminQueueCount') ?? null;
   window.globals.progressText         = document.getElementById('progressText')    ?? null;
 
+  // End of initializeElements() — after all getElementById calls:
+// Validate admin elements immediately so missing IDs surface at boot
+const adminMissing = [
+  'syncButton','syncAnalyticsButton','syncStatusMessage',
+  'adminClearButton','checkUpdateButton','fixVideoButton',
+  'hideAdminButton','adminControls','unsyncedCountDisplay'
+].filter(key => !window.globals[key]);
+
+if (adminMissing.length) {
+  adminMissing.forEach(key =>
+    console.error(`[UI] ❌ window.globals.${key} is null — ID missing from index.html`)
+  );
+} else {
+  console.log('[UI] ✅ All admin globals validated');
+}
+
   console.log('[UI] ✅ DOM elements initialized');
 }
 

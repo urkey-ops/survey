@@ -1,11 +1,12 @@
 // FILE: sync/storageUtils.js
 // PURPOSE: Local storage utilities with error handling
-// VERSION: 1.0.1
-// CHANGES FROM 1.0.0:
-//   - FIX B5-01: checkStorageQuota() was declared AFTER export default {}
-//     which excluded it from window.dataHandlers (called via default export).
-//     Moved above export default and added to default export object.
-//     Named import in dataSync.js was unaffected — default consumers were broken.
+// VERSION: 1.1.0
+// CHANGES FROM 1.0.1:
+//   - ADD: Persistent storage quota alert flag in safeSetLocalStorage.
+//     Previously QuotaExceededError only triggered a 10-second toast via
+//     showUserError() — disappears before staff see it in Guided Access mode.
+//     Now also writes 'kioskStorageAlert' key so adminPanel.js can show a
+//     permanent banner that persists until staff explicitly dismisses it.
 // DEPENDENCIES: window.CONSTANTS
 
 /**
@@ -25,7 +26,7 @@ export function generateUUID() {
 }
 
 /**
- * Display error message to user (non-intrusive)
+ * Display error message to user (non-intrusive 10-second toast)
  * @param {string} message - Error message to display
  */
 export function showUserError(message) {
@@ -45,7 +46,9 @@ export function showUserError(message) {
 }
 
 /**
- * Safely write to localStorage with error handling
+ * Safely write to localStorage with error handling.
+ * On QuotaExceededError: shows 10-second toast AND writes a persistent
+ * 'kioskStorageAlert' flag so adminPanel.js can display a permanent banner.
  * @param {string} key - Storage key
  * @param {*} value - Value to store (will be JSON stringified)
  * @returns {boolean} Success status
@@ -57,22 +60,34 @@ export function safeSetLocalStorage(key, value) {
   } catch (e) {
     console.error(`[STORAGE] Failed to write key '${key}':`, e.message);
 
+    if (e.name === 'QuotaExceededError') {
+      // 1. Immediate visible feedback (10-second toast)
+      showUserError('Storage limit reached. Please sync data or contact support.');
 
-    // After:
-if (e.name === 'QuotaExceededError') {
-  showUserError('Storage limit reached. Please sync data or contact support.');
-  // Persistent flag — admin panel reads this and shows a permanent banner
-  try {
-    localStorage.setItem('kioskStorageAlert', JSON.stringify({
-      flaggedAt: new Date().toISOString(),
-      context: key,
-    }));
-  } catch (_) {
-    console.error('[STORAGE] 🚨 CRITICAL: Cannot write storage alert flag — storage completely full');
+      // 2. Persistent alert flag — admin panel reads this and shows a
+      //    permanent banner that staff cannot miss, even in Guided Access mode.
+      //    Uses a separate try/catch: if even this tiny write fails, storage
+      //    is completely full and we log critically but do not throw.
+      try {
+        localStorage.setItem('kioskStorageAlert', JSON.stringify({
+          flaggedAt: new Date().toISOString(),
+          context:   key,
+        }));
+        console.error(
+          `[STORAGE] 🚨 QuotaExceededError on key "${key}" — ` +
+          `persistent alert flag written. Admin panel will show permanent banner.`
+        );
+      } catch (_) {
+        console.error(
+          '[STORAGE] 🚨 CRITICAL: QuotaExceededError AND cannot write alert flag — ' +
+          'storage is completely full. Data loss is occurring.'
+        );
+      }
+    }
+
+    return false;
   }
 }
-
-
 
 /**
  * Safely read from localStorage with error handling
@@ -102,8 +117,8 @@ export function updateSyncStatus(message) {
 }
 
 /**
- * Check localStorage quota usage
- * Warns if approaching iOS Safari limit (~5-10 MB)
+ * Check localStorage quota usage.
+ * Warns if approaching iOS Safari limit (~5-10 MB).
  * @returns {{ status: string, usedMB: string, percentUsed: string, quotaMB: number }}
  */
 export function checkStorageQuota() {
@@ -138,13 +153,11 @@ export function checkStorageQuota() {
   }
 }
 
-// FIX B5-01: checkStorageQuota must be declared above this line
-// so it can be included in the default export object.
 export default {
   generateUUID,
   safeSetLocalStorage,
   safeGetLocalStorage,
   showUserError,
   updateSyncStatus,
-  checkStorageQuota,  // ← ADDED — was missing, broke window.dataHandlers.checkStorageQuota
+  checkStorageQuota,
 };

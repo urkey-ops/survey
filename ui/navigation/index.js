@@ -21,7 +21,7 @@ import {
   setupInputFocusScroll
 } from './core.js';
 
-import { handleSubmit } from './submit.js';  // <- this is async function handleSubmit(...)
+import { handleSubmit } from './submit.js';  // <-- async function handleSubmit(...)
 
 import {
   showStartScreen,
@@ -76,14 +76,14 @@ window.navigationHandler.submitSurvey = function () {
   const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
 
   // ✅ Call `handleSubmit` with explicit `surveyType` field
-  // Logs in `submit.js` will no longer see "undefined"
   handleSubmit({ ...deps, surveyType });
 };
 
-// Convenience export for modules that import `submitSurvey`
-export const submitSurvey = window.navigationHandler.submitSurvey;
+// ✅ Only one export of `submitSurvey`:
+// Use the exported function from `submit.js` directly.
+export const submitSurvey = handleSubmit;
 
-// Export all functions
+// Export all other functions
 export {
   showQuestion,
   goNext,
@@ -95,7 +95,6 @@ export {
   isFirstQuestion,
   isLastQuestion,
   jumpToQuestion,
-  handleSubmit as submitSurvey,
   cleanupStartScreenListeners,
   cleanupInputFocusScroll,
   cleanupIntervals

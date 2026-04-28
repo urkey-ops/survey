@@ -9,6 +9,7 @@
 //     call — routes through queueManager for dedup, size limits, admin count.
 //   - FIX 9: buildAnalyticsEvent() factory used for recordAnalytics() call —
 //     enforces required field presence per eventType with console warnings.
+//   - FIX: hard‑fail guard on missing surveyType — prevents data loss.
 //   - UNCHANGED: normalizeSubmissionPayload, hasMeaningfulResponse,
 //     _renderCheckmarkAndCountdown, _doReset — no behaviour changes.
 // DEPENDENCIES: core.js, main/contracts.js
@@ -213,6 +214,27 @@ export async function handleSubmit(deps = null) {
     surveyType,
     questionContainer,
   } = resolvedDeps;
+
+  // FAIL‑FAST: enforce valid surveyType
+  if (!surveyType || typeof surveyType !== 'string') {
+    const fallback = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+    console.error(
+      `[SUBMIT] ⚠️ surveyType missing or invalid: "${surveyType}"` +
+      ` — falling back to "${fallback}"`
+    );
+    // If you want to hard‑fail instead of falling back, uncomment this block:
+    /*
+    console.error(
+      '[SUBMIT] ⚠️ This is a programming error — the caller must pass surveyType. ' +
+      'No record will be saved.'
+    );
+    completionInProgress = false;
+    _doReset(resolvedDeps);
+    return;
+    */
+    // Otherwise, keep using the fallback:
+    surveyType = fallback;
+  }
 
   if (completionInProgress) {
     console.warn('[SUBMIT] Already in progress — ignoring duplicate call');

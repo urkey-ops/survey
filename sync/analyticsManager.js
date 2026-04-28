@@ -1,47 +1,45 @@
-// FILE: analyticsManager.js
+// FILE: sync/analyticsManager.js
 // PURPOSE: Analytics recording and syncing
-// VERSION: 2.0.1
-// CHANGES FROM 2.0.0:
-//   - CLEANUP: Canonical analytics fallback key aligned to config.js ('surveyAnalytics')
-//   - CLEANUP: MAX_ANALYTICS_SIZE fallback aligned to config.js (500)
-//   - KEEP: dynamic analytics key resolution by active survey type
-//   - KEEP: kioskId continues to read from KIOSK_CONFIG.KIOSK_ID,
-//     which now resolves dynamically from DEVICECONFIG after config.js v3.2.1 fix
+// VERSION: 2.1.0
+// CHANGES FROM 2.0.1:
+//   - FIX 4: Added _resolveAllAnalyticsKeys() — returns all analyticsKey values
+//     for the device's allowed survey types. syncAnalytics() now iterates all
+//     keys so analytics are not lost when survey type is switched mid-day.
+//   - KEEP: _resolveAnalyticsKey() for recordAnalytics() write path — correctly
+//     writes to the active type's key at event time.
+//   - KEEP: shouldSyncAnalytics() ANALYTICS_SYNC_INTERVAL_MS fallback corrected
+//     to match config.js (600000, not 86400000).
 
 import { safeGetLocalStorage, safeSetLocalStorage, updateSyncStatus, showUserError } from './storageUtils.js';
 import { sendRequest } from './networkHandler.js';
 
 /**
- * TIMESTAMP STRATEGY:
- * - Survey data uses ISO strings (human-readable, sortable): new Date().toISOString()
- * - Sync tracking uses numeric timestamps (faster comparisons): Date.now()
- * This is intentional for optimal performance and data clarity.
- */
-
-/**
- * Resolve the correct analytics storage key for the currently active survey type.
- * Priority:
- *   1. CONSTANTS.SURVEY_TYPES[activeType].analyticsKey  — type-specific key
- *   2. CONSTANTS.STORAGE_KEY_ANALYTICS                  — global override
- *   3. 'surveyAnalytics'                                — canonical fallback
- *
- * This ensures café (type3) events are written to 'shayonaAnalytics' and
- * never mixed into the temple 'surveyAnalytics' store.
+ * Resolve the analytics storage key for the currently active survey type.
+ * Used by recordAnalytics() — writes always go to the active type's key.
  */
 function _resolveAnalyticsKey() {
   const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1';
   const typeKey    = window.CONSTANTS?.SURVEY_TYPES?.[activeType]?.analyticsKey;
-
-  return typeKey
-    || window.CONSTANTS?.STORAGE_KEY_ANALYTICS
-    || 'surveyAnalytics';
+  return typeKey || window.CONSTANTS?.STORAGE_KEY_ANALYTICS || 'surveyAnalytics';
 }
 
 /**
- * Record analytics event
- * @param {string} eventType - Type of event (survey_completed, survey_abandoned)
- * @param {Object} data - Additional event data
+ * FIX 4: Returns all analyticsKey values for the device's allowed survey types.
+ * Ensures syncAnalytics() covers all queues even if type was switched mid-day.
+ * On a single-type device (shayona), returns one key — identical to previous behaviour.
  */
+function _resolveAllAnalyticsKeys() {
+  const mode    = window.DEVICECONFIG?.kioskMode;
+  const allowed = window.DEVICECONFIG?.CONFIGS?.[mode]?.allowedSurveyTypes
+    || [window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1'];
+
+  return [...new Set(
+    allowed
+      .map(type => window.CONSTANTS?.SURVEY_TYPES?.[type]?.analyticsKey)
+      .filter(Boolean)
+  )];
+}
+
 export function recordAnalytics(eventType, data = {}) {
   try {
     const STORAGE_KEY_ANALYTICS = _resolveAnalyticsKey();
@@ -67,29 +65,20 @@ export function recordAnalytics(eventType, data = {}) {
 
     safeSetLocalStorage(STORAGE_KEY_ANALYTICS, analytics);
     console.log(`[ANALYTICS] Recorded "${eventType}" → key: "${STORAGE_KEY_ANALYTICS}"`);
-
   } catch (err) {
     console.error('[ANALYTICS] recordAnalytics error:', err);
   }
 }
 
-/**
- * Check if analytics should be synced (daily/interval-based check)
- * @returns {boolean} True if sync is needed
- */
 export function shouldSyncAnalytics() {
   const STORAGE_KEY_LAST_ANALYTICS_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
-  const ANALYTICS_SYNC_INTERVAL_MS      = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS || 86400000;
+  const ANALYTICS_SYNC_INTERVAL_MS      = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS      || 600000;
 
   const lastSync = safeGetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC);
   const now      = Date.now();
-
   return !lastSync || (now - lastSync) >= ANALYTICS_SYNC_INTERVAL_MS;
 }
 
-/**
- * Check and sync analytics if interval has passed
- */
 export function checkAndSyncAnalytics() {
   if (shouldSyncAnalytics()) {
     syncAnalytics(false);
@@ -97,16 +86,13 @@ export function checkAndSyncAnalytics() {
 }
 
 /**
- * Sync analytics data to server.
- * Reads from the active type's analytics key so café and temple
- * analytics are synced independently.
- * @param {boolean} isManual - Whether this is a manual sync (affects UI feedback)
- * @returns {Promise<boolean>} Success status
+ * FIX 4: Sync analytics for ALL allowed survey types on this device.
+ * Each key is synced independently: read → send → clear on success.
+ * Replaces the single-key sync from v2.0.1.
  */
 export async function syncAnalytics(isManual = false) {
-  const STORAGE_KEY_ANALYTICS           = _resolveAnalyticsKey();
   const STORAGE_KEY_LAST_ANALYTICS_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
-  const ANALYTICS_ENDPOINT              = window.CONSTANTS?.ANALYTICS_ENDPOINT || '/api/sync-analytics';
+  const ANALYTICS_ENDPOINT             = window.CONSTANTS?.ANALYTICS_ENDPOINT || '/api/sync-analytics';
 
   if (!navigator.onLine) {
     console.warn('[ANALYTICS SYNC] Offline. Skipping sync.');
@@ -117,76 +103,89 @@ export async function syncAnalytics(isManual = false) {
     return false;
   }
 
-  const analytics = safeGetLocalStorage(STORAGE_KEY_ANALYTICS);
-  if (!analytics || analytics.length === 0) {
-    console.log(`[ANALYTICS SYNC] No data in "${STORAGE_KEY_ANALYTICS}" to sync.`);
-    if (isManual) updateSyncStatus('No analytics data to sync.');
-    return true;
-  }
+  const keys = _resolveAllAnalyticsKeys();
+  console.log(`[ANALYTICS SYNC] Syncing ${keys.length} key(s): ${keys.join(', ')}`);
 
-  console.log(`[ANALYTICS SYNC] Syncing ${analytics.length} records from "${STORAGE_KEY_ANALYTICS}"...`);
-  if (isManual) updateSyncStatus(`Syncing ${analytics.length} analytics events... ⏳`);
+  let anySuccess = false;
+  let anyFailure = false;
 
-  const completions  = analytics.filter(a => a.eventType === 'survey_completed');
-  const abandonments = analytics.filter(a => a.eventType === 'survey_abandoned');
-
-  const dropoffByQuestion = {};
-  abandonments.forEach(a => {
-    const idx = a.questionIndex !== undefined ? a.questionIndex : '?';
-    const qId = a.questionId || 'unknown';
-    const key = `q${idx}:${qId}`;
-    dropoffByQuestion[key] = (dropoffByQuestion[key] || 0) + 1;
-  });
-
-  const completionTimes   = completions.map(c => c.totalTimeSeconds).filter(t => t > 0);
-  const avgCompletionTime = completionTimes.length > 0
-    ? completionTimes.reduce((a, b) => a + b, 0) / completionTimes.length
-    : 0;
-
-  const payload = {
-    analyticsType:            'summary',
-    timestamp:                new Date().toISOString(),
-    kioskId:                  window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
-    surveyType:               window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1',
-    analyticsKey:             STORAGE_KEY_ANALYTICS,
-    totalCompletions:         completions.length,
-    totalAbandonments:        abandonments.length,
-    completionRate:           completions.length > 0
-      ? ((completions.length / (completions.length + abandonments.length)) * 100).toFixed(1)
-      : 0,
-    avgCompletionTimeSeconds: avgCompletionTime.toFixed(1),
-    dropoffByQuestion,
-    rawEvents:                analytics,
-  };
-
-  try {
-    const result = await sendRequest(ANALYTICS_ENDPOINT, payload);
-
-    if (result.success) {
-      console.log(`[ANALYTICS SYNC] Success — cleared "${STORAGE_KEY_ANALYTICS}" (${analytics.length} events).`);
-      localStorage.removeItem(STORAGE_KEY_ANALYTICS);
-
-      safeSetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC, Date.now());
-
-      if (isManual) {
-        updateSyncStatus(`Analytics synced successfully! (${analytics.length} events) ✅`);
-        setTimeout(() => updateSyncStatus(''), 4000);
-      }
-
-      return true;
+  for (const STORAGE_KEY_ANALYTICS of keys) {
+    const analytics = safeGetLocalStorage(STORAGE_KEY_ANALYTICS);
+    if (!analytics || analytics.length === 0) {
+      console.log(`[ANALYTICS SYNC] No data in "${STORAGE_KEY_ANALYTICS}" — skipping.`);
+      continue;
     }
 
-    throw new Error('Analytics sync failed — server returned unsuccessful response');
+    console.log(`[ANALYTICS SYNC] Syncing ${analytics.length} records from "${STORAGE_KEY_ANALYTICS}"...`);
+    if (isManual) updateSyncStatus(`Syncing ${analytics.length} analytics events from "${STORAGE_KEY_ANALYTICS}"... ⏳`);
 
-  } catch (error) {
-    console.error('[ANALYTICS SYNC] Failed:', error.message);
-    if (isManual) {
+    const completions  = analytics.filter(a => a.eventType === 'survey_completed');
+    const abandonments = analytics.filter(a => a.eventType === 'survey_abandoned');
+
+    const dropoffByQuestion = {};
+    abandonments.forEach(a => {
+      const idx = a.questionIndex !== undefined ? a.questionIndex : '?';
+      const qId = a.questionId || 'unknown';
+      const key = `q${idx}:${qId}`;
+      dropoffByQuestion[key] = (dropoffByQuestion[key] || 0) + 1;
+    });
+
+    const completionTimes   = completions.map(c => c.totalTimeSeconds).filter(t => t > 0);
+    const avgCompletionTime = completionTimes.length > 0
+      ? completionTimes.reduce((a, b) => a + b, 0) / completionTimes.length
+      : 0;
+
+    const payload = {
+      analyticsType:            'summary',
+      timestamp:                new Date().toISOString(),
+      kioskId:                  window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+      surveyType:               window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1',
+      analyticsKey:             STORAGE_KEY_ANALYTICS,
+      totalCompletions:         completions.length,
+      totalAbandonments:        abandonments.length,
+      completionRate:           completions.length > 0
+        ? ((completions.length / (completions.length + abandonments.length)) * 100).toFixed(1)
+        : 0,
+      avgCompletionTimeSeconds: avgCompletionTime.toFixed(1),
+      dropoffByQuestion,
+      rawEvents:                analytics,
+    };
+
+    try {
+      const result = await sendRequest(ANALYTICS_ENDPOINT, payload);
+
+      if (result.success) {
+        console.log(`[ANALYTICS SYNC] ✅ Success — cleared "${STORAGE_KEY_ANALYTICS}" (${analytics.length} events).`);
+        localStorage.removeItem(STORAGE_KEY_ANALYTICS);
+        anySuccess = true;
+      } else {
+        throw new Error(`Server returned unsuccessful response for key "${STORAGE_KEY_ANALYTICS}"`);
+      }
+    } catch (error) {
+      console.error(`[ANALYTICS SYNC] ❌ Failed for "${STORAGE_KEY_ANALYTICS}":`, error.message);
+      anyFailure = true;
+    }
+  }
+
+  // Update last-sync timestamp only if at least one key succeeded
+  if (anySuccess) {
+    safeSetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC, Date.now());
+  }
+
+  if (isManual) {
+    if (anySuccess && !anyFailure) {
+      updateSyncStatus('Analytics synced successfully! ✅');
+    } else if (anySuccess && anyFailure) {
+      updateSyncStatus('Analytics partially synced ⚠️');
+      showUserError('Some analytics keys failed to sync. Will retry automatically.');
+    } else {
       updateSyncStatus('Analytics sync failed ⚠️');
       showUserError('Analytics sync failed. Will retry automatically.');
-      setTimeout(() => updateSyncStatus(''), 4000);
     }
-    return false;
+    setTimeout(() => updateSyncStatus(''), 4000);
   }
+
+  return anySuccess && !anyFailure;
 }
 
 export default {

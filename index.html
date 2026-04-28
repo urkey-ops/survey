@@ -422,39 +422,26 @@ to correct util based on DEVICECONFIG
 ═══════════════════════════════════════════════════════
 -->
 
-<!-- ═══════════════════════════════════════════════════════════
-     KIOSK PWA — SCRIPT LOAD ORDER
-     Every position here is load-order critical.
-     Do not reorder without checking all dependency comments.
-     ═══════════════════════════════════════════════════════════ -->
+<!-- 1. DEVICE CONFIG — must be absolute first -->
+<script src="config/device-config.js"></script>
 
-<!-- 1. Render utils — must be first, data-util.js depends on it -->
-<script src="/surveys/survey-render-utils.js"></script>
+<!-- 2. PWA update manager -->
+<script src="pwa-update-manager.js"></script>
 
-<!-- 2. App constants + device config -->
-<script src="/config/device-config.js"></script>
-<script src="/config.js"></script>
+<!-- 3. App constants -->
+<script src="config.js"></script>
 
-<!-- 3. App state — declares window.globals proxy + window.appState -->
-<script src="/appState.js"></script>
+<!-- 4. App state -->
+<script src="appState.js"></script>
 
-<!-- 4. Survey data utils — depend on surveyRenderUtils + CONSTANTS -->
-<script src="/surveys/data-util.js"></script>
-<script src="/surveys/shayona-data-util.js"></script>
+<!-- 5. Survey data utils — both always loaded -->
+<script src="surveys/data-util.js"></script>
+<script src="surveys/shayona-data-util.js"></script>
 
-<!-- 5. PWA update manager -->
-<script src="/pwa-update-manager.js"></script>
-
-<!-- 6. Admin analytics (legacy global) -->
-<script src="/adminAnalytics.js"></script>
-
-<!-- 7. Main entry point — ES module, imports all sub-modules -->
-<!--    Load order of ES modules is managed by import statements inside -->
-<!--    main/index.js. The script tags below do NOT need to be ordered -->
-<!--    relative to each other — only relative to the globals above.   -->
-<script type="module" src="/main/index.js"></script>
-
-
+<!-- 6-8. App modules -->
+<script type="module" src="sync/dataSync.js"></script>
+<script type="module" src="uiHandlers.js"></script>
+<script type="module" src="main/index.js"></script>
 
 <script>
 window.showCheckmark = function() {
@@ -574,59 +561,6 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', updateKeyboardHeight);
   window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
 }
-</script>
-
-  <!-- ═══════════════════════════════════════════════════════════
-     SERVICE WORKER REGISTRATION + CONFIG VERSION LISTENER
-     ═══════════════════════════════════════════════════════════ -->
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js')
-        .then(registration => {
-          console.log('[APP] ✅ Service worker registered — scope:', registration.scope);
-        })
-        .catch(err => {
-          console.error('[APP] ❌ Service worker registration failed:', err);
-        });
-
-      // CONFIG VERSION LISTENER
-      // Receives { type: 'CONFIG_VERSION', version: '3.4' } from SW on activate.
-      // Sets window.__EXPECTED_CONFIG_VERSION__ so contracts.js
-      // validateConfigVersion() can detect a stale-cache page/SW mismatch
-      // and force a clean reload before any formData is written to the wrong schema.
-      // This fires on every SW activation — i.e. after every deploy.
-      navigator.serviceWorker.addEventListener('message', event => {
-        if (!event.data) return;
-
-        if (event.data.type === 'CONFIG_VERSION') {
-          window.__EXPECTED_CONFIG_VERSION__ = event.data.version;
-          console.log('[APP] 📋 CONFIG_VERSION received from SW:', event.data.version);
-          // validateConfigVersion() is called by main/index.js after
-          // initializeElements() runs — at that point this value is already set.
-        }
-
-        if (event.data.type === 'SW_ACTIVATED') {
-          console.log('[APP] 🔄 SW activated — version:', event.data.version);
-          // pwa-update-manager.js handles the reload prompt for this message type
-        }
-
-        if (event.data.type === 'BACKGROUND_SYNC') {
-          console.log('[APP] 🔄 Background sync signal received');
-          if (window.dataHandlers?.syncData) {
-            window.dataHandlers.syncData(false).catch(err => {
-              console.warn('[APP] Background sync failed:', err.message);
-            });
-          }
-        }
-
-        if (event.data.type === 'CACHE_CLEARED') {
-          console.log('[APP] 🗑️ Cache cleared by SW — reloading');
-          location.reload();
-        }
-      });
-    });
-  }
 </script>
 
 <!-- 9. Admin analytics — no boot dependency -->

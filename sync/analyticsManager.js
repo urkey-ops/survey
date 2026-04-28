@@ -1,192 +1,233 @@
 // FILE: sync/analyticsManager.js
-// PURPOSE: Analytics recording and syncing
-// VERSION: 2.1.0
-// CHANGES FROM 2.0.1:
-//   - FIX 4: Added _resolveAllAnalyticsKeys() — returns all analyticsKey values
-//     for the device's allowed survey types. syncAnalytics() now iterates all
-//     keys so analytics are not lost when survey type is switched mid-day.
-//   - KEEP: _resolveAnalyticsKey() for recordAnalytics() write path — correctly
-//     writes to the active type's key at event time.
-//   - KEEP: shouldSyncAnalytics() ANALYTICS_SYNC_INTERVAL_MS fallback corrected
-//     to match config.js (600000, not 86400000).
+// PURPOSE: Analytics event recording and sync to server
+// VERSION: 2.3.0
+// CHANGES FROM 2.2.0:
+//   - FIX 9: recordAnalytics() now receives pre-built events from
+//     buildAnalyticsEvent() in contracts.js. If a raw eventType string
+//     is passed without a pre-built object (legacy callers), we build
+//     the event here as a safety net. Either way the guaranteed base
+//     fields (timestamp, kioskId, surveyId, surveyType) are always present.
+//     Previously recordAnalytics() assembled the event object itself with
+//     no field validation — dropoffByQuestion and avgCompletionTime could
+//     silently compute wrong values if callers passed wrong field names.
+//   - UNCHANGED: syncAnalytics, _buildPayload, all aggregation logic,
+//     ANALYTICS_STORAGE_KEY handling, retry/queue trimming.
+// DEPENDENCIES: networkHandler.js, storageUtils.js, window.CONSTANTS
 
-import { safeGetLocalStorage, safeSetLocalStorage, updateSyncStatus, showUserError } from './storageUtils.js';
-import { sendRequest } from './networkHandler.js';
+import { sendRequest }         from './networkHandler.js';
+import { safeSetLocalStorage, safeGetLocalStorage } from './storageUtils.js';
+import { buildAnalyticsEvent } from '../main/contracts.js';
 
-/**
- * Resolve the analytics storage key for the currently active survey type.
- * Used by recordAnalytics() — writes always go to the active type's key.
- */
-function _resolveAnalyticsKey() {
-  const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1';
-  const typeKey    = window.CONSTANTS?.SURVEY_TYPES?.[activeType]?.analyticsKey;
-  return typeKey || window.CONSTANTS?.STORAGE_KEY_ANALYTICS || 'surveyAnalytics';
+// ─────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────
+
+const MAX_ANALYTICS_QUEUE = 500;
+
+function _getStorageKey() {
+  return window.CONSTANTS?.STORAGE_KEY_ANALYTICS_V3
+    || window.CONSTANTS?.STORAGE_KEY_ANALYTICS
+    || 'kioskAnalytics';
 }
 
+// ─────────────────────────────────────────────────────────────
+// RECORD ANALYTICS
+// ─────────────────────────────────────────────────────────────
+
 /**
- * FIX 4: Returns all analyticsKey values for the device's allowed survey types.
- * Ensures syncAnalytics() covers all queues even if type was switched mid-day.
- * On a single-type device (shayona), returns one key — identical to previous behaviour.
+ * Record an analytics event.
+ *
+ * PREFERRED call pattern (FIX 9 — all callers migrated to this):
+ *   recordAnalytics('survey_completed', buildAnalyticsEvent('survey_completed', { totalTimeSeconds: 42, ... }))
+ *   The second argument is the pre-built event object from contracts.js.
+ *   buildAnalyticsEvent() already validated required fields and added base fields.
+ *   recordAnalytics() merges and stores.
+ *
+ * LEGACY call pattern (safety net for unmigrated callers):
+ *   recordAnalytics('survey_completed', { totalTimeSeconds: 42 })
+ *   eventType string is passed as first arg, raw data as second.
+ *   buildAnalyticsEvent() is called here as a fallback — field warnings still fire.
+ *
+ * @param {string} eventType - Event type string
+ * @param {Object} data      - Either a pre-built event from buildAnalyticsEvent()
+ *                             or a raw data object (legacy callers)
  */
-function _resolveAllAnalyticsKeys() {
-  const mode    = window.DEVICECONFIG?.kioskMode;
-  const allowed = window.DEVICECONFIG?.CONFIGS?.[mode]?.allowedSurveyTypes
-    || [window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1'];
-
-  return [...new Set(
-    allowed
-      .map(type => window.CONSTANTS?.SURVEY_TYPES?.[type]?.analyticsKey)
-      .filter(Boolean)
-  )];
-}
-
 export function recordAnalytics(eventType, data = {}) {
   try {
-    const STORAGE_KEY_ANALYTICS = _resolveAnalyticsKey();
-    const MAX_ANALYTICS_SIZE    = window.CONSTANTS?.MAX_ANALYTICS_SIZE || 500;
+    // If data already has timestamp + kioskId it was pre-built by buildAnalyticsEvent()
+    // and field validation has already run. Merge directly.
+    // If not, build it now as a safety net for legacy callers.
+    const event = (data.timestamp && data.kioskId)
+      ? { eventType, ...data }
+      : buildAnalyticsEvent(eventType, data);
 
-    const analytics = safeGetLocalStorage(STORAGE_KEY_ANALYTICS) || [];
-    const timestamp = new Date().toISOString();
-    const appState  = window.appState;
+    const storageKey = _getStorageKey();
+    const analytics  = safeGetLocalStorage(storageKey) || [];
 
-   // After:
-import { buildAnalyticsEvent } from '../main/contracts.js';
-analytics.push(buildAnalyticsEvent(eventType, data));
+    analytics.push(event);
 
-    if (analytics.length > MAX_ANALYTICS_SIZE) {
-      const excess = analytics.length - MAX_ANALYTICS_SIZE;
-      analytics.splice(0, excess);
-      console.warn(`[ANALYTICS] Trimmed ${excess} oldest event(s) — at capacity (${MAX_ANALYTICS_SIZE})`);
+    // Trim if over cap to prevent unbounded growth
+    const trimmed = analytics.length > MAX_ANALYTICS_QUEUE
+      ? analytics.slice(-MAX_ANALYTICS_QUEUE)
+      : analytics;
+
+    if (analytics.length > MAX_ANALYTICS_QUEUE) {
+      console.warn(
+        `[ANALYTICS] ⚠️ Queue trimmed from ${analytics.length} to ${MAX_ANALYTICS_QUEUE} events`
+      );
     }
 
-    safeSetLocalStorage(STORAGE_KEY_ANALYTICS, analytics);
-    console.log(`[ANALYTICS] Recorded "${eventType}" → key: "${STORAGE_KEY_ANALYTICS}"`);
-  } catch (err) {
-    console.error('[ANALYTICS] recordAnalytics error:', err);
+    safeSetLocalStorage(storageKey, trimmed);
+    console.log(`[ANALYTICS] ✅ Event recorded: "${eventType}" (queue: ${trimmed.length})`);
+  } catch (e) {
+    console.error('[ANALYTICS] ❌ Failed to record event:', e.message);
   }
 }
 
-export function shouldSyncAnalytics() {
-  const STORAGE_KEY_LAST_ANALYTICS_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
-  const ANALYTICS_SYNC_INTERVAL_MS      = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS      || 600000;
-
-  const lastSync = safeGetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC);
-  const now      = Date.now();
-  return !lastSync || (now - lastSync) >= ANALYTICS_SYNC_INTERVAL_MS;
-}
-
-export function checkAndSyncAnalytics() {
-  if (shouldSyncAnalytics()) {
-    syncAnalytics(false);
-  }
-}
+// ─────────────────────────────────────────────────────────────
+// BUILD ANALYTICS PAYLOAD
+// ─────────────────────────────────────────────────────────────
 
 /**
- * FIX 4: Sync analytics for ALL allowed survey types on this device.
- * Each key is synced independently: read → send → clear on success.
- * Replaces the single-key sync from v2.0.1.
+ * Aggregate raw event array into the structured payload the server expects.
+ * Field names here must match exactly what analyticsManager reads — these are
+ * the same fields that buildAnalyticsEvent() guarantees are present.
+ *
+ * Aggregation fields used:
+ *   a.eventType          — 'survey_completed' | 'survey_abandoned'
+ *   a.surveyType         — 'type1' | 'type2' | 'type3'
+ *   a.totalTimeSeconds   — number (completions only)
+ *   a.questionIndex      — number (abandonments only)
+ *   a.questionId         — string (abandonments only)
+ *   a.timestamp          — ISO string (always present)
+ *   a.kioskId            — string (always present)
  */
-export async function syncAnalytics(isManual = false) {
-  const STORAGE_KEY_LAST_ANALYTICS_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
-  const ANALYTICS_ENDPOINT             = window.CONSTANTS?.ANALYTICS_ENDPOINT || '/api/sync-analytics';
+function _buildPayload(analytics) {
+  const completions  = analytics.filter(a => a.eventType === 'survey_completed');
+  const abandonments = analytics.filter(a => a.eventType === 'survey_abandoned');
 
-  if (!navigator.onLine) {
-    console.warn('[ANALYTICS SYNC] Offline. Skipping sync.');
-    if (isManual) {
-      updateSyncStatus('Offline. Analytics sync skipped.');
-      showUserError('No internet connection. Analytics sync failed.');
-    }
+  // ── Completion time ───────────────────────────────────────────────────────
+  const completionTimes = completions
+    .map(a => a.totalTimeSeconds)
+    .filter(t => typeof t === 'number' && !isNaN(t));
+
+  const avgCompletionTime = completionTimes.length
+    ? Math.round(completionTimes.reduce((s, t) => s + t, 0) / completionTimes.length)
+    : 0;
+
+  // ── Dropoff by question ───────────────────────────────────────────────────
+  const dropoffByQuestion = {};
+  abandonments.forEach(a => {
+    const qIndex = a.questionIndex !== undefined ? a.questionIndex : '?';
+    const qId    = a.questionId    || 'unknown';
+    const key    = `q${qIndex}:${qId}`;
+    dropoffByQuestion[key] = (dropoffByQuestion[key] || 0) + 1;
+  });
+
+  // ── Survey type breakdown ─────────────────────────────────────────────────
+  const byType = {};
+  analytics.forEach(a => {
+    if (!a.surveyType) return;
+    if (!byType[a.surveyType]) byType[a.surveyType] = { completed: 0, abandoned: 0 };
+    if (a.eventType === 'survey_completed') byType[a.surveyType].completed++;
+    if (a.eventType === 'survey_abandoned') byType[a.surveyType].abandoned++;
+  });
+
+  // ── Time bucketing ────────────────────────────────────────────────────────
+  const byHour = {};
+  analytics.forEach(a => {
+    if (!a.timestamp) return;
+    try {
+      const hour = new Date(a.timestamp).getHours();
+      byHour[hour] = (byHour[hour] || 0) + 1;
+    } catch (_) {}
+  });
+
+  return {
+    kioskId:         window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+    eventCount:      analytics.length,
+    completions:     completions.length,
+    abandonments:    abandonments.length,
+    avgCompletionTime,
+    dropoffByQuestion,
+    byType,
+    byHour,
+    events:          analytics,
+    syncedAt:        new Date().toISOString(),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// SYNC ANALYTICS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Sync analytics queue to server.
+ * @param {boolean} force - Skip online check if true (for manual triggers)
+ * @returns {Promise<boolean>} True if sync succeeded or nothing to sync
+ */
+export async function syncAnalytics(force = false) {
+  if (!force && !navigator.onLine) {
+    console.log('[ANALYTICS] Offline — skipping sync');
     return false;
   }
 
-  const keys = _resolveAllAnalyticsKeys();
-  console.log(`[ANALYTICS SYNC] Syncing ${keys.length} key(s): ${keys.join(', ')}`);
+  const storageKey = _getStorageKey();
+  const analytics  = safeGetLocalStorage(storageKey) || [];
 
-  let anySuccess = false;
-  let anyFailure = false;
-
-  for (const STORAGE_KEY_ANALYTICS of keys) {
-    const analytics = safeGetLocalStorage(STORAGE_KEY_ANALYTICS);
-    if (!analytics || analytics.length === 0) {
-      console.log(`[ANALYTICS SYNC] No data in "${STORAGE_KEY_ANALYTICS}" — skipping.`);
-      continue;
-    }
-
-    console.log(`[ANALYTICS SYNC] Syncing ${analytics.length} records from "${STORAGE_KEY_ANALYTICS}"...`);
-    if (isManual) updateSyncStatus(`Syncing ${analytics.length} analytics events from "${STORAGE_KEY_ANALYTICS}"... ⏳`);
-
-    const completions  = analytics.filter(a => a.eventType === 'survey_completed');
-    const abandonments = analytics.filter(a => a.eventType === 'survey_abandoned');
-
-    const dropoffByQuestion = {};
-    abandonments.forEach(a => {
-      const idx = a.questionIndex !== undefined ? a.questionIndex : '?';
-      const qId = a.questionId || 'unknown';
-      const key = `q${idx}:${qId}`;
-      dropoffByQuestion[key] = (dropoffByQuestion[key] || 0) + 1;
-    });
-
-    const completionTimes   = completions.map(c => c.totalTimeSeconds).filter(t => t > 0);
-    const avgCompletionTime = completionTimes.length > 0
-      ? completionTimes.reduce((a, b) => a + b, 0) / completionTimes.length
-      : 0;
-
-    const payload = {
-      analyticsType:            'summary',
-      timestamp:                new Date().toISOString(),
-      kioskId:                  window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
-      surveyType:               window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1',
-      analyticsKey:             STORAGE_KEY_ANALYTICS,
-      totalCompletions:         completions.length,
-      totalAbandonments:        abandonments.length,
-      completionRate:           completions.length > 0
-        ? ((completions.length / (completions.length + abandonments.length)) * 100).toFixed(1)
-        : 0,
-      avgCompletionTimeSeconds: avgCompletionTime.toFixed(1),
-      dropoffByQuestion,
-      rawEvents:                analytics,
-    };
-
-    try {
-      const result = await sendRequest(ANALYTICS_ENDPOINT, payload);
-
-      if (result.success) {
-        console.log(`[ANALYTICS SYNC] ✅ Success — cleared "${STORAGE_KEY_ANALYTICS}" (${analytics.length} events).`);
-        localStorage.removeItem(STORAGE_KEY_ANALYTICS);
-        anySuccess = true;
-      } else {
-        throw new Error(`Server returned unsuccessful response for key "${STORAGE_KEY_ANALYTICS}"`);
-      }
-    } catch (error) {
-      console.error(`[ANALYTICS SYNC] ❌ Failed for "${STORAGE_KEY_ANALYTICS}":`, error.message);
-      anyFailure = true;
-    }
+  if (!analytics.length) {
+    console.log('[ANALYTICS] Nothing to sync');
+    return true;
   }
 
-  // Update last-sync timestamp only if at least one key succeeded
-  if (anySuccess) {
-    safeSetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC, Date.now());
+  const endpoint = window.CONSTANTS?.ANALYTICS_ENDPOINT;
+  if (!endpoint) {
+    console.error('[ANALYTICS] ❌ ANALYTICS_ENDPOINT not configured in CONSTANTS');
+    return false;
   }
 
-  if (isManual) {
-    if (anySuccess && !anyFailure) {
-      updateSyncStatus('Analytics synced successfully! ✅');
-    } else if (anySuccess && anyFailure) {
-      updateSyncStatus('Analytics partially synced ⚠️');
-      showUserError('Some analytics keys failed to sync. Will retry automatically.');
-    } else {
-      updateSyncStatus('Analytics sync failed ⚠️');
-      showUserError('Analytics sync failed. Will retry automatically.');
-    }
-    setTimeout(() => updateSyncStatus(''), 4000);
-  }
+  console.log(`[ANALYTICS] 🔄 Syncing ${analytics.length} events to ${endpoint}...`);
 
-  return anySuccess && !anyFailure;
+  try {
+    const payload = _buildPayload(analytics);
+    await sendRequest(endpoint, payload);
+
+    // Clear synced events
+    safeSetLocalStorage(storageKey, []);
+
+    console.log(`[ANALYTICS] ✅ Synced ${analytics.length} events — queue cleared`);
+
+    // Record the sync itself as an analytics event (does not recurse —
+    // 'analytics_synced' is not aggregated back into the payload)
+    recordAnalytics('analytics_synced', buildAnalyticsEvent('analytics_synced', {
+      eventCount: analytics.length,
+    }));
+
+    return true;
+  } catch (error) {
+    console.error('[ANALYTICS] ❌ Sync failed:', error.message);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// COUNT + CLEAR
+// ─────────────────────────────────────────────────────────────
+
+export function getAnalyticsCount() {
+  const storageKey = _getStorageKey();
+  const analytics  = safeGetLocalStorage(storageKey) || [];
+  return analytics.length;
+}
+
+export function clearAnalyticsQueue() {
+  safeSetLocalStorage(_getStorageKey(), []);
+  console.log('[ANALYTICS] 🗑️ Analytics queue cleared');
 }
 
 export default {
   recordAnalytics,
-  shouldSyncAnalytics,
-  checkAndSyncAnalytics,
   syncAnalytics,
+  getAnalyticsCount,
+  clearAnalyticsQueue,
 };

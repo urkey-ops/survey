@@ -222,14 +222,23 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
             }
 
             if (existingQueue.length < MAX_QUEUE_SIZE) {
-              existingQueue.push({
-                ...partialData,
-                surveyType: currentSurveyType,
-                abandonedAt: new Date().toISOString(),
-                abandonedReason: 'survey_type_switch',
-                sync_status: 'unsynced_partial',
-              });
-              localStorage.setItem(queueKey, JSON.stringify(existingQueue));
+              
+            
+           import { buildQueueRecord } from './contracts.js';
+import { addToQueue } from '../sync/queueManager.js';
+
+addToQueue(
+  buildQueueRecord(partialData, {
+    surveyType:      currentSurveyType,
+    abandonedAt:     new Date().toISOString(),
+    abandonedReason: 'survey_type_switch',
+    sync_status:     'unsynced_partial',
+  }),
+  queueKey
+);
+
+
+              
               console.log(`[SURVEY CONTROLS] ✅ Partial data saved before type switch (queue: ${queueKey})`);
             } else {
               console.warn('[SURVEY CONTROLS] Queue full — partial data not saved before type switch');
@@ -241,9 +250,18 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
       }
 
       // Switch + reload (existing logic)
-      if (window.KIOSK_CONFIG?.setActiveSurveyType) {
-        window.KIOSK_CONFIG.setActiveSurveyType(type);
-      }
+    import { safeSetActiveSurveyType } from './globals.js';
+
+const switched = safeSetActiveSurveyType(type);
+if (!switched) {
+  // Write failed — abort the switch entirely, do not reload
+  const msg = window.globals?.syncStatusMessage;
+  if (msg) {
+    msg.textContent = '❌ Could not switch survey type — storage unavailable';
+    msg.style.color = '#dc2626';
+  }
+  return;
+}
 
       if (window.appState) {
         window.appState.currentQuestionIndex = 0;

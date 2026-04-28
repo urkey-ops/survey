@@ -1,28 +1,70 @@
 // FILE: sync/queueManager.js
 // PURPOSE: Queue access and maintenance for multi-survey offline storage
-// VERSION: 3.4.0
-// CHANGES FROM 3.3.0:
-//   - FIX 1: Deleted KIOSK_QUEUE_CONFIGS hardcoded map. getSurveyTypeConfigs(mode)
-//     now derives queue keys directly from CONSTANTS.SURVEY_TYPES and
-//     DEVICECONFIG.allowedSurveyTypes. No localStorage key strings changed.
-//   - getQueueKeysForMode(mode) added as the canonical internal helper.
-//   - countUnsyncedRecords(overrideKey, mode) — mode arg now correctly
-//     passed through to getCountsByQueue for FIX 5 compatibility.
+// VERSION: 3.4.1
+// CHANGES FROM 3.4.0:
+//   - FIX 1: getQueueKeysForMode(mode) now accepts flat DEVICECONFIG shape
+//     (kioskId, kioskMode, allowedSurveyTypes) as well as CONFIGS[mode] shapes.
+//     No hardcoding of KIOSK_QUEUE_CONFIGS or survey‑type keys.
+//   - getSurveyTypeConfigs(mode) uses the same flat/CONFIGS logic for allowedSurveyTypes.
+//   - Added smokeCheckDeviceConfigShape() for early warning on invalid config.
 // DEPENDENCIES: storageUtils.js
 
 import { safeGetLocalStorage, safeSetLocalStorage } from './storageUtils.js';
 
-// ─── FIX 1: Derive queue keys from CONSTANTS — no hardcoding ─────────────────
-// Authority: CONSTANTS.SURVEY_TYPES[x].storageKey (set in config.js)
-// Authority: DEVICECONFIG.CONFIGS[mode].allowedSurveyTypes (set in device-config.js)
+// ─── FIX 1: Support flat DEVICECONFIG and CONFIGS shapes ────────────────────
 
+/**
+ * Smoke check for DEVICECONFIG shape — logs early if config is invalid.
+ * Called once at startup to surface mismatches between config and queueManager.
+ */
+function smokeCheckDeviceConfigShape() {
+  if (!window.DEVICECONFIG) {
+    console.error('[QUEUE] ⚠️ DEVICECONFIG is not defined — queue configs may be broken');
+    return;
+  }
+  if (!window.DEVICECONFIG.kioskMode) {
+    console.error('[QUEUE] ⚠️ DEVICECONFIG.kioskMode missing — may cause queue lookup issues');
+  }
+  if (!window.DEVICECONFIG.allowedSurveyTypes && !window.DEVICECONFIG.CONFIGS) {
+    console.error(
+      '[QUEUE] ⚠️ DEVICECONFIG has no allowedSurveyTypes or CONFIGS — ' +
+      'queues for this mode may be empty'
+    );
+  }
+}
+
+/**
+ * Get queue keys for a given mode, using flat DEVICECONFIG or CONFIGS shapes.
+ * Authority: CONSTANTS.SURVEY_TYPES[type].storageKey (from config.js)
+ * Authority: DEVICECONFIG.allowedSurveyTypes or DEVICECONFIG.CONFIGS[mode].allowedSurveyTypes
+ */
 function getQueueKeysForMode(mode) {
-  const allowed = window.DEVICECONFIG?.CONFIGS?.[mode]?.allowedSurveyTypes || [];
+  if (!window.DEVICECONFIG) {
+    console.error(`[QUEUE] ⚠️ DEVICECONFIG not initialized for mode "${mode}"`);
+    return [];
+  }
+
+  // If DEVICECONFIG has a CONFIGS.[mode] node, prefer that; otherwise use flat properties.
+  const base =
+    window.DEVICECONFIG?.CONFIGS?.[mode] ||
+    window.DEVICECONFIG;
+
+  const allowed = base?.allowedSurveyTypes || [];
+
+  if (!allowed.length) {
+    console.warn(`[QUEUE] No allowedSurveyTypes found for mode "${mode}" — returning empty`);
+    return [];
+  }
+
   return allowed
     .map(type => window.CONSTANTS?.SURVEY_TYPES?.[type]?.storageKey)
     .filter(Boolean);
 }
 
+/**
+ * Resolve survey‑type configs for a given mode or "all".
+ * Mode‑specific configs use DEVICECONFIG.allowedSurveyTypes or DEVICECONFIG.CONFIGS[mode].allowedSurveyTypes.
+ */
 function getSurveyTypeConfigs(mode = 'all') {
   const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
   const typeKeys    = Object.keys(surveyTypes);
@@ -44,7 +86,7 @@ function getSurveyTypeConfigs(mode = 'all') {
     });
   }
 
-  // Mode-specific: use DEVICECONFIG.allowedSurveyTypes as the authority
+  // Mode‑specific: use allowedSurveyTypes from DEVICECONFIG (flat) or CONFIGS[mode].
   const allowedKeys = getQueueKeysForMode(mode);
 
   if (allowedKeys.length === 0) {
@@ -52,8 +94,12 @@ function getSurveyTypeConfigs(mode = 'all') {
     return [];
   }
 
-  // Build configs only for allowed types in the correct order
-  const allowed = window.DEVICECONFIG?.CONFIGS?.[mode]?.allowedSurveyTypes || [];
+  const base =
+    window.DEVICECONFIG?.CONFIGS?.[mode] ||
+    window.DEVICECONFIG;
+
+  const allowed = base?.allowedSurveyTypes || [];
+
   return allowed
     .map(type => {
       const cfg         = surveyTypes[type] || {};
@@ -65,6 +111,10 @@ function getSurveyTypeConfigs(mode = 'all') {
     .filter(c => c.queueKey);
 }
 
+/**
+ * Resolve the currently active survey type.
+ * Use KIOSK_CONFIG.getActiveSurveyType first, then DEVICECONFIG default, then fallback.
+ */
 function resolveActiveSurveyType() {
   return window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
          window.DEVICECONFIG?.defaultSurveyType ||
@@ -72,6 +122,10 @@ function resolveActiveSurveyType() {
          'type1';
 }
 
+/**
+ * Get the primary queue key for the current survey type, optionally overriding with a key.
+ * If no override is given, looks up the survey type via resolveActiveSurveyType.
+ */
 function getQueueKey(overrideKey) {
   if (overrideKey) return overrideKey;
 
@@ -89,6 +143,9 @@ function getQueueKey(overrideKey) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Safely remove a localStorage key.
+ */
 function safeRemoveLocalStorage(key) {
   try {
     localStorage.removeItem(key);
@@ -99,6 +156,9 @@ function safeRemoveLocalStorage(key) {
   }
 }
 
+/**
+ * Emit a warning or error if queue size is near capacity.
+ */
 function checkQueueHealth(queueSize) {
   const MAX     = window.CONSTANTS?.MAX_QUEUE_SIZE          || 250;
   const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 200;
@@ -106,6 +166,9 @@ function checkQueueHealth(queueSize) {
   if (queueSize >= MAX - 50) console.error(`🚨 [QUEUE CRITICAL] Queue nearly full: ${queueSize}/${MAX}`);
 }
 
+/**
+ * Normalize a queue array: remove invalid items, deduplicate by ID.
+ */
 function normalizeQueue(rawQueue, key) {
   if (!Array.isArray(rawQueue)) return [];
   const seenIds    = new Set();
@@ -123,13 +186,25 @@ function normalizeQueue(rawQueue, key) {
   return normalized;
 }
 
-function hasValidSubmissionIdentity(submission)  { return !!submission?.id; }
+/**
+ * Check if a submission has a valid identity (non‑falsy ID).
+ */
+function hasValidSubmissionIdentity(submission) {
+  return !!submission?.id;
+}
+
+/**
+ * Check if a submission has a valid timestamp (or equivalent field).
+ */
 function hasValidSubmissionTimestamp(submission) {
   return !!(submission?.timestamp || submission?.completedAt || submission?.createdAt || submission?.submittedAt);
 }
 
-// ─── Mode-aware counts ────────────────────────────────────────────────────────
+// ─── Mode‑aware counts ────────────────────────────────────────────────────────
 
+/**
+ * Get counts for each queue keyed by surveyType and queueKey, for a given mode.
+ */
 function getCountsByQueue(mode = 'all') {
   return getSurveyTypeConfigs(mode).map(({ surveyType, queueKey }) => {
     const queue      = safeGetLocalStorage(queueKey);
@@ -141,6 +216,9 @@ function getCountsByQueue(mode = 'all') {
   });
 }
 
+/**
+ * Get all queue keys for the current kiosk mode, or for all modes if mode is unset.
+ */
 function getKioskQueues(mode = window.DEVICECONFIG?.kioskMode) {
   if (!mode) {
     console.warn('[QUEUE] getKioskQueues() no mode — using all');
@@ -151,6 +229,9 @@ function getKioskQueues(mode = window.DEVICECONFIG?.kioskMode) {
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
+/**
+ * Get the normalized submission queue for a given queue key or override.
+ */
 export function getSubmissionQueue(overrideKey) {
   const key        = getQueueKey(overrideKey);
   const queue      = safeGetLocalStorage(key);
@@ -161,6 +242,9 @@ export function getSubmissionQueue(overrideKey) {
   return normalized;
 }
 
+/**
+ * Count unsynced records, optionally for a specific queue key or mode.
+ */
 export function countUnsyncedRecords(overrideKey, mode) {
   if (overrideKey) {
     return getSubmissionQueue(overrideKey).length;
@@ -170,6 +254,9 @@ export function countUnsyncedRecords(overrideKey, mode) {
   return getCountsByQueue(mode).reduce((sum, item) => sum + item.count, 0);
 }
 
+/**
+ * Update the admin UI’s unsynced count for the current mode.
+ */
 export function updateAdminCount(mode = window.DEVICECONFIG?.kioskMode) {
   const counts = getCountsByQueue(mode);
   const total  = counts.reduce((sum, item) => sum + item.count, 0);
@@ -186,6 +273,9 @@ export function updateAdminCount(mode = window.DEVICECONFIG?.kioskMode) {
   return total;
 }
 
+/**
+ * Add a submission to the specified queue (or key).
+ */
 export function addToQueue(submission, overrideKey) {
   const key            = getQueueKey(overrideKey);
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
@@ -209,6 +299,9 @@ export function addToQueue(submission, overrideKey) {
   updateAdminCount();
 }
 
+/**
+ * Remove submissions by ID from the specified queue (or key).
+ */
 export function removeFromQueue(ids, overrideKey) {
   const key             = getQueueKey(overrideKey);
   const submissionQueue = getSubmissionQueue(key);
@@ -229,6 +322,9 @@ export function removeFromQueue(ids, overrideKey) {
   return removedCount;
 }
 
+/**
+ * Clear an entire queue for a given key.
+ */
 export function clearQueue(overrideKey) {
   const key       = getQueueKey(overrideKey);
   const queueSize = getSubmissionQueue(key).length;
@@ -238,6 +334,9 @@ export function clearQueue(overrideKey) {
   return removed;
 }
 
+/**
+ * Validate all submissions in a queue for minimal required fields.
+ */
 export function validateQueue(overrideKey) {
   const key   = getQueueKey(overrideKey);
   const queue = getSubmissionQueue(key);
@@ -260,8 +359,18 @@ export function validateQueue(overrideKey) {
   return { valid, invalid };
 }
 
+/**
+ * Get all queue configs with current record counts for a given mode.
+ */
 export function getAllQueueConfigsWithData(mode = 'all') {
   return getCountsByQueue(mode);
+}
+
+/**
+ * Call this once on startup to check that DEVICECONFIG shape is what queueManager expects.
+ */
+export function initQueueManager() {
+  smokeCheckDeviceConfigShape();
 }
 
 export default {
@@ -274,4 +383,5 @@ export default {
   validateQueue,
   getKioskQueues,
   getAllQueueConfigsWithData,
+  initQueueManager,
 };

@@ -30,7 +30,6 @@ import {
 import {
   recordAnalytics,
   shouldSyncAnalytics,
-  checkAndSyncAnalytics,
   syncAnalytics
 } from './analyticsManager.js';
 
@@ -551,7 +550,8 @@ export async function syncKioskQueues(mode = 'all') {
 export function autoSync() {
   console.log('[AUTO SYNC] Periodic sync triggered');
   syncData(false, { syncBothQueues: true });
-  checkAndSyncAnalytics();
+ 
+  syncAnalytics();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -576,7 +576,7 @@ export function startPeriodicSync() {
   periodicAnalyticsTimer = window.setInterval(() => {
     if (isOnline()) {
       console.log('[PERIODIC ANALYTICS] Interval fired — syncing analytics...');
-      checkAndSyncAnalytics();
+      syncAnalytics();
     }
   }, ANALYTICS_INTERVAL);
 

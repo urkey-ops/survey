@@ -1,114 +1,37 @@
 // FILE: surveys/shayona-data-util.js
-// VERSION: 2.3.1
-// CHANGES FROM 2.3.0:
-//   - FIX: Removed fragile apostrophe escaping that caused syntax errors in deployed JS.
-//   - FIX: Keep Shayona survey fixed to type3 question set.
-//   - FIX: Preserve base dataUtils and merge base renderers safely.
-//   - IMPROVE: Dual star rating rows reuse star-rating styling for closer visual match.
+// VERSION: 2.4.0
+// CHANGES FROM 2.3.1:
+//   - FIX 8: All shared helpers (getTextGridCols, getGridMaxWidth,
+//     applyRadioSelectedStyles, applyChipSelectedStyle, applyStarSelectedStyles,
+//     otherKey, auto-advance timer) now sourced from window.surveyRenderUtils.
+//     Local duplicate definitions removed. Canonical applyStarSelectedStyles
+//     (with border/shadow reset) is now used — resolves silent visual divergence.
 
 window.shayonaDataUtils = (function () {
   const baseDataUtils = window.dataUtils || {};
 
-  // ─── CONFIG ──────────────────────────────────────────────────────────────
+  // ─── Shared utilities from survey-render-utils.js ─────────────────────────
+  const _ru = window.surveyRenderUtils;
+  if (!_ru) {
+    console.error('[SHAYONA-DATA-UTIL] CRITICAL: window.surveyRenderUtils not found — survey-render-utils.js must load before this file');
+  }
+
+  const getTextGridCols          = _ru?.getTextGridCols          || function(n) { return n <= 2 ? n : 3; };
+  const getGridMaxWidth          = _ru?.getGridMaxWidth          || function()  { return ''; };
+  const applyRadioSelectedStyles = _ru?.applyRadioSelectedStyles || function() {};
+  const applyChipSelectedStyle   = _ru?.applyChipSelectedStyle   || function() {};
+  const applyStarSelectedStyles  = _ru?.applyStarSelectedStyles  || function() {};
+  const otherKey                 = _ru?.otherKey                 || function(n) { return `other_${n}`; };
+  const createAutoAdvanceTimer   = _ru?.createAutoAdvanceTimer   || function() { return { schedule: function(cb,d){ setTimeout(cb,d); }, clear: function(){} }; };
+
+  const _autoAdvance = createAutoAdvanceTimer();
+  function scheduleAutoAdvance(callback, delay) { _autoAdvance.schedule(callback, delay); }
+  function clearAutoAdvance() { _autoAdvance.clear(); }
+
+  // ─── Config ───────────────────────────────────────────────────────────────
   const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS ?? 50;
-  let autoAdvanceTimer = null;
 
-  function scheduleAutoAdvance(callback, delay) {
-    if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
-    autoAdvanceTimer = setTimeout(() => {
-      autoAdvanceTimer = null;
-      if (typeof callback === 'function') callback();
-    }, delay);
-  }
-
-  function clearAutoAdvance() {
-    if (autoAdvanceTimer) {
-      clearTimeout(autoAdvanceTimer);
-      autoAdvanceTimer = null;
-    }
-  }
-
-  // ─── GRID HELPERS ────────────────────────────────────────────────────────
-  function getTextGridCols(n) {
-    if (n === 1) return 1;
-    if (n === 2) return 2;
-    if (n === 3) return 3;
-    if (n === 4) return 2;
-    return 3;
-  }
-
-  function getGridMaxWidth(n, cols) {
-    if (cols === 1) return 'max-width:340px;margin-left:auto;margin-right:auto';
-    if (cols === 2 && n <= 4) return 'max-width:400px;margin-left:auto;margin-right:auto';
-    if (cols === 3 && n === 3) return 'max-width:500px;margin-left:auto;margin-right:auto';
-    return '';
-  }
-
-  // ─── STYLE HELPERS ───────────────────────────────────────────────────────
-  function applyRadioSelectedStyles(container) {
-    container.querySelectorAll('label').forEach((label) => {
-      const input = document.getElementById(label.getAttribute('for'));
-      if (!input) return;
-
-      if (input.checked) {
-        label.style.background = 'var(--orange-light)';
-        label.style.borderColor = 'var(--orange)';
-        label.style.color = 'var(--orange-dark)';
-        label.style.borderWidth = '2px';
-      } else {
-        label.style.background = '';
-        label.style.borderColor = '';
-        label.style.color = '';
-        label.style.borderWidth = '';
-      }
-    });
-  }
-
-  function applyChipSelectedStyle(label, isSelected) {
-    if (isSelected) {
-      label.style.background = 'var(--orange-light)';
-      label.style.borderColor = 'var(--orange)';
-      label.style.color = 'var(--orange-dark)';
-      label.style.borderWidth = '2px';
-    } else {
-      label.style.background = '';
-      label.style.borderColor = '';
-      label.style.color = '';
-      label.style.borderWidth = '';
-    }
-  }
-
-  function applyStarSelectedStyles(container, selectedValue) {
-    container.querySelectorAll('label.star').forEach((label) => {
-      const input = document.getElementById(label.getAttribute('for'));
-      if (!input) return;
-
-      const starVal = parseInt(input.value, 10);
-      const selVal = parseInt(selectedValue, 10);
-
-      if (starVal <= selVal) {
-        label.classList.add('text-yellow-400');
-        label.classList.remove('text-gray-300');
-        label.style.color = '#FBBF24';
-      } else {
-        label.classList.remove('text-yellow-400');
-        label.classList.add('text-gray-300');
-        label.style.color = '#D1D5DB';
-      }
-
-      label.style.background = 'transparent';
-      label.style.borderColor = 'transparent';
-      label.style.borderWidth = '0';
-      label.style.boxShadow = 'none';
-      label.style.transform = 'none';
-    });
-  }
-
-  function otherKey(qName) {
-    return `other_${qName}`;
-  }
-
-  // ─── SURVEY QUESTIONS TYPE 3 ─────────────────────────────────────────────
+  // ─── Survey Questions Type 3 ──────────────────────────────────────────────
   const surveyQuestionsType3 = [
     {
       id: 'cafeExperience',
@@ -117,29 +40,27 @@ window.shayonaDataUtils = (function () {
       question: 'How was your experience at Shayona Café today?',
       options: [
         { value: 'Not as expected', label: 'Not as expected', emoji: '🙁' },
-        { value: 'Okay', label: 'Okay', emoji: '😐' },
-        { value: 'Good', label: 'Good', emoji: '🙂' },
-        { value: 'Excellent', label: 'Excellent', emoji: '😊' }
+        { value: 'Okay',            label: 'Okay',            emoji: '😐' },
+        { value: 'Good',            label: 'Good',            emoji: '🙂' },
+        { value: 'Excellent',       label: 'Excellent',       emoji: '😊' },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'visitPurpose',
       name: 'visitPurpose',
       type: 'radio',
       question: 'What was the primary reason for your visit today?',
       options: [
-        { value: 'Grab & Go', label: 'Packaged Snacks or Sweets' },
-        { value: 'Hot Food', label: 'Hot Food & Snacks' },
-        { value: 'Buffet', label: 'Buffet / Thali' },
-        { value: 'Catering', label: 'Catering Inquiry / Large Order' },
-        { value: 'Browsing', label: 'Just Browsing' },
-        { value: 'Wanted to purchase, but did not', label: 'Wanted to Purchase, but Did Not' }
+        { value: 'Grab & Go',                        label: 'Packaged Snacks or Sweets' },
+        { value: 'Hot Food',                          label: 'Hot Food & Snacks' },
+        { value: 'Buffet',                            label: 'Buffet / Thali' },
+        { value: 'Catering',                          label: 'Catering Inquiry / Large Order' },
+        { value: 'Browsing',                          label: 'Just Browsing' },
+        { value: 'Wanted to purchase, but did not',   label: 'Wanted to Purchase, but Did Not' },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'waitTime',
       name: 'waitTime',
@@ -148,13 +69,12 @@ window.shayonaDataUtils = (function () {
       branch: 'purchaser',
       options: [
         { value: 'Under 5 min', label: 'Under 5 minutes' },
-        { value: '5–10 min', label: '5–10 minutes' },
-        { value: '10–15 min', label: '10–15 minutes' },
-        { value: '15+ min', label: '15+ minutes' }
+        { value: '5–10 min',    label: '5–10 minutes' },
+        { value: '10–15 min',   label: '10–15 minutes' },
+        { value: '15+ min',     label: '15+ minutes' },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'waitAcceptable',
       name: 'waitAcceptable',
@@ -162,15 +82,9 @@ window.shayonaDataUtils = (function () {
       question: 'Was this wait time acceptable?',
       branch: 'purchaser',
       options: [
+        { value: 'Yes', label: 'Yes', followupLabel: null, followupOptions: [] },
         {
-          value: 'Yes',
-          label: 'Yes',
-          followupLabel: null,
-          followupOptions: []
-        },
-        {
-          value: 'No',
-          label: 'No',
+          value: 'No', label: 'No',
           followupLabel: 'What caused the delay?',
           followupOptions: [
             'Long line to order',
@@ -178,13 +92,12 @@ window.shayonaDataUtils = (function () {
             'Food preparation was slow',
             'Staff was busy with other customers',
             'Catering / large order in progress',
-            'Not sure'
-          ]
-        }
+            'Not sure',
+          ],
+        },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'flowExperience',
       name: 'flowExperience',
@@ -192,22 +105,20 @@ window.shayonaDataUtils = (function () {
       question: 'How did the overall flow of your visit feel?',
       branch: 'purchaser',
       options: [
-        { value: 'Very smooth', label: 'Very smooth' },
-        { value: 'Mostly smooth', label: 'Mostly smooth' },
-        { value: 'Some friction', label: 'Some friction' },
-        { value: 'Frustrating', label: 'Frustrating' }
+        { value: 'Very smooth',    label: 'Very smooth' },
+        { value: 'Mostly smooth',  label: 'Mostly smooth' },
+        { value: 'Some friction',  label: 'Some friction' },
+        { value: 'Frustrating',    label: 'Frustrating' },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'headerGrabGo',
       name: 'headerGrabGo',
       type: 'section-header',
       text: 'About your Grab & Go experience today…',
-      branch: 'Grab & Go'
+      branch: 'Grab & Go',
     },
-
     {
       id: 'grabGoFinding',
       name: 'grabGoFinding',
@@ -215,34 +126,21 @@ window.shayonaDataUtils = (function () {
       question: 'How easy was it to find what you were looking for?',
       branch: 'Grab & Go',
       options: [
-        { value: 'Very easy', label: 'Very easy', followupLabel: null, followupOptions: [] },
-        { value: 'Somewhat easy', label: 'Somewhat easy', followupLabel: null, followupOptions: [] },
+        { value: 'Very easy',         label: 'Very easy',         followupLabel: null, followupOptions: [] },
+        { value: 'Somewhat easy',     label: 'Somewhat easy',     followupLabel: null, followupOptions: [] },
         {
-          value: 'Somewhat difficult',
-          label: 'Somewhat difficult',
+          value: 'Somewhat difficult', label: 'Somewhat difficult',
           followupLabel: 'What made it difficult?',
-          followupOptions: [
-            'Items were hard to locate',
-            'Labels or prices were unclear',
-            'Too crowded around display',
-            'Could not decide quickly'
-          ]
+          followupOptions: ['Items were hard to locate','Labels or prices were unclear','Too crowded around display','Could not decide quickly'],
         },
         {
-          value: 'Very difficult',
-          label: 'Very difficult',
+          value: 'Very difficult', label: 'Very difficult',
           followupLabel: 'What made it difficult?',
-          followupOptions: [
-            'Items were hard to locate',
-            'Labels or prices were unclear',
-            'Too crowded around display',
-            'Could not decide quickly'
-          ]
-        }
+          followupOptions: ['Items were hard to locate','Labels or prices were unclear','Too crowded around display','Could not decide quickly'],
+        },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'grabGoSpeed',
       name: 'grabGoSpeed',
@@ -252,28 +150,20 @@ window.shayonaDataUtils = (function () {
       options: [
         { value: 'Yes, fast enough', label: 'Yes, fast enough', followupLabel: null, followupOptions: [] },
         {
-          value: 'No, too slow',
-          label: 'No, too slow',
+          value: 'No, too slow', label: 'No, too slow',
           followupLabel: 'What slowed you down most?',
-          followupOptions: [
-            'Waiting to place order',
-            'Waiting to pay',
-            'Staff was busy',
-            'Could not decide quickly'
-          ]
-        }
+          followupOptions: ['Waiting to place order','Waiting to pay','Staff was busy','Could not decide quickly'],
+        },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'headerHotFood',
       name: 'headerHotFood',
       type: 'section-header',
       text: 'About your food experience today…',
-      branch: 'Hot Food|Buffet'
+      branch: 'Hot Food|Buffet',
     },
-
     {
       id: 'foodPriority',
       name: 'foodPriority',
@@ -281,14 +171,13 @@ window.shayonaDataUtils = (function () {
       question: 'What mattered most to you today?',
       branch: 'Hot Food|Buffet',
       options: [
-        { value: 'Speed of service', label: 'Speed of service' },
+        { value: 'Speed of service',    label: 'Speed of service' },
         { value: 'Food quality & taste', label: 'Food quality & taste' },
-        { value: 'Value for money', label: 'Value for money' },
-        { value: 'Balanced experience', label: 'Balanced experience' }
+        { value: 'Value for money',      label: 'Value for money' },
+        { value: 'Balanced experience',  label: 'Balanced experience' },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'foodRating',
       name: 'foodRating',
@@ -297,21 +186,18 @@ window.shayonaDataUtils = (function () {
       branch: 'Hot Food|Buffet',
       subRatings: [
         { key: 'taste', label: 'Food taste' },
-        { key: 'value', label: 'Value for money' }
+        { key: 'value', label: 'Value for money' },
       ],
-      min: 1,
-      max: 5,
-      required: true
+      min: 1, max: 5,
+      required: true,
     },
-
     {
       id: 'headerCatering',
       name: 'headerCatering',
       type: 'section-header',
       text: 'About your catering inquiry today…',
-      branch: 'Catering'
+      branch: 'Catering',
     },
-
     {
       id: 'cateringClarity',
       name: 'cateringClarity',
@@ -321,27 +207,23 @@ window.shayonaDataUtils = (function () {
       options: [
         { value: 'Yes, fully clear', label: 'Yes, fully clear', followupLabel: null, followupOptions: [] },
         {
-          value: 'Partially clear',
-          label: 'Partially clear',
+          value: 'Partially clear', label: 'Partially clear',
           followupLabel: 'What was missing?',
-          followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other']
+          followupOptions: ['Pricing details','Menu / options clarity','Staff availability','Response time','Other'],
         },
         {
-          value: 'Mostly unclear',
-          label: 'Mostly unclear',
+          value: 'Mostly unclear', label: 'Mostly unclear',
           followupLabel: 'What was missing?',
-          followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other']
+          followupOptions: ['Pricing details','Menu / options clarity','Staff availability','Response time','Other'],
         },
         {
-          value: 'Not clear at all',
-          label: 'Not clear at all',
+          value: 'Not clear at all', label: 'Not clear at all',
           followupLabel: 'What was missing?',
-          followupOptions: ['Pricing details', 'Menu / options clarity', 'Staff availability', 'Response time', 'Other']
-        }
+          followupOptions: ['Pricing details','Menu / options clarity','Staff availability','Response time','Other'],
+        },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'cateringImprovement',
       name: 'cateringImprovement',
@@ -349,22 +231,20 @@ window.shayonaDataUtils = (function () {
       question: 'How can we improve the catering experience?',
       branch: 'Catering',
       options: [
-        { value: 'Online menu / brochure', label: 'Online menu / brochure' },
-        { value: 'Dedicated staff member', label: 'Dedicated staff member' },
-        { value: 'Faster response time', label: 'Faster response time' },
-        { value: 'Better signage / guidance', label: 'Better signage / guidance' }
+        { value: 'Online menu / brochure',    label: 'Online menu / brochure' },
+        { value: 'Dedicated staff member',    label: 'Dedicated staff member' },
+        { value: 'Faster response time',      label: 'Faster response time' },
+        { value: 'Better signage / guidance', label: 'Better signage / guidance' },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'headerFailedIntent',
       name: 'headerFailedIntent',
       type: 'section-header',
       text: "We're sorry we couldn't serve you today — your feedback helps us improve.",
-      branch: 'Failed Intent'
+      branch: 'Failed Intent',
     },
-
     {
       id: 'browsingBarrier',
       name: 'browsingBarrier',
@@ -372,22 +252,20 @@ window.shayonaDataUtils = (function () {
       question: "What was the main reason you didn't purchase today?",
       branch: 'Failed Intent',
       options: [
-        { value: 'Wait or line was too long', label: 'The wait or line was too long' },
-        { value: 'No staff available', label: 'No staff was available to help or take my order' },
-        { value: 'Did not find specific item', label: 'I did not see the specific item I wanted' },
-        { value: 'Prices were not clearly marked', label: 'Prices were not clearly marked' }
+        { value: 'Wait or line was too long',       label: 'The wait or line was too long' },
+        { value: 'No staff available',              label: 'No staff was available to help or take my order' },
+        { value: 'Did not find specific item',      label: 'I did not see the specific item I wanted' },
+        { value: 'Prices were not clearly marked',  label: 'Prices were not clearly marked' },
       ],
-      required: true
+      required: true,
     },
-
     {
       id: 'headerBrowsing',
       name: 'headerBrowsing',
       type: 'section-header',
       text: "Thanks for stopping by — we'd love to know what brought you in today.",
-      branch: 'Browsing'
+      branch: 'Browsing',
     },
-
     {
       id: 'browsingDiscovery',
       name: 'browsingDiscovery',
@@ -395,15 +273,14 @@ window.shayonaDataUtils = (function () {
       question: 'What were you hoping to find today?',
       branch: 'Browsing',
       options: [
-        { value: 'Exploring for the first time', label: 'Just exploring the café for the first time' },
-        { value: 'Checking menu for future visit', label: 'Checking the menu for a future visit' },
-        { value: 'Looking for a specific snack', label: 'Looking for a specific snack or sweet' },
-        { value: 'Looking for a gift or souvenir', label: 'Looking for a gift or souvenir' },
-        { value: 'Checking for seating / space', label: 'Checking for seating or a place to sit' }
+        { value: 'Exploring for the first time',     label: 'Just exploring the café for the first time' },
+        { value: 'Checking menu for future visit',   label: 'Checking the menu for a future visit' },
+        { value: 'Looking for a specific snack',     label: 'Looking for a specific snack or sweet' },
+        { value: 'Looking for a gift or souvenir',   label: 'Looking for a gift or souvenir' },
+        { value: 'Checking for seating / space',     label: 'Checking for seating or a place to sit' },
       ],
-      required: false
+      required: false,
     },
-
     {
       id: 'finalThoughts',
       name: 'final_thoughts',
@@ -411,25 +288,25 @@ window.shayonaDataUtils = (function () {
       question: 'What would you like to share about your visit to Shayona Café?',
       subLabel: 'Optional — select one to begin',
       options: [
-        { value: 'shoutout', label: 'A shout-out to the team', emoji: '🌟', placeholder: 'A big thank you to ' },
-        { value: 'improvement', label: 'An idea for improvement', emoji: '💡', placeholder: 'One thing that could be better is ' },
-        { value: 'favourite', label: 'My favourite part', emoji: '❤️', placeholder: 'My favourite part was ' },
-        { value: 'issue', label: "Something didn't work", emoji: '⚠️', placeholder: "Something didn't work — " },
-        { value: 'other', label: 'Something else', emoji: '📝', placeholder: 'I wanted to share that ' }
+        { value: 'shoutout',     label: 'A shout-out to the team', emoji: '🌟', placeholder: 'A big thank you to ' },
+        { value: 'improvement',  label: 'An idea for improvement', emoji: '💡', placeholder: 'One thing that could be better is ' },
+        { value: 'favourite',    label: 'My favourite part',       emoji: '❤️', placeholder: 'My favourite part was ' },
+        { value: 'issue',        label: "Something didn't work",   emoji: '⚠️', placeholder: "Something didn't work — " },
+        { value: 'other',        label: 'Something else',          emoji: '📝', placeholder: 'I wanted to share that ' },
       ],
       defaultPlaceholder: 'Share your thoughts about the café here…',
-      required: false
-    }
+      required: false,
+    },
   ];
 
-  // ─── BRANCHING LOGIC ─────────────────────────────────────────────────────
+  // ─── Branching Logic ──────────────────────────────────────────────────────
   function getActiveBranch(formData) {
     const purpose = formData.visitPurpose ?? '';
-    if (purpose === 'Grab & Go') return 'Grab & Go';
+    if (purpose === 'Grab & Go')                        return 'Grab & Go';
     if (purpose === 'Hot Food' || purpose === 'Buffet') return 'Hot Food|Buffet';
-    if (purpose === 'Catering') return 'Catering';
-    if (purpose === 'Wanted to purchase, but did not') return 'Failed Intent';
-    if (purpose === 'Browsing') return 'Browsing';
+    if (purpose === 'Catering')                         return 'Catering';
+    if (purpose === 'Wanted to purchase, but did not')  return 'Failed Intent';
+    if (purpose === 'Browsing')                         return 'Browsing';
     return null;
   }
 
@@ -441,100 +318,79 @@ window.shayonaDataUtils = (function () {
   }
 
   function shouldShowQuestion(q, activeBranch, formData) {
-    if (q.id === 'waitAcceptable' && formData.waitTime === 'Under 5 min') {
-      return false;
-    }
-
+    if (q.id === 'waitAcceptable' && formData.waitTime === 'Under 5 min') return false;
     if (!q.branch) return true;
     if (activeBranch === null) return true;
     if (q.branch === 'purchaser') return isPurchaser(activeBranch);
-
     const allowedBranches = q.branch.split('|');
-    return allowedBranches.some((b) => activeBranch.includes(b));
+    return allowedBranches.some(b => activeBranch.includes(b));
   }
 
   function getNextQuestionIndex(currentIndex, formData, questions) {
     const activeBranch = getActiveBranch(formData);
     let next = currentIndex + 1;
-
     while (next < questions.length) {
       if (shouldShowQuestion(questions[next], activeBranch, formData)) break;
       next++;
     }
-
     return next;
   }
 
-  // ─── SECTION-HEADER RENDERER ─────────────────────────────────────────────
+  // ─── Section-Header Renderer ──────────────────────────────────────────────
   const sectionHeaderRenderer = {
     render(q) {
       return `
         <div class="section-header-slide" role="heading" aria-level="2">
           <span class="section-header-text">${q.text}</span>
-        </div>
-      `;
+        </div>`;
     },
     setupEvents(q, handleNextQuestion) {
       scheduleAutoAdvance(handleNextQuestion, 800);
-    }
+    },
   };
 
-  // ─── DUAL-STAR-RATING RENDERER ───────────────────────────────────────────
+  // ─── Dual-Star-Rating Renderer ────────────────────────────────────────────
   const dualStarRatingRenderer = {
     render(q, data) {
       const saved = data[q.name] ?? {};
 
       const renderRow = (sub) => {
         const selected = Number(saved[sub.key] ?? 0);
-
         const stars = Array.from({ length: q.max }, (_, i) => {
-          const num = q.max - i;
+          const num     = q.max - i;
           const checked = selected === num ? 'checked' : '';
-          const filled = selected >= num ? '#FBBF24' : '#D1D5DB';
-
+          const filled  = selected >= num ? '#FBBF24' : '#D1D5DB';
           return `
-            <input
-              type="radio"
+            <input type="radio"
               id="${q.id}_${sub.key}_${num}"
               name="${q.id}_${sub.key}"
               value="${num}"
               class="visually-hidden"
-              ${checked}
-            >
-            <label
-              for="${q.id}_${sub.key}_${num}"
+              ${checked}>
+            <label for="${q.id}_${sub.key}_${num}"
               class="star option-label"
               style="font-size:2.6rem;padding:0 4px;color:${filled}"
-              role="radio"
-              aria-label="${num} stars"
-            >★</label>
-          `;
+              role="radio" aria-label="${num} stars">★</label>`;
         }).join('');
 
         return `
           <div class="dual-star-row">
             <span class="dual-star-label">${sub.label}</span>
-            <div
-              class="dual-star-stars star-rating"
+            <div class="dual-star-stars star-rating"
               id="${q.id}_${sub.key}_grid"
-              role="radiogroup"
-              aria-label="${sub.label}"
-            >
-              ${stars}
-            </div>
-          </div>
-        `;
+              role="radiogroup" aria-label="${sub.label}">${stars}</div>
+          </div>`;
       };
 
       return `
-        <label id="${q.id}Label" style="font-size:1.2rem;font-weight:600;color:var(--text-primary);display:block;margin-bottom:8px">
+        <label id="${q.id}Label"
+          style="font-size:1.2rem;font-weight:600;color:var(--text-primary);display:block;margin-bottom:8px">
           ${q.question}
         </label>
         <div class="dual-star-rating" id="${q.id}_wrapper">
           ${q.subRatings.map(renderRow).join('')}
         </div>
-        <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>
-      `;
+        <span id="${q.id}Error" class="error-message text-red-500 text-sm"></span>`;
     },
 
     setupEvents(q, handleNextQuestion, updateData) {
@@ -543,7 +399,7 @@ window.shayonaDataUtils = (function () {
 
       const getCurrent = () => {
         const result = {};
-        q.subRatings.forEach((sub) => {
+        q.subRatings.forEach(sub => {
           const checked = wrapper.querySelector(`input[name="${q.id}_${sub.key}"]:checked`);
           result[sub.key] = checked ? Number(checked.value) : null;
         });
@@ -551,42 +407,37 @@ window.shayonaDataUtils = (function () {
       };
 
       const allFilled = () =>
-        q.subRatings.every((sub) =>
+        q.subRatings.every(sub =>
           wrapper.querySelector(`input[name="${q.id}_${sub.key}"]:checked`)
         );
 
       wrapper.addEventListener('change', () => {
         const current = getCurrent();
         updateData(q.name, current);
-
-        q.subRatings.forEach((sub) => {
+        q.subRatings.forEach(sub => {
           const grid = document.getElementById(`${q.id}_${sub.key}_grid`);
           if (grid) applyStarSelectedStyles(grid, current[sub.key] ?? 0);
         });
-
         if (allFilled()) {
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
         }
       });
-    }
+    },
   };
 
-  // ─── QUESTION RENDERERS ──────────────────────────────────────────────────
+  // ─── Question Renderers ───────────────────────────────────────────────────
   const questionRenderers = {
     ...(baseDataUtils.questionRenderers || {}),
-    'section-header': sectionHeaderRenderer,
-    'dual-star-rating': dualStarRatingRenderer
+    'section-header':    sectionHeaderRenderer,
+    'dual-star-rating':  dualStarRatingRenderer,
   };
 
   function getSurveyQuestions() {
     return surveyQuestionsType3;
   }
 
-  // ─── PUBLIC API ──────────────────────────────────────────────────────────
   return {
-    get surveyQuestions() {
-      return surveyQuestionsType3;
-    },
+    get surveyQuestions() { return surveyQuestionsType3; },
     getSurveyQuestions,
     questionRenderers,
     getNextQuestionIndex,
@@ -599,10 +450,10 @@ window.shayonaDataUtils = (function () {
     applyChipSelectedStyle,
     applyStarSelectedStyles,
     getTextGridCols,
-    getGridMaxWidth
+    getGridMaxWidth,
   };
 })();
 
 if (window.DEVICECONFIG?.kioskMode === 'shayona') {
-  console.info('[shayona-data-util] Shayona mode active — base dataUtils preserved');
+  console.info('[shayona-data-util] ✅ Shayona mode active (v2.4.0) — shared render utils loaded');
 }

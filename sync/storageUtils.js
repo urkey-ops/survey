@@ -57,12 +57,22 @@ export function safeSetLocalStorage(key, value) {
   } catch (e) {
     console.error(`[STORAGE] Failed to write key '${key}':`, e.message);
 
-    if (e.name === 'QuotaExceededError') {
-      showUserError('Storage limit reached. Please sync data or contact support.');
-    }
-    return false;
+
+    // After:
+if (e.name === 'QuotaExceededError') {
+  showUserError('Storage limit reached. Please sync data or contact support.');
+  // Persistent flag — admin panel reads this and shows a permanent banner
+  try {
+    localStorage.setItem('kioskStorageAlert', JSON.stringify({
+      flaggedAt: new Date().toISOString(),
+      context: key,
+    }));
+  } catch (_) {
+    console.error('[STORAGE] 🚨 CRITICAL: Cannot write storage alert flag — storage completely full');
   }
 }
+
+
 
 /**
  * Safely read from localStorage with error handling

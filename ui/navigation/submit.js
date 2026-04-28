@@ -269,15 +269,16 @@ export function submitSurvey() {
       return;
     }
 
-    const submissionData = {
-      ...normalizedFormData,
-      id:                    normalizedFormData.id || dataHandlers.generateUUID(),
-      surveyType,
-      questionTimeSpent:     { ...appState.questionTimeSpent },
-      completionTimeSeconds: totalTimeSeconds,
-      completedAt:           new Date().toISOString(),
-      sync_status:           'unsynced',
-    };
+  import { buildQueueRecord, validateFormData } from '../../main/contracts.js';
+
+validateFormData(normalizedFormData, surveyType); // warns if renamed field
+
+const submissionData = buildQueueRecord(
+  { ...normalizedFormData, questionTimeSpent: { ...appState.questionTimeSpent }, completionTimeSeconds: totalTimeSeconds },
+  { surveyType, sync_status: 'unsynced' }
+);
+
+dataHandlers.addToQueue(submissionData, queueKey); // routes through queueManager
 
     const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
     let submissionQueue  = dataHandlers.getSubmissionQueue(queueKey);

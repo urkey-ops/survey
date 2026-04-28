@@ -1,10 +1,8 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.8.1
-// CHANGES FROM 3.8.0:
-//   - DEBUG: Added debug logs for formData and normalizedFormData
-//   - FIX: Schema-aware hasMeaningfulResponse (no misleading empty-data detection)
-//   - UNCHANGED: All queue / sync / analytics / reset logic is identical and safe.
+// VERSION: 3.8.2
+// CHANGES FROM 3.8.1:
+//   - FIX: Reset completionInProgress on unexpected error so user can retry
 // DEPENDENCIES: core.js, main/contracts.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -17,17 +15,11 @@ let resetTriggered       = false;
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Return true if at least one meaningful answer exists in formData,
- * for surveyType === "type3" (Shayona Café).
- */
 function hasMeaningfulResponse(formData, surveyType) {
-  // If passed in as empty, short‑circuit.
   if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
     return false;
   }
 
-  // Known meaningful keys specific to type3
   const REQUIRED_KEYS = [
     'cafeExperience',
     'visitPurpose',
@@ -39,7 +31,6 @@ function hasMeaningfulResponse(formData, surveyType) {
     'final_thoughts'
   ];
 
-  // Fast path if surveyType is not type3 (fallback to basic check)
   if (surveyType !== 'type3') {
     return Object.entries(formData).some(([key, val]) => {
       if (key === 'id') return false;
@@ -51,38 +42,26 @@ function hasMeaningfulResponse(formData, surveyType) {
     });
   }
 
-  // For type3: only check known keys
   for (const key of REQUIRED_KEYS) {
     const val = formData[key];
 
-    // Skip if key doesn't exist or is explicitly null/undefined/empty.
-    if (val === null || val === undefined || val === '') {
-      continue;
-    }
+    if (val === null || val === undefined || val === '') continue;
 
-    // If an array, one non‑empty item is enough.
     if (Array.isArray(val)) {
-      if (val.some(v => v !== null && v !== undefined && v !== '')) {
-        return true;
-      }
+      if (val.some(v => v !== null && v !== undefined && v !== '')) return true;
       continue;
     }
 
-    // If an object, walk its values.
     if (typeof val === 'object' && val !== null) {
       for (const v of Object.values(val)) {
-        if (v !== null && v !== undefined && v !== '') {
-          return true;
-        }
+        if (v !== null && v !== undefined && v !== '') return true;
       }
       continue;
     }
 
-    // A plain string or number that is non‑empty is enough.
     return true;
   }
 
-  // If no known key has a meaningful value, treat as empty.
   return false;
 }
 
@@ -90,33 +69,17 @@ function hasMeaningfulResponse(formData, surveyType) {
 // NORMALISE PAYLOAD
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Convert UI‑captured values into a stable queue/API‑safe payload.
- *
- * dual‑star‑rating flattening:
- *   IN:  { foodRating: { taste: 4, value: 3 } }
- *   OUT: { foodRating_taste: 4, foodRating_value: 3 }
- *
- * selector‑textarea flattening:
- *   IN:  { final_thoughts: { category: 'shoutout', text: 'Great!' } }
- *   OUT: { final_thoughts_category: 'shoutout', final_thoughts_text: 'Great!' }
- *
- * section‑header: deleted (no data field)
- * Everything else: passed through unchanged.
- */
 function normalizeSubmissionPayload(formData, questions) {
   const normalized = { ...formData };
 
   questions.forEach((q) => {
     const rawValue = normalized[q.name];
 
-    // ── section‑header ─────────────────────────────────────────────────────
     if (q.type === 'section-header') {
       delete normalized[q.name];
       return;
     }
 
-    // ── dual‑star‑rating ───────────────────────────────────────────────────
     if (q.type === 'dual-star-rating') {
       const valueObj =
         rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
@@ -133,7 +96,6 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // ── selector‑textarea ──────────────────────────────────────────────────
     if (q.type === 'selector-textarea') {
       const valueObj =
         rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
@@ -149,7 +111,6 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // ── number‑scale / star‑rating — ensure numeric ────────────────────────
     if (q.type === 'number-scale' || q.type === 'star-rating') {
       if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
         normalized[q.name] = Number(rawValue);
@@ -157,16 +118,12 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // ── checkbox‑with‑other — ensure array ────────────────────────────────
     if (q.type === 'checkbox-with-other') {
       if (!Array.isArray(normalized[q.name])) {
         normalized[q.name] = normalized[q.name] ? [normalized[q.name]] : [];
       }
       return;
     }
-
-    // All other types (emoji‑radio, radio, radio‑with‑other,
-    // radio‑with‑followup, textarea) pass through unchanged.
   });
 
   return normalized;
@@ -241,7 +198,6 @@ function _doReset(deps) {
     appState.surveyStartTime      = null;
   }
 
-  // Return to start screen
   if (navigation?.showStartScreen) {
     navigation.showStartScreen();
   } else if (typeof window.showStartScreen === 'function') {
@@ -257,154 +213,146 @@ function _doReset(deps) {
 // ─────────────────────────────────────────────────────────────
 
 export async function handleSubmit(deps = null) {
-  const resolvedDeps = deps || getDependencies();
-  const {
-    appState,
-    dataHandlers,
-    questions,
-    surveyType,
-    questionContainer,
-  } = resolvedDeps;
+  // ── FIX: wrap entire handler so completionInProgress is always released ──
+  try {
+    const resolvedDeps = deps || getDependencies();
+    const {
+      appState,
+      dataHandlers,
+      questions,
+      surveyType,
+      questionContainer,
+    } = resolvedDeps;
 
-  // ── FAIL‑SAFE: use a local `SURVEY_TYPE` (let, not const)
-  let SURVEY_TYPE = surveyType;
+    let SURVEY_TYPE = surveyType;
 
-  // Always resolve via KIOSK_CONFIG if deps.surveyType is invalid or missing
-  if (!SURVEY_TYPE || typeof SURVEY_TYPE !== 'string') {
-    const explicit = window.KIOSK_CONFIG?.getActiveSurveyType?.();
-    SURVEY_TYPE = explicit || 'type1';
-    console.error(
-      `[SUBMIT] ⚠️ surveyType missing or invalid: "${surveyType}"` +
-      ` — falling back to "${SURVEY_TYPE}"`
+    if (!SURVEY_TYPE || typeof SURVEY_TYPE !== 'string') {
+      const explicit = window.KIOSK_CONFIG?.getActiveSurveyType?.();
+      SURVEY_TYPE = explicit || 'type1';
+      console.error(
+        `[SUBMIT] ⚠️ surveyType missing or invalid: "${surveyType}"` +
+        ` — falling back to "${SURVEY_TYPE}"`
+      );
+    }
+
+    if (completionInProgress) {
+      console.warn('[SUBMIT] Already in progress — ignoring duplicate call');
+      return;
+    }
+    completionInProgress = true;
+    resetTriggered       = false;
+
+    console.log('[SUBMIT] 📋 Starting submission for surveyType:', SURVEY_TYPE);
+
+    const debugFormData = appState?.formData || {};
+    console.log('[DEBUG] formData @ guard entry:', JSON.parse(JSON.stringify(debugFormData)));
+
+    stopQuestionTimer(resolvedDeps);
+
+    const normalizedFormData = normalizeSubmissionPayload(
+      appState.formData || {},
+      questions || []
     );
-  }
 
-  if (completionInProgress) {
-    console.warn('[SUBMIT] Already in progress — ignoring duplicate call');
-    return;
-  }
-  completionInProgress = true;
-  resetTriggered       = false;
+    console.log('[DEBUG] normalizedFormData:', JSON.parse(JSON.stringify(normalizedFormData)));
 
-  console.log('[SUBMIT] 📋 Starting submission for surveyType:', SURVEY_TYPE);
+    validateFormData(normalizedFormData, SURVEY_TYPE);
 
-  // DEBUG: Log formData at guard entry
-  const debugFormData = appState?.formData || {};
-  console.log('[DEBUG] formData @ guard entry:', JSON.parse(JSON.stringify(debugFormData)));
-
-  // ── Stop question timer ──────────────────────────────────────────────────
-  stopQuestionTimer(resolvedDeps);
-
-  // ── Normalize payload ────────────────────────────────────────────────────
-  const normalizedFormData = normalizeSubmissionPayload(
-    appState.formData || {},
-    questions || []
-  );
-
-  // DEBUG: Log normalizedFormData
-  console.log('[DEBUG] normalizedFormData:', JSON.parse(JSON.stringify(normalizedFormData)));
-
-  // ── Validate form data shape before writing to queue ─────────────────────
-  validateFormData(normalizedFormData, SURVEY_TYPE);
-
-  // ── Guard: meaningful response (schema‑aware for type3) ──────────────────
-  if (!hasMeaningfulResponse(debugFormData, SURVEY_TYPE)) {
-    console.warn('[SUBMIT] ⚠️ Empty formData — skipping submission');
-    completionInProgress = false;
-    _doReset(resolvedDeps);
-    return;
-  }
-
-  // ── Resolve queue config ─────────────────────────────────────────────────
-  const queueConfig = window.CONSTANTS?.SURVEY_TYPES?.[SURVEY_TYPE];
-  const queueKey    = queueConfig?.storageKey;
-
-  if (!queueKey) {
-    console.error(`[SUBMIT] ❌ No storageKey found for surveyType "${SURVEY_TYPE}" — cannot save`);
-    completionInProgress = false;
-    _doReset(resolvedDeps);
-    return;
-  }
-
-  // ── Calculate timing ─────────────────────────────────────────────────────
-  const surveyStartTime    = appState.surveyStartTime || Date.now();
-  const totalTimeSeconds   = Math.round((Date.now() - surveyStartTime) / 1000);
-  const questionTimeSpent  = { ...(appState.questionTimeSpent || {}) };
-
-  // ── Build queue record via factory ───────────────────────────────────────
-  const record = buildQueueRecord(
-    {
-      ...normalizedFormData,
-      questionTimeSpent,
-      completionTimeSeconds: totalTimeSeconds,
-    },
-    {
-      surveyType: SURVEY_TYPE,
-      sync_status: 'unsynced',
+    if (!hasMeaningfulResponse(debugFormData, SURVEY_TYPE)) {
+      console.warn('[SUBMIT] ⚠️ Empty formData — skipping submission');
+      completionInProgress = false;
+      _doReset(resolvedDeps);
+      return;
     }
-  );
 
-  // ── Write via addToQueue ─────────────────────────────────────────────────
-  let saved = false;
-  if (dataHandlers?.addToQueue) {
-    saved = dataHandlers.addToQueue(record, queueKey);
-  } else {
-    // Fallback: direct write if addToQueue is not assembled yet (should not happen)
-    console.warn('[SUBMIT] ⚠️ addToQueue not available — falling back to safeSetLocalStorage');
-    try {
-      const existing = JSON.parse(localStorage.getItem(queueKey) || '[]');
-      existing.push(record);
-      saved = dataHandlers?.safeSetLocalStorage
-        ? dataHandlers.safeSetLocalStorage(queueKey, existing)
-        : (localStorage.setItem(queueKey, JSON.stringify(existing)), true);
-    } catch (e) {
-      console.error('[SUBMIT] ❌ Fallback write failed:', e);
+    const queueConfig = window.CONSTANTS?.SURVEY_TYPES?.[SURVEY_TYPE];
+    const queueKey    = queueConfig?.storageKey;
+
+    if (!queueKey) {
+      console.error(`[SUBMIT] ❌ No storageKey found for surveyType "${SURVEY_TYPE}" — cannot save`);
+      completionInProgress = false;
+      _doReset(resolvedDeps);
+      return;
     }
-  }
 
-  if (!saved) {
-    console.error('[SUBMIT] ❌ Failed to save record — storage may be full');
-  } else {
-    console.log(`[SUBMIT] ✅ Record saved to "${queueKey}" (id: ${record.id})`);
-  }
+    const surveyStartTime    = appState.surveyStartTime || Date.now();
+    const totalTimeSeconds   = Math.round((Date.now() - surveyStartTime) / 1000);
+    const questionTimeSpent  = { ...(appState.questionTimeSpent || {}) };
 
-  // ── Record analytics via factory ─────────────────────────────────────────
-  if (dataHandlers?.recordAnalytics) {
-    dataHandlers.recordAnalytics(
-      'survey_completed',
-      buildAnalyticsEvent('survey_completed', {
-        surveyId:             record.id,
+    const record = buildQueueRecord(
+      {
+        ...normalizedFormData,
+        questionTimeSpent,
+        completionTimeSeconds: totalTimeSeconds,
+      },
+      {
         surveyType: SURVEY_TYPE,
-        totalTimeSeconds,
-        completedAllQuestions: true,
-      })
+        sync_status: 'unsynced',
+      }
     );
-  }
 
-  // ── Update admin count ───────────────────────────────────────────────────
-  if (dataHandlers?.updateAdminCount) {
-    dataHandlers.updateAdminCount();
-  }
+    let saved = false;
+    if (dataHandlers?.addToQueue) {
+      saved = dataHandlers.addToQueue(record, queueKey);
+    } else {
+      console.warn('[SUBMIT] ⚠️ addToQueue not available — falling back to safeSetLocalStorage');
+      try {
+        const existing = JSON.parse(localStorage.getItem(queueKey) || '[]');
+        existing.push(record);
+        saved = dataHandlers?.safeSetLocalStorage
+          ? dataHandlers.safeSetLocalStorage(queueKey, existing)
+          : (localStorage.setItem(queueKey, JSON.stringify(existing)), true);
+      } catch (e) {
+        console.error('[SUBMIT] ❌ Fallback write failed:', e);
+      }
+    }
 
-  // ── Attempt background sync ──────────────────────────────────────────────
-  if (navigator.onLine && dataHandlers?.syncData) {
-    dataHandlers.syncData(false, { surveyType: SURVEY_TYPE }).catch(err => {
-      console.warn('[SUBMIT] Background sync failed (will retry later):', err.message);
+    if (!saved) {
+      console.error('[SUBMIT] ❌ Failed to save record — storage may be full');
+    } else {
+      console.log(`[SUBMIT] ✅ Record saved to "${queueKey}" (id: ${record.id})`);
+    }
+
+    if (dataHandlers?.recordAnalytics) {
+      dataHandlers.recordAnalytics(
+        'survey_completed',
+        buildAnalyticsEvent('survey_completed', {
+          surveyId:              record.id,
+          surveyType:            SURVEY_TYPE,
+          totalTimeSeconds,
+          completedAllQuestions: true,
+        })
+      );
+    }
+
+    if (dataHandlers?.updateAdminCount) {
+      dataHandlers.updateAdminCount();
+    }
+
+    if (navigator.onLine && dataHandlers?.syncData) {
+      dataHandlers.syncData(false, { surveyType: SURVEY_TYPE }).catch(err => {
+        console.warn('[SUBMIT] Background sync failed (will retry later):', err.message);
+      });
+    }
+
+    _renderCheckmarkAndCountdown({
+      questionContainer,
+      surveyType: SURVEY_TYPE,
+      config: queueConfig,
+      onReset: () => {
+        if (!resetTriggered) _doReset(resolvedDeps);
+      },
     });
+
+    saveState(resolvedDeps);
+    console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);
+
+  } catch (err) {
+    // ── FIX: always release the lock so the user can retry ──────────────────
+    console.error('[SUBMIT] ❌ Unexpected error during submission:', err);
+    completionInProgress = false;
+    throw err;
   }
-
-  // ── Show success UI + auto‑reset ─────────────────────────────────────────
-  _renderCheckmarkAndCountdown({
-    questionContainer,
-    surveyType: SURVEY_TYPE,
-    config: queueConfig,
-    onReset: () => {
-      if (!resetTriggered) _doReset(resolvedDeps);
-    },
-  });
-
-  saveState(resolvedDeps);
-  console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);
 }
 
 export default { handleSubmit };

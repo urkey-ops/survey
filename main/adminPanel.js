@@ -1,25 +1,21 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel shell — show/hide, unlock gesture, auto-hide, online indicator, orchestration
-// VERSION: 9.1.0
-// CHANGES FROM 9.0.0:
-//   - REMOVE: setupKioskSelector() call — replaced by buildKioskIdentityBadge()
-//   - REMOVE: setupKioskSyncButton() call — per-kiosk sync button removed;
-//     #syncAllButton in main panel handles all syncing
-//   - REMOVE: bindKioskSelector() function — nothing left to bind
-//   - REMOVE: unbindKioskSelector() function — nothing left to unbind
-//   - REMOVE: unbindKioskSelector() call in cleanupAdminPanel()
-//   - REMOVE: loadKioskQueues, getCurrentKioskMode, setupKioskSelector,
-//     setupKioskSyncButton imports from adminMaintenance.js — all removed
-//   - ADD: buildKioskIdentityBadge import from adminMaintenance.js
-//   - ADD: buildKioskIdentityBadge() call in setupAdminPanel() replacing the
-//     two removed setup calls — single line, no wiring needed (static badge)
+// VERSION: 9.2.0
+// CHANGES FROM 9.1.0:
+//   - ADD: Persistent storage alert banner in showAdminPanel().
+//     Reads 'kioskStorageAlert' key written by storageUtils.js on QuotaExceededError.
+//     Shows a permanent red banner every time the admin panel opens until staff
+//     explicitly dismisses it. Replaces the silent 10-second toast that staff miss
+//     in Guided Access mode.
+//   - ADD: import checkStorageAlert, clearStorageAlert from globals.js
 //   - UNCHANGED: Everything else — unlock gesture, hide button, sync all button,
 //     settings/drawer toggle, survey controls, maintenance handlers, device reset
-//     button relocation, network listeners, countdown, all state management
-// DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js
+//     button relocation, network listeners, countdown, all state management.
+// DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js, globals.js
 
 import { adminState, resetAdminState } from './adminState.js';
 import { trackAdminEvent, vibrateSuccess, vibrateTap } from './adminUtils.js';
+import { checkStorageAlert, clearStorageAlert } from './globals.js';
 
 import {
   buildSurveyTypeSwitcher,
@@ -44,7 +40,7 @@ import {
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
-const VERSION                   = 'v9.1.0';
+const VERSION                   = 'v9.2.0';
 const AUTO_HIDE_DELAY           = 20000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
 const STUCK_FLAG_TIMEOUT_MS     = 60000;
@@ -165,6 +161,63 @@ function hideAdminPanel() {
   console.log('[ADMIN] 🔋 Panel hidden — battery saving');
 }
 
+function _showStorageAlertBanner(adminControls) {
+  // Remove any existing banner first (idempotent)
+  const existing = document.getElementById('kioskStorageAlertBanner');
+  if (existing) existing.remove();
+
+  const alertData = checkStorageAlert();
+  if (!alertData) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'kioskStorageAlertBanner';
+  banner.style.cssText = [
+    'background:#fef2f2',
+    'color:#991b1b',
+    'padding:10px 14px',
+    'font-weight:600',
+    'font-size:0.85rem',
+    'border-radius:6px',
+    'margin:6px 0',
+    'border:1px solid #fca5a5',
+    'display:flex',
+    'justify-content:space-between',
+    'align-items:flex-start',
+    'gap:8px',
+  ].join(';');
+
+  const msg = document.createElement('span');
+  msg.textContent = `🚨 Storage quota was exceeded at ${alertData.flaggedAt}. Sync now and clear local data immediately.`;
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.style.cssText = [
+    'background:none',
+    'border:1px solid #991b1b',
+    'color:#991b1b',
+    'border-radius:4px',
+    'padding:2px 8px',
+    'font-size:0.8rem',
+    'cursor:pointer',
+    'white-space:nowrap',
+    'flex-shrink:0',
+  ].join(';');
+
+  dismissBtn.addEventListener('click', () => {
+    clearStorageAlert();
+    banner.remove();
+    console.log('[ADMIN] ✅ Storage alert banner dismissed by staff');
+  });
+
+  banner.appendChild(msg);
+  banner.appendChild(dismissBtn);
+
+  // Insert at very top of adminControls so it is always visible
+  adminControls.insertBefore(banner, adminControls.firstChild);
+
+  console.warn('[ADMIN] 🚨 Storage alert banner shown — flagged at:', alertData.flaggedAt);
+}
+
 function showAdminPanel() {
   const adminControls = window.globals?.adminControls;
   if (!adminControls) return;
@@ -174,6 +227,11 @@ function showAdminPanel() {
   adminControls.classList.remove('hidden');
   document.body.classList.add('admin-active');
   adminState.adminPanelVisible = true;
+
+  // Check and display persistent storage alert banner
+  // This runs every time the panel opens — if staff dismissed it and quota
+  // is hit again, the flag will be re-written and the banner re-appears.
+  _showStorageAlertBanner(adminControls);
 
   if (window.dataHandlers?.updateAdminCount) {
     window.dataHandlers.updateAdminCount();
@@ -576,9 +634,6 @@ export function setupAdminPanel() {
   adminState.autoHideStartTime = null;
 
   // ── Survey type switcher ──────────────────────────────────────────────────
-  // Shown only when device has more than one allowed survey type.
-  // Temple: ['type1','type2'] → two pills shown with operational labels.
-  // Shayona: ['type3'] → switcher hidden entirely (single type device).
   const allowedTypes = window.DEVICECONFIG?.allowedSurveyTypes ?? [];
   if (allowedTypes.length > 1) {
     buildSurveyTypeSwitcher(adminControls, resetAutoHideTimer);
@@ -588,11 +643,6 @@ export function setupAdminPanel() {
   }
 
   // ── Kiosk identity badge ──────────────────────────────────────────────────
-  // Static read-only badge showing which kiosk this device is configured as.
-  // Reads window.DEVICECONFIG.kioskMode + kioskId — set once at first-launch,
-  // never changeable at runtime. Replaces the old dropdown selector (which
-  // changed nothing about actual device operation) and the paired per-kiosk
-  // sync button (redundant — #syncAllButton covers all syncing on this device).
   buildKioskIdentityBadge('adminControls');
 
   // ── Unlock + hide button ──────────────────────────────────────────────────
@@ -603,7 +653,7 @@ export function setupAdminPanel() {
   wireSyncAllButton();
   wireSettingsButton();
 
-  // ── Drawer: survey sync buttons (Sync Data, Sync Analytics) ──────────────
+  // ── Drawer: survey sync buttons ───────────────────────────────────────────
   setupSurveyControls(
     window.globals?.syncButton,
     window.globals?.syncAnalyticsButton,
@@ -618,7 +668,7 @@ export function setupAdminPanel() {
     resetAutoHideTimer
   );
 
-  // ── Drawer: device reset button — build then move into drawer ────────────
+  // ── Drawer: device reset button ───────────────────────────────────────────
   _buildDeviceResetButton(adminControls);
   _relocateDeviceResetButton();
 
@@ -655,6 +705,7 @@ export function setupAdminPanel() {
   console.log(`  Survey types:     ${(allowedTypes.length > 0 ? allowedTypes : ['type1']).join(', ')}`);
   console.log(`  Active Survey:    ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
   console.log(`  Network status:   ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
+  console.log(`  Storage alert:    ${checkStorageAlert() ? '🚨 ACTIVE' : '✅ clear'}`);
   console.log('═══════════════════════════════════════════════════════');
 }
 

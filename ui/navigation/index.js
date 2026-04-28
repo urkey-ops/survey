@@ -21,7 +21,7 @@ import {
   setupInputFocusScroll
 } from './core.js';
 
-import { handleSubmit } from './submit.js';
+import { handleSubmit } from './submit.js';  // <- this is async function handleSubmit(...)
 
 import {
   showStartScreen,
@@ -45,9 +45,6 @@ const navigationModule = {
   showStartScreen,
   cleanupStartScreenListeners,
 
-  // Submission
-  submitSurvey: handleSubmit,
-
   // Cleanup functions
   cleanupInputFocusScroll,
   cleanupIntervals,
@@ -67,8 +64,24 @@ const navigationModule = {
 // Expose to window for backward compatibility
 window.navigationHandler = navigationModule;
 
-// Store submitSurvey for goNext to access
-window.navigationHandler.submitSurvey = handleSubmit;
+//
+// ─── PERMANENT, FACT-BASED FIX: EXPLICIT SURVEYTYPE HANDLING
+// ────────────────────────────────────────────────────────────────────────
+
+// Bridge `goNext` → `handleSubmit` with explicit `surveyType`
+window.navigationHandler.submitSurvey = function () {
+  const deps = window.getDependencies ? window.getDependencies() : {};
+
+  // ALWAYS resolve via KIOSK_CONFIG, not via deps.surveyType
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+
+  // ✅ Call `handleSubmit` with explicit `surveyType` field
+  // Logs in `submit.js` will no longer see "undefined"
+  handleSubmit({ ...deps, surveyType });
+};
+
+// Convenience export for modules that import `submitSurvey`
+export const submitSurvey = window.navigationHandler.submitSurvey;
 
 // Export all functions
 export {

@@ -2,9 +2,10 @@
 // PURPOSE: Survey submission and completion logic
 // VERSION: 3.8.1
 // CHANGES FROM 3.8.0:
-//   - FIX 1: guard on surveyType: now uses a local let SURVEY_TYPE instead of const
-//   - FIX 2: prevents "Assignment to constant variable" error when reassigning surveyType
-//   - UNCHANGED: all other submission / validation / queue logic is identical.
+//   - FIX 1: Use `let SURVEY_TYPE` instead of `const` to avoid "Assignment to constant variable"
+//   - FIX 2: Explicitly source `surveyType` from KIOSK_CONFIG if missing in deps
+//   - FIX 3: Remove redundant fallback when `window.navigationHandler.submitSurvey` now passes `surveyType`
+//   - UNCHANGED: All queue / sync / analytics / reset logic is identical and safe.
 // DEPENDENCIES: core.js, main/contracts.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -208,17 +209,18 @@ export async function handleSubmit(deps = null) {
     questionContainer,
   } = resolvedDeps;
 
-  // ── FAIL‑FAST: enforce valid surveyType via a local LET (not const)
-  // ── because some legacy code may still try to reassign it.
+  // ── FAIL‑SAFE: use a local `SURVEY_TYPE` (let, not const)
+  // ── FAIL‑SAFE: use a local `SURVEY_TYPE` (let, not const)
   let SURVEY_TYPE = surveyType;
 
+  // Always resolve via KIOSK_CONFIG if deps.surveyType is invalid or missing
   if (!SURVEY_TYPE || typeof SURVEY_TYPE !== 'string') {
-    const fallback = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+    const explicit = window.KIOSK_CONFIG?.getActiveSurveyType?.();
+    SURVEY_TYPE = explicit || 'type1';
     console.error(
-      `[SUBMIT] ⚠️ surveyType missing or invalid: "${SURVEY_TYPE}"` +
-      ` — falling back to "${fallback}"`
+      `[SUBMIT] ⚠️ surveyType missing or invalid: "${surveyType}"` +
+      ` — falling back to "${SURVEY_TYPE}"`
     );
-    SURVEY_TYPE = fallback; // ✅ OK: SURVEY_TYPE is let, not const.
   }
 
   if (completionInProgress) {
@@ -247,9 +249,7 @@ export async function handleSubmit(deps = null) {
     questions || []
   );
 
-  // ── FIX 1: Validate form data shape before writing to queue ───────────────
-  // Warns if any expected field names are missing (e.g. renamed question.name).
-  // Never blocks submission — warns only, so offline kiosks always save data.
+  // ── Validate form data shape before writing to queue ─────────────────────
   validateFormData(normalizedFormData, SURVEY_TYPE);
 
   // ── Resolve queue config ─────────────────────────────────────────────────
@@ -268,10 +268,7 @@ export async function handleSubmit(deps = null) {
   const totalTimeSeconds   = Math.round((Date.now() - surveyStartTime) / 1000);
   const questionTimeSpent  = { ...(appState.questionTimeSpent || {}) };
 
-  // ── FIX 2: Build queue record via factory ─────────────────────────────────
-  // Previously: raw object literal with sync_status, id, surveyType hardcoded inline.
-  // Now: buildQueueRecord() ensures every record has the same guaranteed shape,
-  // including a crypto.randomUUID() id and ISO submittedAt timestamp.
+  // ── Build queue record via factory ───────────────────────────────────────
   const record = buildQueueRecord(
     {
       ...normalizedFormData,
@@ -284,10 +281,7 @@ export async function handleSubmit(deps = null) {
     }
   );
 
-  // ── FIX 2: Write via addToQueue (not safeSetLocalStorage directly) ────────
-  // Previously: submissionQueue.push(record) + dataHandlers.safeSetLocalStorage(queueKey, queue)
-  // Now: addToQueue handles read-modify-write, size limits, deduplication,
-  // and updateAdminCount in one place.
+  // ── Write via addToQueue ─────────────────────────────────────────────────
   let saved = false;
   if (dataHandlers?.addToQueue) {
     saved = dataHandlers.addToQueue(record, queueKey);
@@ -307,15 +301,11 @@ export async function handleSubmit(deps = null) {
 
   if (!saved) {
     console.error('[SUBMIT] ❌ Failed to save record — storage may be full');
-    // Do not block the user — the quota alert has already been flagged in storageUtils
+  } else {
+    console.log(`[SUBMIT] ✅ Record saved to "${queueKey}" (id: ${record.id})`);
   }
 
-  console.log(`[SUBMIT] ✅ Record saved to "${queueKey}" (id: ${record.id})`);
-
-  // ── FIX 9: Record analytics via factory ───────────────────────────────────
-  // Previously: recordAnalytics('survey_completed', { ...rawProps })
-  // Now: buildAnalyticsEvent() validates required fields per eventType and
-  // adds guaranteed base fields (timestamp, kioskId, surveyId, surveyType).
+  // ── Record analytics via factory ─────────────────────────────────────────
   if (dataHandlers?.recordAnalytics) {
     dataHandlers.recordAnalytics(
       'survey_completed',
@@ -333,25 +323,29 @@ export async function handleSubmit(deps = null) {
     dataHandlers.updateAdminCount();
   }
 
-// ── Attempt background sync ──────────────────────────────────────────────
-if (navigator.onLine && dataHandlers?.syncData) {
-  dataHandlers.syncData(false, { surveyType: SURVEY_TYPE }).catch(err => {
-    console.warn('[SUBMIT] Background sync failed (will retry later):', err.message);
+  // ── Attempt background sync ──────────────────────────────────────────────
+  if (navigator.onLine && dataHandlers?.syncData) {
+    dataHandlers.syncData(false, { surveyType: SURVEY_TYPE }).catch(err => {
+      console.warn('[SUBMIT] Background sync failed (will retry later):', err.message);
+    });
+  }
+
+  // ── Show success UI + auto-reset ─────────────────────────────────────────
+  _renderCheckmarkAndCountdown({
+    questionContainer,
+    surveyType: SURVEY_TYPE,
+    config: queueConfig,
+    onReset: () => {
+      if (!resetTriggered) _doReset(resolvedDeps);
+    },
   });
-}
 
-// ── Show success UI + auto-reset ─────────────────────────────────────────
-_renderCheckmarkAndCountdown({
-  questionContainer,
-  surveyType: SURVEY_TYPE,
-  config: queueConfig,
-  onReset: () => {
-    if (!resetTriggered) _doReset(resolvedDeps);
-  },
-});
-
-saveState(resolvedDeps);
-console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);
+  saveState(resolvedDeps);
+  console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);
 }
 
 export default { handleSubmit };
+
+
+
+

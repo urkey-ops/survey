@@ -21,7 +21,7 @@ import {
   setupInputFocusScroll
 } from './core.js';
 
-import { submitSurvey } from './submit.js';
+import { handleSubmit } from './submit.js';
 
 import {
   showStartScreen,
@@ -40,18 +40,18 @@ const navigationModule = {
   isFirstQuestion,
   isLastQuestion,
   jumpToQuestion,
-  
+
   // Start screen
   showStartScreen,
   cleanupStartScreenListeners,
-  
+
   // Submission
-  submitSurvey,
-  
+  submitSurvey: handleSubmit,
+
   // Cleanup functions
   cleanupInputFocusScroll,
   cleanupIntervals,
-  
+
   // Internal helpers
   _internal: {
     saveState,
@@ -68,7 +68,7 @@ const navigationModule = {
 window.navigationHandler = navigationModule;
 
 // Store submitSurvey for goNext to access
-window.navigationHandler.submitSurvey = submitSurvey;
+window.navigationHandler.submitSurvey = handleSubmit;
 
 // Export all functions
 export {
@@ -82,7 +82,7 @@ export {
   isFirstQuestion,
   isLastQuestion,
   jumpToQuestion,
-  submitSurvey,
+  handleSubmit as submitSurvey,
   cleanupStartScreenListeners,
   cleanupInputFocusScroll,
   cleanupIntervals

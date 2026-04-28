@@ -21,7 +21,7 @@ import {
   setupInputFocusScroll
 } from './core.js';
 
-import { handleSubmit } from './submit.js';  // <-- async function handleSubmit(...)
+import { handleSubmit } from './submit.js';  // async function handleSubmit(...)
 
 import {
   showStartScreen,
@@ -65,22 +65,18 @@ const navigationModule = {
 window.navigationHandler = navigationModule;
 
 //
-// ─── PERMANENT, FACT-BASED FIX: EXPLICIT SURVEYTYPE HANDLING
+// ─── ALWAYS PASS SURVEYTYPE FROM KIOSK_CONFIG --
 // ────────────────────────────────────────────────────────────────────────
-
-// Bridge `goNext` → `handleSubmit` with explicit `surveyType`
+// This is the ONLY place that calls `handleSubmit` with explicit `surveyType`.
 window.navigationHandler.submitSurvey = function () {
   const deps = window.getDependencies ? window.getDependencies() : {};
 
-  // ALWAYS resolve via KIOSK_CONFIG, not via deps.surveyType
   const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
 
-  // ✅ Call `handleSubmit` with explicit `surveyType` field
   handleSubmit({ ...deps, surveyType });
 };
 
-// ✅ Only one export of `submitSurvey`:
-// Use the exported function from `submit.js` directly.
+// ✅ Only ONE export of `submitSurvey`:
 export const submitSurvey = handleSubmit;
 
 // Export all other functions

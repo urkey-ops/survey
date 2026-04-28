@@ -294,9 +294,10 @@ export function addToQueue(submission, overrideKey) {
   }
 
   submissionQueue.push(submission);
-  safeSetLocalStorage(key, submissionQueue);
+  const saved = safeSetLocalStorage(key, submissionQueue);  // ← capture result
   console.log(`[QUEUE] Added to "${key}". Size: ${submissionQueue.length}/${MAX_QUEUE_SIZE}`);
   updateAdminCount();
+  return saved !== false;  // ← return true on success, false only if storage actually failed
 }
 
 /**

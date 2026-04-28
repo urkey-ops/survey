@@ -191,6 +191,11 @@ self.addEventListener('activate', event => {
         client.postMessage({ type: 'SW_ACTIVATED', version: '9.8' });
       });
 
+      clients.forEach(client => {
+  client.postMessage({ type: 'SW_ACTIVATED', version: '9.8' });
+  client.postMessage({ type: 'CONFIG_VERSION', version: '3.4' }); // matches contracts.js
+});
+
       console.log('[SW] ✅ Activated v9.8 (battery optimized, complete cache)');
     })()
   );

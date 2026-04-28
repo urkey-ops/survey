@@ -29,7 +29,6 @@ import {
 
 import {
   recordAnalytics,
-  shouldSyncAnalytics,
   syncAnalytics
 } from './analyticsManager.js';
 

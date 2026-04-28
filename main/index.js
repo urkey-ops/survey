@@ -22,6 +22,9 @@ import { setupAdminPanel } from './adminPanel.js';
 import { setupNetworkMonitoring } from './networkStatus.js';
 import { setupVisibilityHandler } from './visibilityHandler.js';
 import { setupInactivityVisibilityHandler, startPeriodicSync } from '../timers/inactivityHandler.js';
+import { validateConfigVersion } from './contracts.js';
+import { validateAdminGlobals } from './globals.js';
+import '../sync/dataSync.js';
 
 // ── Init guards / timer refs ──────────────────────────────────────────────────
 let initializationStarted    = false;

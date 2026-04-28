@@ -678,8 +678,7 @@ window.dataHandlers = {
 
   recordAnalytics,
   syncAnalytics,
-  checkAndSyncAnalytics,
-  shouldSyncAnalytics,
+
 
   syncData,
   autoSync,

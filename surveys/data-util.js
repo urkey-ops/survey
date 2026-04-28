@@ -1,113 +1,38 @@
-// FILE: data-util.js
-// VERSION: 5.4.0
-// CHANGES FROM 5.3.0:
-//   - New question type: selector-textarea (category pill selector + dynamic placeholder textarea)
-//   - Type 2 final_thoughts replaced with selector-textarea (4 category prompts)
-//   - selector-textarea stores { category, text } shape
-//   - surveyQuestions export is now a getter (fixes static type1 snapshot bug)
-//   - kioskId removed from this file (unused here — belongs in submit.js)
+// FILE: surveys/data-util.js
+// VERSION: 5.5.0
+// CHANGES FROM 5.4.0:
+//   - FIX 8: All shared helpers (getTextGridCols, getGridMaxWidth,
+//     applyRadioSelectedStyles, applyChipSelectedStyle, applyStarSelectedStyles,
+//     otherKey, auto-advance timer) now sourced from window.surveyRenderUtils.
+//     Local definitions removed. survey-render-utils.js must load before this file.
+//   - FIX 7: getSurveyQuestions() now uses surveyQuestionMap lookup instead of
+//     binary type1/type2 switch. New types are registered by adding one line to
+//     surveyQuestionMap — no other changes needed in this file.
 
 window.dataUtils = (function () {
 
-  // ─── Config ───────────────────────────────────────────────
-  const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS || 50;
+  // ─── Shared utilities from survey-render-utils.js ─────────────────────────
+  const _ru = window.surveyRenderUtils;
+  if (!_ru) {
+    console.error('[DATA-UTIL] CRITICAL: window.surveyRenderUtils not found — survey-render-utils.js must load before data-util.js');
+  }
 
-  // Max selections for checkbox questions that have a cap
-  // Per-question maxSelections field is the authoritative cap;
-  // CHECKBOX_MAX_SELECTIONS is the default used when building type2 experiences.
+  const getTextGridCols        = _ru?.getTextGridCols        || function(n) { return n <= 2 ? n : 3; };
+  const getGridMaxWidth        = _ru?.getGridMaxWidth        || function()  { return ''; };
+  const applyRadioSelectedStyles = _ru?.applyRadioSelectedStyles || function() {};
+  const applyChipSelectedStyle   = _ru?.applyChipSelectedStyle   || function() {};
+  const applyStarSelectedStyles  = _ru?.applyStarSelectedStyles  || function() {};
+  const otherKey               = _ru?.otherKey               || function(n) { return `other_${n}`; };
+  const createAutoAdvanceTimer = _ru?.createAutoAdvanceTimer || function() { return { schedule: function(cb,d){ setTimeout(cb,d); }, clear: function(){} }; };
+
+  const _autoAdvance = createAutoAdvanceTimer();
+  function scheduleAutoAdvance(callback, delay) { _autoAdvance.schedule(callback, delay); }
+  function clearAutoAdvance() { _autoAdvance.clear(); }
+
+  // ─── Config ───────────────────────────────────────────────────────────────
+  const AUTOADVANCE_DELAY = window.CONSTANTS?.AUTO_ADVANCE_DELAY_MS ?? 50;
+
   const CHECKBOX_MAX_SELECTIONS = 3;
-
-  let autoAdvanceTimer = null;
-  function scheduleAutoAdvance(callback, delay) {
-    if (autoAdvanceTimer) {
-      console.warn('[DATA-UTIL] scheduleAutoAdvance: cancelling existing timer');
-      clearTimeout(autoAdvanceTimer);
-    }
-    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; callback(); }, delay);
-  }
-
-  function clearAutoAdvance() {
-    if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
-  }
-
-  // ─── GRID HELPERS ─────────────────────────────────────────
-  // Max cols intentionally capped at 3 — no question currently exceeds 8 options.
-  // If a future question needs 4 cols, extend this function explicitly.
-
-  function getTextGridCols(n) {
-    if (n <= 1) return 1;
-    if (n === 2) return 2;
-    if (n === 3) return 3;
-    if (n === 4) return 2;
-    if (n === 5) return 3;
-    if (n === 6) return 3;
-    if (n === 7) return 3;
-    if (n === 8) return 3;
-    return 3;
-  }
-
-  function getGridMaxWidth(n, cols) {
-    if (cols === 1)           return 'max-width:340px; margin-left:auto; margin-right:auto;';
-    if (cols === 2 && n <= 4) return 'max-width:400px; margin-left:auto; margin-right:auto;';
-    if (cols === 3 && n <= 3) return 'max-width:500px; margin-left:auto; margin-right:auto;';
-    return '';
-  }
-
-  // ─── STYLE HELPERS ────────────────────────────────────────
-
-  function applyRadioSelectedStyles(container) {
-    container.querySelectorAll('label').forEach(label => {
-      const input = document.getElementById(label.getAttribute('for'));
-      if (!input) return;
-      if (input.checked) {
-        label.style.background  = 'var(--orange-light)';
-        label.style.borderColor = 'var(--orange)';
-        label.style.color       = 'var(--orange-dark)';
-        label.style.borderWidth = '2px';
-      } else {
-        label.style.background  = '';
-        label.style.borderColor = '';
-        label.style.color       = '';
-        label.style.borderWidth = '';
-      }
-    });
-  }
-
-  function applyChipSelectedStyle(label, isSelected) {
-    if (isSelected) {
-      label.style.background  = 'var(--orange-light)';
-      label.style.borderColor = 'var(--orange)';
-      label.style.color       = 'var(--orange-dark)';
-      label.style.borderWidth = '2px';
-    } else {
-      label.style.background  = '';
-      label.style.borderColor = '';
-      label.style.color       = '';
-      label.style.borderWidth = '';
-    }
-  }
-
-  function applyStarSelectedStyles(container, selectedValue) {
-    container.querySelectorAll('label.star').forEach(label => {
-      const input = document.getElementById(label.getAttribute('for'));
-      if (!input) return;
-      const starVal = parseInt(input.value, 10);
-      const selVal  = parseInt(selectedValue, 10);
-      if (starVal <= selVal) {
-        label.classList.add('text-yellow-400');
-        label.classList.remove('text-gray-300');
-      } else {
-        label.classList.remove('text-yellow-400');
-        label.classList.add('text-gray-300');
-      }
-    });
-  }
-
-  // ─── Companion "other" key — normalized, name-based ───────
-  // IMPORTANT: validation.js and submit.js must use the same helper
-  function otherKey(qName) {
-    return `other_${qName}`;
-  }
 
   // ═══════════════════════════════════════════════════════════
   // SURVEY TYPE 1
@@ -185,7 +110,7 @@ window.dataUtils = (function () {
         { value: 'Drove by',  label: 'Drove by / Saw your location' },
         { value: 'Other',     label: 'Other' },
       ],
-      maxSelections: null, // no cap for Type 1 hear-about
+      maxSelections: null,
       required: true,
     },
     {
@@ -283,9 +208,6 @@ window.dataUtils = (function () {
       required: true,
     },
     {
-      // selector-textarea: category pill selector + dynamic placeholder textarea
-      // Stores { category, text } — submit.js flattens to two sheet columns:
-      //   final_thoughts_category, final_thoughts_text
       id: 'final_thoughts',
       name: 'final_thoughts',
       type: 'selector-textarea',
@@ -293,7 +215,7 @@ window.dataUtils = (function () {
       subLabel: 'Optional — Select one to begin',
       options: [
         { value: 'thank_you',  label: 'A thank you note',       emoji: '🙏', placeholder: 'Thank you for…'               },
-        { value: 'reflection', label: 'A thought or reflection', emoji: '💭', placeholder: 'Today I experienced…'               },
+        { value: 'reflection', label: 'A thought or reflection', emoji: '💭', placeholder: 'Today I experienced…'         },
         { value: 'prayer',     label: 'A prayer or wish',        emoji: '✨', placeholder: 'May…'                        },
         { value: 'feedback',   label: 'Feedback',                emoji: '📝', placeholder: 'Any suggestions or thoughts…' },
       ],
@@ -302,16 +224,26 @@ window.dataUtils = (function () {
     },
   ];
 
-  // ─── Active question set resolver ─────────────────────────
+  // ─── FIX 7: Map-based question set resolver ────────────────────────────────
+  // To add a new survey type: add one line here — no other changes needed in this file.
+  // e.g. type4: surveyQuestionsType4
+  const surveyQuestionMap = {
+    type1: surveyQuestionsType1,
+    type2: surveyQuestionsType2,
+  };
+
   function getSurveyQuestions() {
     const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
-    return activeType === 'type2' ? surveyQuestionsType2 : surveyQuestionsType1;
+    if (!surveyQuestionMap[activeType]) {
+      console.error(`[DATA-UTIL] No question set for survey type "${activeType}" — falling back to type1`);
+    }
+    return surveyQuestionMap[activeType] ?? surveyQuestionsType1;
   }
 
-  // ─── Question Renderers ───────────────────────────────────
+  // ─── Question Renderers ───────────────────────────────────────────────────
   const questionRenderers = {
 
-    // ── TEXTAREA ───────────────────────────────────────────
+    // ── TEXTAREA ─────────────────────────────────────────────────────────────
     textarea: {
       render(q, data) {
         return `
@@ -332,11 +264,7 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── SELECTOR TEXTAREA ──────────────────────────────────
-    // Renders 4 emoji+label category pills, then a textarea whose
-    // placeholder swaps based on which pill is selected.
-    // Stores: { category: string|null, text: string }
-    // submit.js flattens to: final_thoughts_category + final_thoughts_text
+    // ── SELECTOR TEXTAREA ────────────────────────────────────────────────────
     'selector-textarea': {
       render(q, data) {
         const saved    = data[q.name] || {};
@@ -404,33 +332,24 @@ window.dataUtils = (function () {
           });
         };
 
-        // Pill selection — swap placeholder, apply styles, save
         pillGrid.addEventListener('change', e => {
           if (e.target.name !== `${q.id}_category`) return;
-
-          // Apply selected styles to all pills
           pillGrid.querySelectorAll('label').forEach(lbl => {
             const inp = document.getElementById(lbl.getAttribute('for'));
             if (!inp) return;
             applyChipSelectedStyle(lbl, inp.checked);
           });
-
-          // Swap textarea placeholder
           const opt = q.options.find(o => o.value === e.target.value);
           textarea.placeholder = opt?.placeholder || q.defaultPlaceholder;
-
-          // Focus textarea after category selected — invites typing immediately
           textarea.focus();
-
           save();
         });
 
-        // Textarea input — just save, no auto-advance (optional field)
         textarea.addEventListener('input', () => save());
       },
     },
 
-    // ── EMOJI RADIO — always 4 cols, single row ─────────────
+    // ── EMOJI RADIO ──────────────────────────────────────────────────────────
     'emoji-radio': {
       render(q, data) {
         const opts = q.options.map(opt => `
@@ -466,7 +385,7 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── NUMBER SCALE ───────────────────────────────────────
+    // ── NUMBER SCALE ─────────────────────────────────────────────────────────
     'number-scale': {
       render(q, data) {
         const btns = Array.from({ length: q.max }, (_, i) => i + 1).map(num => `
@@ -498,7 +417,6 @@ window.dataUtils = (function () {
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          // Store as Number — avoids string/number comparison bugs in validator
           updateData(q.name, Number(e.target.value));
           applyRadioSelectedStyles(container);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
@@ -506,7 +424,7 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── STAR RATING ────────────────────────────────────────
+    // ── STAR RATING ──────────────────────────────────────────────────────────
     'star-rating': {
       render(q, data) {
         const stars = Array.from({ length: q.max }, (_, i) => q.max - i).map(num => `
@@ -534,7 +452,6 @@ window.dataUtils = (function () {
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          // Store as Number
           updateData(q.name, Number(e.target.value));
           applyStarSelectedStyles(container, e.target.value);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
@@ -542,10 +459,9 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── RADIO WITH OTHER ───────────────────────────────────
+    // ── RADIO WITH OTHER ─────────────────────────────────────────────────────
     'radio-with-other': {
       render(q, data) {
-        // Always read from { main, other } shape
         const saved     = data[q.name];
         const mainVal   = saved && typeof saved === 'object' ? saved.main  : (saved || '');
         const otherVal  = saved && typeof saved === 'object' ? saved.other : (data[otherKey(q.name)] || '');
@@ -598,7 +514,6 @@ window.dataUtils = (function () {
         if (!container) return;
 
         const save = (mainVal) => {
-          // Always store as { main, other } — validator depends on this shape
           updateData(q.name, {
             main:  mainVal,
             other: mainVal === 'Other' ? (otherInput?.value || '') : '',
@@ -622,7 +537,7 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── RADIO (simple, e.g. Age) ───────────────────────────
+    // ── RADIO (simple) ───────────────────────────────────────────────────────
     radio: {
       render(q, data) {
         const n    = q.options.length;
@@ -660,7 +575,6 @@ window.dataUtils = (function () {
         if (!container) return;
         container.addEventListener('change', e => {
           if (e.target.name !== q.name) return;
-          // Store as plain string — simple radio has no companion field
           updateData(q.name, e.target.value);
           applyRadioSelectedStyles(container);
           scheduleAutoAdvance(handleNextQuestion, AUTOADVANCE_DELAY);
@@ -668,10 +582,9 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── RADIO WITH FOLLOWUP ────────────────────────────────
+    // ── RADIO WITH FOLLOWUP ──────────────────────────────────────────────────
     'radio-with-followup': {
       render(q, data) {
-        // Always read from { main, followup[] } shape
         const saved        = data[q.name] || {};
         const mainVal      = typeof saved === 'object' ? (saved.main || '') : (saved || '');
         const followupVals = Array.isArray(saved.followup) ? saved.followup : [];
@@ -760,7 +673,6 @@ window.dataUtils = (function () {
         };
 
         const save = (mainVal) => {
-          // Always store as { main, followup[] } — validator depends on this shape
           updateData(q.name, { main: mainVal, followup: getFollowupValues() });
         };
 
@@ -803,7 +715,7 @@ window.dataUtils = (function () {
       },
     },
 
-    // ── CHECKBOX WITH OTHER ────────────────────────────────
+    // ── CHECKBOX WITH OTHER ──────────────────────────────────────────────────
     'checkbox-with-other': {
       render(q, data) {
         const selectedValues = Array.isArray(data[q.name]) ? data[q.name] : [];
@@ -841,12 +753,8 @@ window.dataUtils = (function () {
         }).join('');
 
         const capHint = cap
-          ? `<p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">
-               Select up to ${cap}
-             </p>`
-          : `<p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">
-               You can select more than one option
-             </p>`;
+          ? `<p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">Select up to ${cap}</p>`
+          : `<p style="font-size:0.85rem; color:var(--text-secondary); font-style:italic; margin-bottom:8px;">You can select more than one option</p>`;
 
         return `
           <label id="${q.id}Label"
@@ -941,9 +849,6 @@ window.dataUtils = (function () {
 
   }; // end questionRenderers
 
-  // ─── surveyQuestions as getter — always returns active type ───
-  // NOTE: anything calling window.dataUtils.surveyQuestions gets
-  // the live active-type set, not a stale type1 snapshot.
   return {
     get surveyQuestions() { return getSurveyQuestions(); },
     getSurveyQuestions,

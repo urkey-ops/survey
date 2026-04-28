@@ -1,15 +1,23 @@
 // SERVICE WORKER - OFFLINE FIRST STRATEGY (iOS KIOSK SAFE)
-// VERSION: 9.8.0
-// CHANGES FROM 9.7.0: - 43 was correct before admin related updates
-//   - BUMP: CACHE_NAME / RUNTIME_CACHE v29 → v30
-//     Invalidates stale cache for files changed in the start-screen tap fix:
-//       • main/navigationSetup.js (v3.2.0 — window.__surveyStateInitialized guard)
-//       • main/index.js           (v5.7.1 — checks __surveyStateInitialized flag)
+// VERSION: 9.8.1
+// CHANGES FROM 9.8.0:
+//   - ADD: CONFIG_VERSION postMessage on activate.
+//     After clients.claim(), posts { type: 'CONFIG_VERSION', version: '3.4' }
+//     to all open window clients. main/index.js listener sets
+//     window.__EXPECTED_CONFIG_VERSION__ so contracts.js validateConfigVersion()
+//     can detect a stale-cache page/SW mismatch at boot and force a clean reload
+//     before any formData is written to the wrong schema.
+//     Bump the version string here whenever config.js has a breaking change AND
+//     increment CACHE_NAME / RUNTIME_CACHE as usual.
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v50';
-const RUNTIME_CACHE = 'kiosk-runtime-v50';
+const CACHE_NAME    = 'kiosk-survey-v48';
+const RUNTIME_CACHE = 'kiosk-runtime-v48';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
+
+// Config version — must match CONFIG_VERSION in main/contracts.js
+// Bump both together whenever config.js has a breaking change.
+const CONFIG_VERSION = '3.4';
 
 // Critical files that MUST be cached for offline operation
 const CRITICAL_CACHE = [
@@ -30,6 +38,7 @@ const CRITICAL_CACHE = [
   '/adminAnalytics.js',
 
   // Survey data utils — both always cached (proxy guard routes at runtime)
+  '/surveys/survey-render-utils.js',
   '/surveys/data-util.js',
   '/surveys/shayona-data-util.js',
 
@@ -44,6 +53,8 @@ const CRITICAL_CACHE = [
   '/main/networkStatus.js',
   '/main/uiElements.js',
   '/main/visibilityHandler.js',
+  '/main/globals.js',    // NEW — admin element validation + safe type switch + quota alert
+  '/main/contracts.js',  // NEW — queue record factory, analytics factory, form schema
 
   // Sync modules
   '/sync/dataSync.js',
@@ -98,7 +109,7 @@ let cleanupStarted = false;
 // INSTALL
 // ----------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v9.8 with complete module cache...');
+  console.log('[SW] Installing v9.8.1 with complete module cache...');
 
   event.waitUntil(
     (async () => {
@@ -151,11 +162,13 @@ self.addEventListener('install', event => {
         })
       );
 
-      const mediaSuccessCount = mediaResults.filter(r => r.status === 'fulfilled' && r.value).length;
+      const mediaSuccessCount = mediaResults.filter(
+        r => r.status === 'fulfilled' && r.value
+      ).length;
       console.log(`[SW] Cached ${mediaSuccessCount}/${MEDIA_FILES.length} media files`);
 
       await self.skipWaiting();
-      console.log('[SW] ✅ Installed v9.8 (complete module cache)');
+      console.log('[SW] ✅ Installed v9.8.1 (complete module cache + contracts/globals)');
     })()
   );
 });
@@ -164,10 +177,11 @@ self.addEventListener('install', event => {
 // ACTIVATE
 // ----------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating v9.8...');
+  console.log('[SW] Activating v9.8.1...');
 
   event.waitUntil(
     (async () => {
+      // ── Delete old caches ────────────────────────────────────────────────
       const keys = await caches.keys();
 
       await Promise.all(
@@ -184,12 +198,20 @@ self.addEventListener('activate', event => {
 
       startPeriodicCleanup();
 
+      // ── Notify all clients ───────────────────────────────────────────────
       const clients = await self.clients.matchAll({ type: 'window' });
       clients.forEach(client => {
-        client.postMessage({ type: 'SW_ACTIVATED', version: '9.8' });
+        // Activation notice — triggers pwa-update-manager.js reload prompt
+        client.postMessage({ type: 'SW_ACTIVATED', version: '9.8.1' });
+
+        // Config version — page sets window.__EXPECTED_CONFIG_VERSION__ so
+        // contracts.js validateConfigVersion() can detect stale-cache mismatch
+        // at boot and force a clean reload before any formData is written.
+        // Bump CONFIG_VERSION here AND in main/contracts.js together.
+        client.postMessage({ type: 'CONFIG_VERSION', version: CONFIG_VERSION });
       });
 
-      console.log('[SW] ✅ Activated v9.8 (battery optimized, complete cache)');
+      console.log(`[SW] ✅ Activated v9.8.1 — CONFIG_VERSION "${CONFIG_VERSION}" broadcast to ${clients.length} client(s)`);
     })()
   );
 });

@@ -25,6 +25,7 @@ import { setupInactivityVisibilityHandler, startPeriodicSync } from '../timers/i
 import { validateConfigVersion } from './contracts.js';
 import { validateAdminGlobals } from './globals.js';
 import '../sync/dataSync.js';
+import '../ui/navigation/index.js';
 
 // ── Init guards / timer refs ──────────────────────────────────────────────────
 let initializationStarted    = false;

@@ -2,9 +2,8 @@
 // PURPOSE: Survey submission and completion logic
 // VERSION: 3.8.1
 // CHANGES FROM 3.8.0:
-//   - FIX 1: Use `let SURVEY_TYPE` instead of `const` to avoid "Assignment to constant variable"
-//   - FIX 2: Explicitly source `surveyType` from KIOSK_CONFIG if missing in deps
-//   - FIX 3: Remove redundant fallback when `window.navigationHandler.submitSurvey` now passes `surveyType`
+//   - DEBUG: Added debug logs for formData and normalizedFormData
+//   - FIX: Schema-aware hasMeaningfulResponse (no misleading empty-data detection)
 //   - UNCHANGED: All queue / sync / analytics / reset logic is identical and safe.
 // DEPENDENCIES: core.js, main/contracts.js
 
@@ -15,22 +14,95 @@ let completionInProgress = false;
 let resetTriggered       = false;
 
 // ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Return true if at least one meaningful answer exists in formData,
+ * for surveyType === "type3" (Shayona Café).
+ */
+function hasMeaningfulResponse(formData, surveyType) {
+  // If passed in as empty, short‑circuit.
+  if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
+    return false;
+  }
+
+  // Known meaningful keys specific to type3
+  const REQUIRED_KEYS = [
+    'cafeExperience',
+    'visitPurpose',
+    'waitTime',
+    'waitAcceptable',
+    'flowExperience',
+    'foodPriority',
+    'foodRating',
+    'final_thoughts'
+  ];
+
+  // Fast path if surveyType is not type3 (fallback to basic check)
+  if (surveyType !== 'type3') {
+    return Object.entries(formData).some(([key, val]) => {
+      if (key === 'id') return false;
+      if (Array.isArray(val))  return val.length > 0;
+      if (typeof val === 'object' && val !== null) {
+        return Object.values(val).some(v => v !== null && v !== undefined && v !== '');
+      }
+      return val !== null && val !== undefined && val !== '';
+    });
+  }
+
+  // For type3: only check known keys
+  for (const key of REQUIRED_KEYS) {
+    const val = formData[key];
+
+    // Skip if key doesn't exist or is explicitly null/undefined/empty.
+    if (val === null || val === undefined || val === '') {
+      continue;
+    }
+
+    // If an array, one non‑empty item is enough.
+    if (Array.isArray(val)) {
+      if (val.some(v => v !== null && v !== undefined && v !== '')) {
+        return true;
+      }
+      continue;
+    }
+
+    // If an object, walk its values.
+    if (typeof val === 'object' && val !== null) {
+      for (const v of Object.values(val)) {
+        if (v !== null && v !== undefined && v !== '') {
+          return true;
+        }
+      }
+      continue;
+    }
+
+    // A plain string or number that is non‑empty is enough.
+    return true;
+  }
+
+  // If no known key has a meaningful value, treat as empty.
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────
 // NORMALISE PAYLOAD
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Convert UI-captured values into a stable queue/API-safe payload.
+ * Convert UI‑captured values into a stable queue/API‑safe payload.
  *
- * dual-star-rating flattening:
+ * dual‑star‑rating flattening:
  *   IN:  { foodRating: { taste: 4, value: 3 } }
  *   OUT: { foodRating_taste: 4, foodRating_value: 3 }
  *
- * selector-textarea flattening:
+ * selector‑textarea flattening:
  *   IN:  { final_thoughts: { category: 'shoutout', text: 'Great!' } }
  *   OUT: { final_thoughts_category: 'shoutout', final_thoughts_text: 'Great!' }
  *
- * section-header: deleted (no data field)
- * Everything else: passed through unchanged
+ * section‑header: deleted (no data field)
+ * Everything else: passed through unchanged.
  */
 function normalizeSubmissionPayload(formData, questions) {
   const normalized = { ...formData };
@@ -38,13 +110,13 @@ function normalizeSubmissionPayload(formData, questions) {
   questions.forEach((q) => {
     const rawValue = normalized[q.name];
 
-    // ── section-header ─────────────────────────────────────────────────────
+    // ── section‑header ─────────────────────────────────────────────────────
     if (q.type === 'section-header') {
       delete normalized[q.name];
       return;
     }
 
-    // ── dual-star-rating ───────────────────────────────────────────────────
+    // ── dual‑star‑rating ───────────────────────────────────────────────────
     if (q.type === 'dual-star-rating') {
       const valueObj =
         rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
@@ -61,7 +133,7 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // ── selector-textarea ──────────────────────────────────────────────────
+    // ── selector‑textarea ──────────────────────────────────────────────────
     if (q.type === 'selector-textarea') {
       const valueObj =
         rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
@@ -77,7 +149,7 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // ── number-scale / star-rating — ensure numeric ────────────────────────
+    // ── number‑scale / star‑rating — ensure numeric ────────────────────────
     if (q.type === 'number-scale' || q.type === 'star-rating') {
       if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
         normalized[q.name] = Number(rawValue);
@@ -85,7 +157,7 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // ── checkbox-with-other — ensure array ────────────────────────────────
+    // ── checkbox‑with‑other — ensure array ────────────────────────────────
     if (q.type === 'checkbox-with-other') {
       if (!Array.isArray(normalized[q.name])) {
         normalized[q.name] = normalized[q.name] ? [normalized[q.name]] : [];
@@ -93,26 +165,11 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // All other types (emoji-radio, radio, radio-with-other,
-    // radio-with-followup, textarea) pass through unchanged.
+    // All other types (emoji‑radio, radio, radio‑with‑other,
+    // radio‑with‑followup, textarea) pass through unchanged.
   });
 
   return normalized;
-}
-
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
-
-function hasMeaningfulResponse(formData) {
-  return Object.entries(formData).some(([key, val]) => {
-    if (key === 'id') return false;
-    if (Array.isArray(val))  return val.length > 0;
-    if (typeof val === 'object' && val !== null) {
-      return Object.values(val).some(v => v !== null && v !== undefined && v !== '');
-    }
-    return val !== null && val !== undefined && val !== '';
-  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -210,7 +267,6 @@ export async function handleSubmit(deps = null) {
   } = resolvedDeps;
 
   // ── FAIL‑SAFE: use a local `SURVEY_TYPE` (let, not const)
-  // ── FAIL‑SAFE: use a local `SURVEY_TYPE` (let, not const)
   let SURVEY_TYPE = surveyType;
 
   // Always resolve via KIOSK_CONFIG if deps.surveyType is invalid or missing
@@ -232,16 +288,12 @@ export async function handleSubmit(deps = null) {
 
   console.log('[SUBMIT] 📋 Starting submission for surveyType:', SURVEY_TYPE);
 
+  // DEBUG: Log formData at guard entry
+  const debugFormData = appState?.formData || {};
+  console.log('[DEBUG] formData @ guard entry:', JSON.parse(JSON.stringify(debugFormData)));
+
   // ── Stop question timer ──────────────────────────────────────────────────
   stopQuestionTimer(resolvedDeps);
-
-  // ── Guard: meaningful response ───────────────────────────────────────────
-  if (!hasMeaningfulResponse(appState?.formData || {})) {
-    console.warn('[SUBMIT] ⚠️ Empty formData — skipping submission');
-    completionInProgress = false;
-    _doReset(resolvedDeps);
-    return;
-  }
 
   // ── Normalize payload ────────────────────────────────────────────────────
   const normalizedFormData = normalizeSubmissionPayload(
@@ -249,8 +301,19 @@ export async function handleSubmit(deps = null) {
     questions || []
   );
 
+  // DEBUG: Log normalizedFormData
+  console.log('[DEBUG] normalizedFormData:', JSON.parse(JSON.stringify(normalizedFormData)));
+
   // ── Validate form data shape before writing to queue ─────────────────────
   validateFormData(normalizedFormData, SURVEY_TYPE);
+
+  // ── Guard: meaningful response (schema‑aware for type3) ──────────────────
+  if (!hasMeaningfulResponse(debugFormData, SURVEY_TYPE)) {
+    console.warn('[SUBMIT] ⚠️ Empty formData — skipping submission');
+    completionInProgress = false;
+    _doReset(resolvedDeps);
+    return;
+  }
 
   // ── Resolve queue config ─────────────────────────────────────────────────
   const queueConfig = window.CONSTANTS?.SURVEY_TYPES?.[SURVEY_TYPE];
@@ -330,7 +393,7 @@ export async function handleSubmit(deps = null) {
     });
   }
 
-  // ── Show success UI + auto-reset ─────────────────────────────────────────
+  // ── Show success UI + auto‑reset ─────────────────────────────────────────
   _renderCheckmarkAndCountdown({
     questionContainer,
     surveyType: SURVEY_TYPE,
@@ -345,7 +408,3 @@ export async function handleSubmit(deps = null) {
 }
 
 export default { handleSubmit };
-
-
-
-

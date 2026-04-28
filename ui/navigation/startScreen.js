@@ -1,13 +1,15 @@
 // FILE: ui/navigation/startScreen.js
 // PURPOSE: Start screen orchestration (refactored into modules)
 // DEPENDENCIES: core.js, videoLoopManager.js
-// VERSION: 4.2.0
-// CHANGES FROM 4.1.0:
-//   - stores removable listener references for start screen, visibility, video error, and touch fallback
-//   - prevents duplicate listeners across repeated reset cycles
-//   - adds start-transition guard so rapid double taps cannot launch duplicate survey starts
-//   - keeps kioskStartScreen in the DOM permanently (idempotent reset-safe behavior preserved)
-//   - preserves attract mode and video setup behavior
+// VERSION: 4.2.1
+// CHANGES FROM 4.2.0:
+//   - FIX B6-01: iOS tap cascade — touchstart fires startSurvey(), then
+//     click fires 300ms later and calls startSurvey() a second time.
+//     startTransitionInProgress guard blocked the double-launch but was
+//     fragile. Fix: boundStartSurvey now explicitly removes BOTH listeners
+//     on first fire before calling startSurvey(). { once: true } removed
+//     from both — manual removal is the correct, iOS-safe pattern.
+//     e.preventDefault() in touchstart handler also suppresses ghost click.
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 import {
@@ -210,8 +212,10 @@ export function cleanupStartScreenListeners() {
     startTransitionTimer = null;
   }
 
+  // FIX B6-01: Remove both listeners explicitly — { once: true } was removed
+  // from the registration so manual cleanup is now the only removal path.
   if (window.boundStartSurvey && kioskStartScreen) {
-    kioskStartScreen.removeEventListener('click', window.boundStartSurvey);
+    kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
     window.boundStartSurvey = null;
   }
@@ -365,13 +369,19 @@ export function showStartScreen() {
 
     _setupVideoAndAttract();
 
-    window.boundStartSurvey = (e) => startSurvey(e);
+    // FIX B6-01: Remove both listeners immediately on first fire.
+    // { once: true } was causing iOS tap cascade — touchstart fired
+    // startSurvey() and auto-removed itself, then click fired 300ms later
+    // and called startSurvey() again from the still-active click listener.
+    // Manual removal inside the handler is the correct iOS-safe pattern.
+    window.boundStartSurvey = (e) => {
+      kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
+      kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
+      startSurvey(e);
+    };
 
-    kioskStartScreen.addEventListener('click', window.boundStartSurvey, { once: true });
-    kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, {
-      once: true,
-      passive: false,
-    });
+    kioskStartScreen.addEventListener('click',      window.boundStartSurvey);
+    kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { passive: false });
 
     console.log('[START SCREEN] Listeners attached (battery optimized)');
   }

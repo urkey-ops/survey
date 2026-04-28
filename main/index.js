@@ -1,12 +1,20 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.1.0
-// FIXES:
-//   - prevents duplicate initialize() runs
-//   - stores heartbeat / quota monitor / emergency online listener references
-//   - avoids duplicate periodic timers on re-init
-//   - uses readyState-safe boot in addition to DOMContentLoaded
-//   - keeps storage quota polling and periodic sync behavior
+// VERSION: 5.7.1
+// CHANGES FROM 5.6.0:
+//   - FIX: Start screen tap freeze on first launch.
+//     Root cause: on first launch, device-config.js calls
+//     window._initializeSurveyState() → showStartScreen() (tap listener #1).
+//     Then index.js Path 2 and/or Path 3 also fire, calling initialize() →
+//     initializeSurveyState() → showStartScreen() again (listener #2/#3
+//     replacing #1). First tap hits a dead element.
+//   - FIX: navigationSetup.js v3.2.0 sets window.__surveyStateInitialized = true
+//     on first successful run. index.js now checks this flag before calling
+//     initializeSurveyState() in the "device configured" branch.
+//   - REVERT: Object.defineProperty setter approach from v5.7.0 removed —
+//     navigationSetup.js assigns window._initializeSurveyState as a plain
+//     module-bottom assignment, always overwriting the setter silently.
+//   - All other logic unchanged from v5.6.0.
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -14,23 +22,74 @@ import { setupAdminPanel } from './adminPanel.js';
 import { setupNetworkMonitoring } from './networkStatus.js';
 import { setupVisibilityHandler } from './visibilityHandler.js';
 import { setupInactivityVisibilityHandler, startPeriodicSync } from '../timers/inactivityHandler.js';
-import { setupTypewriterVisibilityHandler } from '../ui/typewriterEffect.js';
 
 // ── Init guards / timer refs ──────────────────────────────────────────────────
-let initializationStarted = false;
-let initializationCompleted = false;
-let heartbeatIntervalId = null;
+let initializationStarted    = false;
+let initializationCompleted  = false;
+let heartbeatIntervalId      = null;
 let storageMonitorIntervalId = null;
-let emergencyOnlineHandler = null;
-let pendingDataHandlersPoll = null;
+let emergencyOnlineHandler   = null;
+let pendingDataHandlersPoll  = null;
+
+// ── Race-proof boot strategy ──────────────────────────────────────────────────
+//
+// Three paths with a shared `started` guard:
+//   Path 1 — kioskMode already set → start immediately (normal launch)
+//   Path 2 — listen for deviceConfigReady (first launch, modules win race)
+//   Path 3 — 500ms safety net (first launch, IIFE won race, event was missed)
+//
+// On first launch all three paths may fire. initialize() is guarded by
+// initializationStarted/Completed so only one full init runs.
+// The remaining race — initializeSurveyState() being called by both
+// device-config.js AND initialize() — is handled by
+// window.__surveyStateInitialized in navigationSetup.js v3.2.0.
+
+function startApp() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize, { once: true });
+  } else {
+    initialize();
+  }
+}
+
+let started = false;
+
+function onConfigReady() {
+  if (started) return;
+  started = true;
+  window.removeEventListener('deviceConfigReady', onConfigReady);
+  console.log('[INIT] deviceConfigReady received — starting app');
+  startApp();
+}
+
+// Path 1: Already configured (every launch after first setup)
+if (window.DEVICECONFIG?.kioskMode) {
+  started = true;
+  startApp();
+} else {
+  // Path 2: Listen for event (first launch — modules load before user picks)
+  window.addEventListener('deviceConfigReady', onConfigReady);
+
+  // Path 3: Safety net — IIFE may have fired deviceConfigReady before this
+  // module's listener was registered. Poll once after 500ms.
+  setTimeout(() => {
+    if (!started && window.DEVICECONFIG?.kioskMode) {
+      console.log('[INIT] deviceConfigReady was missed — starting via safety net');
+      onConfigReady();
+    }
+  }, 500);
+}
+
+// ── First-launch detection ────────────────────────────────────────────────────
+
+function isDeviceConfigured() {
+  const cfg = window.DEVICECONFIG;
+  return !!(cfg?.kioskMode && cfg?.allowedSurveyTypes?.length > 0);
+}
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
 
 function startHeartbeat() {
-  const CONSTANTS = window.CONSTANTS;
-  const appState = window.appState;
-  const dataHandlers = window.dataHandlers;
-
   if (heartbeatIntervalId) {
     clearInterval(heartbeatIntervalId);
     heartbeatIntervalId = null;
@@ -40,24 +99,30 @@ function startHeartbeat() {
     if (document.hidden) return;
     if (!window.dataHandlers || !window.appState) return;
 
-    const type1Key =
-      window.CONSTANTS?.SURVEY_TYPES?.type1?.storageKey ||
-      window.CONSTANTS?.STORAGE_KEY_QUEUE ||
-      'submissionQueue';
+    const CONSTANTS    = window.CONSTANTS;
+    const dataHandlers = window.dataHandlers;
+    const appState     = window.appState;
 
-    const type2Key =
-      window.CONSTANTS?.SURVEY_TYPES?.type2?.storageKey ||
-      window.CONSTANTS?.STORAGE_KEY_QUEUE_V2 ||
-      'submissionQueueV2';
+    const type1Key = CONSTANTS?.SURVEY_TYPES?.type1?.storageKey
+      || CONSTANTS?.STORAGE_KEY_QUEUE
+      || 'submissionQueue';
 
-    const queue1 = dataHandlers.getSubmissionQueue ? dataHandlers.getSubmissionQueue(type1Key) : [];
-    const queue2 = dataHandlers.getSubmissionQueue ? dataHandlers.getSubmissionQueue(type2Key) : [];
-    const analytics = dataHandlers.safeGetLocalStorage
-      ? (dataHandlers.safeGetLocalStorage(CONSTANTS.STORAGE_KEY_ANALYTICS) || [])
-      : [];
+    const type2Key = CONSTANTS?.SURVEY_TYPES?.type2?.storageKey
+      || CONSTANTS?.STORAGE_KEY_QUEUE_V2
+      || 'submissionQueueV2';
+
+    const type3Key = CONSTANTS?.SURVEY_TYPES?.type3?.storageKey
+      || CONSTANTS?.STORAGE_KEY_QUEUE_V3
+      || 'shayonaQueue';
+
+    const queue1    = dataHandlers.getSubmissionQueue?.(type1Key) ?? [];
+    const queue2    = dataHandlers.getSubmissionQueue?.(type2Key) ?? [];
+    const queue3    = dataHandlers.getSubmissionQueue?.(type3Key) ?? [];
+    const analytics = dataHandlers.safeGetLocalStorage?.(CONSTANTS?.STORAGE_KEY_ANALYTICS) ?? [];
 
     console.log(
-      `[HEARTBEAT] ❤️ Kiosk alive | Queue T1: ${queue1.length} | Queue T2: ${queue2.length} | ` +
+      `[HEARTBEAT] ❤️ Kiosk alive | ` +
+      `Queue T1: ${queue1.length} | Queue T2: ${queue2.length} | Queue T3: ${queue3.length} | ` +
       `Analytics: ${analytics.length} | Question: ${appState.currentQuestionIndex + 1} | ` +
       `Online: ${navigator.onLine ? '✔' : '✗'}`
     );
@@ -91,7 +156,7 @@ function clearPendingDataHandlersPoll() {
 }
 
 function runStorageQuotaCheck() {
-  if (!window.dataHandlers || !window.dataHandlers.checkStorageQuota) return;
+  if (!window.dataHandlers?.checkStorageQuota) return;
 
   const quotaStatus = window.dataHandlers.checkStorageQuota();
   if (!quotaStatus) return;
@@ -106,11 +171,9 @@ function runStorageQuotaCheck() {
         .then(success => {
           if (success) {
             console.log('[INIT] ✅ Emergency sync freed storage');
-
             setTimeout(() => {
               const newStatus = window.dataHandlers.checkStorageQuota?.();
               if (!newStatus) return;
-
               console.log(`[INIT] Storage after sync: ${newStatus.status} (${newStatus.percentUsed}%)`);
               if (newStatus.status === 'critical') {
                 console.error('[INIT] ⚠️ Storage still critical — manual intervention may be needed');
@@ -133,9 +196,7 @@ function runStorageQuotaCheck() {
 
       emergencyOnlineHandler = () => {
         console.log('[INIT] Device online — attempting emergency sync');
-        if (window.dataHandlers?.syncData) {
-          window.dataHandlers.syncData(true);
-        }
+        window.dataHandlers?.syncData?.(true);
         window.removeEventListener('online', emergencyOnlineHandler);
         emergencyOnlineHandler = null;
       };
@@ -160,7 +221,7 @@ function startStorageMonitoring() {
   }
 
   storageMonitorIntervalId = setInterval(() => {
-    if (!window.dataHandlers || !window.dataHandlers.checkStorageQuota) return;
+    if (!window.dataHandlers?.checkStorageQuota) return;
 
     const quotaStatus = window.dataHandlers.checkStorageQuota();
     if (!quotaStatus) return;
@@ -178,15 +239,37 @@ function startStorageMonitoring() {
 
 function _showStorageAlert(message) {
   if (window.globals?.syncStatusMessage) {
-    window.globals.syncStatusMessage.textContent = message;
-    window.globals.syncStatusMessage.style.color = '#dc2626';
+    window.globals.syncStatusMessage.textContent      = message;
+    window.globals.syncStatusMessage.style.color      = '#dc2626';
     window.globals.syncStatusMessage.style.fontWeight = 'bold';
   }
 
   const adminControls = window.globals?.adminControls;
-  if (adminControls && adminControls.classList.contains('hidden')) {
+  if (adminControls?.classList.contains('hidden')) {
     console.log('[INIT] Auto-showing admin panel due to storage crisis');
     adminControls.classList.remove('hidden');
+  }
+}
+
+// ── Survey type reconciliation ────────────────────────────────────────────────
+
+function reconcileSurveyType() {
+  const allowed = window.DEVICECONFIG?.allowedSurveyTypes;
+  if (!allowed?.length) return;
+
+  const current = window.KIOSK_CONFIG?.getActiveSurveyType?.();
+  if (!current) return;
+
+  if (!allowed.includes(current)) {
+    const corrected = allowed[0];
+    const success   = window.KIOSK_CONFIG.setActiveSurveyType(corrected);
+    if (success) {
+      console.log(`[INIT] ✅ Survey type corrected: "${current}" → "${corrected}"`);
+    } else {
+      console.warn(`[INIT] ⚠️ Survey type correction failed — KIOSK_CONFIG.setActiveSurveyType returned false`);
+    }
+  } else {
+    console.log(`[INIT] ✅ Survey type confirmed: "${current}" (allowed by device config)`);
   }
 }
 
@@ -206,7 +289,9 @@ function initialize() {
   initializationStarted = true;
 
   try {
-    console.log('[INIT] DOM Content Loaded — Initializing kiosk...');
+    console.log('[INIT] DOM ready — Initializing kiosk...');
+    console.log(`[INIT] Device mode: ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
+    console.log(`[INIT] Allowed survey types: ${(window.DEVICECONFIG?.allowedSurveyTypes ?? []).join(', ') || 'none'}`);
 
     // Step 1: Initialize DOM element references
     initializeElements();
@@ -227,44 +312,62 @@ function initialize() {
       initializationStarted = false;
       return;
     }
-    console.log('[INIT] ✅ All essential elements found');
+    console.log('[INIT] All essential elements found');
 
-    // Step 4: Setup navigation
+    // Step 4: Reconcile survey type BEFORE any navigation/survey setup
+    reconcileSurveyType();
+
+    // Step 5: Setup navigation buttons
     setupNavigation();
 
-    // Step 5: Setup activity tracking
+    // Step 6: Setup activity tracking
     setupActivityTracking();
 
-    // Step 6: Setup admin panel
+    // Step 7: Setup admin panel
     setupAdminPanel();
 
-    // Step 7: Initialize survey state (resume or start fresh)
-    initializeSurveyState();
+    // Step 8: Initialize survey state.
+    //
+    // On first launch: device-config.js confirm handler already called
+    // window._initializeSurveyState() after the user picked a mode.
+    // navigationSetup.js v3.2.0 sets window.__surveyStateInitialized = true
+    // on that first successful call. We check that flag here — if already
+    // done, skip entirely to preserve the tap listener on the live start screen.
+    //
+    // On all subsequent launches (kioskMode pre-configured in localStorage):
+    // flag is not yet set, isDeviceConfigured() is true → call normally.
 
-    // Step 8: Setup network monitoring
+    if (isDeviceConfigured()) {
+      if (window.__surveyStateInitialized) {
+        console.log('[INIT] ✅ Survey state already initialized by device-config — skipping duplicate');
+      } else {
+        console.log('[INIT] ✅ Device configured — initializing survey state directly');
+        initializeSurveyState();
+      }
+    } else {
+      console.log('[INIT] 🆕 First launch — device-setup-overlay active, deferring survey state init');
+    }
+
+    // Step 9: Setup network monitoring
     setupNetworkMonitoring();
 
-    // Step 9: Setup visibility change handler
+    // Step 10: Setup visibility change handler
     setupVisibilityHandler();
 
-    // Step 10: Setup inactivity visibility handler
+    // Step 11: Setup inactivity visibility handler
     setupInactivityVisibilityHandler();
     console.log('[INIT] ✅ Inactivity visibility handler active');
 
-    // Step 11: Setup typewriter visibility handler
-    setupTypewriterVisibilityHandler();
-    console.log('[INIT] ✅ Typewriter visibility handler active');
-
-       // Step 12: Start periodic sync
+    // Step 13: Start periodic sync
     startPeriodicSync();
     console.log('[INIT] ✅ Periodic sync started (stable interval)');
 
-    // Step 13: Start heartbeat
+    // Step 14: Start heartbeat
     startHeartbeat();
     console.log('[INIT] ✅ Heartbeat started (15 min, hidden-aware)');
 
     initializationCompleted = true;
-    initializationStarted = false;
+    initializationStarted   = false;
 
     console.log('[INIT] ✅ Initialization complete');
     console.log('═══════════════════════════════════════════════════════════');
@@ -275,15 +378,8 @@ function initialize() {
   }
 }
 
-// ── Ready-state-safe boot ─────────────────────────────────────────────────────
+// ── Cleanup hook ──────────────────────────────────────────────────────────────
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initialize, { once: true });
-} else {
-  initialize();
-}
-
-// Optional cleanup hook for hot reload / re-init scenarios
 export function cleanupMainInitialization() {
   clearPendingDataHandlersPoll();
 
@@ -302,8 +398,9 @@ export function cleanupMainInitialization() {
     emergencyOnlineHandler = null;
   }
 
-  initializationStarted = false;
+  initializationStarted   = false;
   initializationCompleted = false;
+  started                 = false;
 
   console.log('[INIT] Cleanup complete');
 }

@@ -1,24 +1,22 @@
 // FILE: appState.js
-// VERSION: 3.4.0
-// FIXES:
-//   - keeps window.CONSTANTS ownership in config.js only
-//   - uses one canonical state key with safe fallback read + migration
-//   - aligns visibility source-of-truth with document.hidden
-//   - exposes appState helpers for safe visibility updates
-//   - preserves queue count logging for both survey types
-//   - avoids split persisted state across old/new keys
+// VERSION: 3.4.3
+// CHANGES FROM 3.4.2:
+//   - FIX B1-02: INACTIVITY_TIMEOUT_MS fallback corrected from 30000 to 60000 (matches config.js)
+//   - FIX B1-03: SYNC_INTERVAL_MS fallback corrected from 900000 to 300000 (matches config.js)
+//   - FIX B1-01: ANALYTICS_SYNC_INTERVAL_MS fallback corrected from 86400000 to 600000 (matches config.js)
+//   - FIX B1-04: FEATURES fallback enableTypewriterEffect corrected from false to true (matches config.js)
+//   - FIX B1-05: Removed spurious MAX_QUEUE_SIZE > 200 boot warning (250 is intentional configured value)
 
 (function () {
-  // ─── Import configuration (set by config.js before this script runs) ────────
-  const CONFIG = window.KIOSK_CONFIG || {};
-  const CONSTANTS = window.CONSTANTS || {};
+  const CONFIG    = window.KIOSK_CONFIG || {};
+  const CONSTANTS = window.CONSTANTS   || {};
 
-  // ─── Timing ─────────────────────────────────────────────────────────────────
-  const INACTIVITY_TIMEOUT_MS        = CONSTANTS.INACTIVITY_TIMEOUT_MS        || CONFIG.INACTIVITY_TIMEOUT_MS        || 30000;
-  const SYNC_INTERVAL_MS             = CONSTANTS.SYNC_INTERVAL_MS             || CONFIG.SYNC_INTERVAL_MS             || 900000;
+  // ─── Timing ──────────────────────────────────────────────────────────────────
+  const INACTIVITY_TIMEOUT_MS        = CONSTANTS.INACTIVITY_TIMEOUT_MS        || CONFIG.INACTIVITY_TIMEOUT_MS        || 60000;   // FIX B1-02: was 30000
+  const SYNC_INTERVAL_MS             = CONSTANTS.SYNC_INTERVAL_MS             || CONFIG.SYNC_INTERVAL_MS             || 300000;  // FIX B1-03: was 900000
   const ADMIN_PANEL_TIMEOUT_MS       = CONSTANTS.ADMIN_PANEL_TIMEOUT_MS       || CONFIG.ADMIN_PANEL_TIMEOUT_MS       || 30000;
   const RESET_DELAY_MS               = CONSTANTS.RESET_DELAY_MS               || CONFIG.RESET_DELAY_MS               || 5000;
-  const ANALYTICS_SYNC_INTERVAL_MS   = CONSTANTS.ANALYTICS_SYNC_INTERVAL_MS   || CONFIG.ANALYTICS_SYNC_INTERVAL_MS   || 86400000;
+  const ANALYTICS_SYNC_INTERVAL_MS   = CONSTANTS.ANALYTICS_SYNC_INTERVAL_MS   || CONFIG.ANALYTICS_SYNC_INTERVAL_MS   || 600000;  // FIX B1-01: was 86400000
   const TYPEWRITER_DURATION_MS       = CONSTANTS.TYPEWRITER_DURATION_MS       || CONFIG.TYPEWRITER_DURATION_MS       || 2000;
   const TEXT_ROTATION_INTERVAL_MS    = CONSTANTS.TEXT_ROTATION_INTERVAL_MS    || CONFIG.TEXT_ROTATION_INTERVAL_MS    || 4000;
   const AUTO_ADVANCE_DELAY_MS        = CONSTANTS.AUTO_ADVANCE_DELAY_MS        || CONFIG.AUTO_ADVANCE_DELAY_MS        || 50;
@@ -27,19 +25,19 @@
   const ERROR_MESSAGE_AUTO_CLEAR_MS  = CONSTANTS.ERROR_MESSAGE_AUTO_CLEAR_MS  || CONFIG.ERROR_MESSAGE_AUTO_CLEAR_MS  || 10000;
   const START_SCREEN_REMOVE_DELAY_MS = CONSTANTS.START_SCREEN_REMOVE_DELAY_MS || CONFIG.START_SCREEN_REMOVE_DELAY_MS || 400;
 
-  // ─── Network & Retry ────────────────────────────────────────────────────────
-  const MAX_RETRIES    = CONSTANTS.MAX_RETRIES   || CONFIG.MAX_RETRIES   || 3;
+  // ─── Network & Retry ─────────────────────────────────────────────────────────
+  const MAX_RETRIES    = CONSTANTS.MAX_RETRIES    || CONFIG.MAX_RETRIES    || 3;
   const RETRY_DELAY_MS = CONSTANTS.RETRY_DELAY_MS || CONFIG.RETRY_DELAY_MS || 2000;
 
-  // ─── Queue limits ───────────────────────────────────────────────────────────
+  // ─── Queue limits ─────────────────────────────────────────────────────────────
   const MAX_QUEUE_SIZE     = CONSTANTS.MAX_QUEUE_SIZE     || CONFIG.MAX_QUEUE_SIZE     || 250;
-  const MAX_ANALYTICS_SIZE = CONSTANTS.MAX_ANALYTICS_SIZE || CONFIG.MAX_ANALYTICS_SIZE || 1000;
+  const MAX_ANALYTICS_SIZE = CONSTANTS.MAX_ANALYTICS_SIZE || CONFIG.MAX_ANALYTICS_SIZE || 500;
 
-  // ─── Storage keys ───────────────────────────────────────────────────────────
+  // ─── Storage keys ─────────────────────────────────────────────────────────────
   const CANONICAL_STORAGE_KEY_STATE =
     CONSTANTS.STORAGE_KEY_STATE ||
     CONFIG.STORAGE_KEY_STATE ||
-    'kioskAppState';
+    'kioskState';
 
   const LEGACY_STORAGE_KEY_STATE = 'kioskAppState';
 
@@ -48,54 +46,54 @@
   const STORAGE_KEY_LAST_SYNC           = CONSTANTS.STORAGE_KEY_LAST_SYNC           || CONFIG.STORAGE_KEY_LAST_SYNC           || 'lastDataSync';
   const STORAGE_KEY_LAST_ANALYTICS_SYNC = CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC || CONFIG.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
 
-  // ─── API Endpoints ───────────────────────────────────────────────────────────
+  // ─── API Endpoints ────────────────────────────────────────────────────────────
   const SYNC_ENDPOINT        = CONSTANTS.SYNC_ENDPOINT        || CONFIG.SYNC_ENDPOINT        || '/api/submit-survey';
   const ANALYTICS_ENDPOINT   = CONSTANTS.ANALYTICS_ENDPOINT   || CONFIG.ANALYTICS_ENDPOINT   || '/api/sync-analytics';
   const SURVEY_QUESTIONS_URL = CONSTANTS.SURVEY_QUESTIONS_URL || CONFIG.SURVEY_QUESTIONS_URL || '/api/get_questions';
   const ERROR_LOG_ENDPOINT   = CONSTANTS.ERROR_LOG_ENDPOINT   || CONFIG.ERROR_LOG_ENDPOINT   || '/api/log-error';
 
-  // ─── Feature Flags ──────────────────────────────────────────────────────────
+  // ─── Feature Flags ────────────────────────────────────────────────────────────
   const FEATURES = CONSTANTS.FEATURES || CONFIG.FEATURES || {
-    enableTypewriterEffect: true,
-    enableAnalytics: true,
-    enableOfflineQueue: true,
-    enableAdminPanel: true,
-    enableErrorLogging: true,
-    enableDebugCommands: false,
+    enableTypewriterEffect: true,   // FIX B1-04: was false
+    enableAnalytics:        true,
+    enableOfflineQueue:     true,
+    enableAdminPanel:       true,
+    enableErrorLogging:     true,
+    enableDebugCommands:    false,
   };
 
-  // ─── Helpers ────────────────────────────────────────────────────────────────
+  // ─── Helpers ──────────────────────────────────────────────────────────────────
   function getDefaultState() {
     return {
       currentQuestionIndex: 0,
-      formData: {},
-      surveyStartTime: null,
-      questionStartTimes: {},
-      questionTimeSpent: {},
-      adminClickCount: 0,
-      inactivityTimer: null,
-      syncTimer: null,
-      rotationInterval: null,
-      countdownInterval: null,
+      formData:             {},
+      surveyStartTime:      null,
+      questionStartTimes:   {},
+      questionTimeSpent:    {},
+      adminClickCount:      0,
+      inactivityTimer:      null,
+      syncTimer:            null,
+      rotationInterval:     null,
+      countdownInterval:    null,
     };
   }
 
   function sanitizeLoadedState(parsed) {
     const defaults = getDefaultState();
     return {
-      currentQuestionIndex: Number.isInteger(parsed?.currentQuestionIndex) ? parsed.currentQuestionIndex : defaults.currentQuestionIndex,
-      formData: parsed?.formData && typeof parsed.formData === 'object' ? parsed.formData : defaults.formData,
+      currentQuestionIndex: Number.isInteger(parsed?.currentQuestionIndex)
+        ? parsed.currentQuestionIndex : defaults.currentQuestionIndex,
+      formData: parsed?.formData && typeof parsed.formData === 'object'
+        ? parsed.formData : defaults.formData,
       surveyStartTime: parsed?.surveyStartTime || defaults.surveyStartTime,
       questionStartTimes: parsed?.questionStartTimes && typeof parsed.questionStartTimes === 'object'
-        ? parsed.questionStartTimes
-        : defaults.questionStartTimes,
+        ? parsed.questionStartTimes : defaults.questionStartTimes,
       questionTimeSpent: parsed?.questionTimeSpent && typeof parsed.questionTimeSpent === 'object'
-        ? parsed.questionTimeSpent
-        : defaults.questionTimeSpent,
-      adminClickCount: 0,
-      inactivityTimer: null,
-      syncTimer: null,
-      rotationInterval: null,
+        ? parsed.questionTimeSpent : defaults.questionTimeSpent,
+      adminClickCount:   0,
+      inactivityTimer:   null,
+      syncTimer:         null,
+      rotationInterval:  null,
       countdownInterval: null,
     };
   }
@@ -129,18 +127,17 @@
   }
 
   function migrateLegacyStateIfNeeded() {
-    if (CANONICAL_STORAGE_KEY_STATE === LEGACY_STORAGE_KEY_STATE) {
-      return;
-    }
+    if (CANONICAL_STORAGE_KEY_STATE === LEGACY_STORAGE_KEY_STATE) return;
 
     const canonical = readLocalJson(CANONICAL_STORAGE_KEY_STATE);
-    if (canonical) {
-      return;
-    }
+    if (canonical) return;
 
     const legacy = readLocalJson(LEGACY_STORAGE_KEY_STATE);
     if (legacy) {
-      console.log(`[STATE] Migrating legacy state from "${LEGACY_STORAGE_KEY_STATE}" to "${CANONICAL_STORAGE_KEY_STATE}"`);
+      console.log(
+        `[STATE] Migrating legacy state from "${LEGACY_STORAGE_KEY_STATE}" ` +
+        `to "${CANONICAL_STORAGE_KEY_STATE}"`
+      );
       safeSetLocalStorage(CANONICAL_STORAGE_KEY_STATE, legacy);
     }
   }
@@ -150,15 +147,15 @@
 
     const savedState =
       readLocalJson(CANONICAL_STORAGE_KEY_STATE) ||
-      (CANONICAL_STORAGE_KEY_STATE !== LEGACY_STORAGE_KEY_STATE ? readLocalJson(LEGACY_STORAGE_KEY_STATE) : null);
+      (CANONICAL_STORAGE_KEY_STATE !== LEGACY_STORAGE_KEY_STATE
+        ? readLocalJson(LEGACY_STORAGE_KEY_STATE)
+        : null);
 
     if (savedState) {
       const sanitized = sanitizeLoadedState(savedState);
-
       if (!sanitized.formData.id) {
         console.warn('[STATE] Loaded state missing ID — will be generated on survey start');
       }
-
       console.log(`[STATE] Loaded persisted state from "${CANONICAL_STORAGE_KEY_STATE}"`);
       return sanitized;
     }
@@ -176,7 +173,7 @@
     console.log('\nTiming Settings:');
     console.log(`  Inactivity Timeout : ${INACTIVITY_TIMEOUT_MS / 1000}s`);
     console.log(`  Sync Interval      : ${SYNC_INTERVAL_MS / 60000} min`);
-    console.log(`  Analytics Sync     : ${ANALYTICS_SYNC_INTERVAL_MS / 3600000} hrs`);
+    console.log(`  Analytics Sync     : ${(ANALYTICS_SYNC_INTERVAL_MS / 60000).toFixed(0)} min`);
     console.log(`  Reset Delay        : ${RESET_DELAY_MS / 1000}s`);
     console.log('\nQueue Limits:');
     console.log(`  Max Queue Size  : ${MAX_QUEUE_SIZE} records`);
@@ -188,10 +185,10 @@
     console.log(`  Analytics : ${ANALYTICS_ENDPOINT}`);
 
     const warnings = [];
-    if (SYNC_INTERVAL_MS < 60000) warnings.push('⚠️  SYNC_INTERVAL_MS < 1 min may cause excessive API calls');
+    if (SYNC_INTERVAL_MS < 60000)      warnings.push('⚠️  SYNC_INTERVAL_MS < 1 min may cause excessive API calls');
     if (INACTIVITY_TIMEOUT_MS < 10000) warnings.push('⚠️  INACTIVITY_TIMEOUT_MS < 10s may frustrate users');
-    if (MAX_QUEUE_SIZE > 200) warnings.push('⚠️  MAX_QUEUE_SIZE > 200 may cause localStorage issues');
-    if (!CONFIG.KIOSK_ID) warnings.push('⚠️  KIOSK_ID not set — using default');
+    // FIX B1-05: Removed spurious MAX_QUEUE_SIZE > 200 warning — 250 is the intentional configured value
+    if (!CONFIG.KIOSK_ID)              warnings.push('⚠️  KIOSK_ID not set — using default');
 
     if (warnings.length > 0) {
       console.log('\n⚠️  Configuration Warnings:');
@@ -202,13 +199,12 @@
     return { isValid: warnings.length === 0, warnings };
   }
 
-  // ─── App State ──────────────────────────────────────────────────────────────
-  let appState = loadAppState();
-  let isKioskVisible = !document.hidden;
+  // ─── App State ───────────────────────────────────────────────────────────────
+  let appState        = loadAppState();
+  let isKioskVisible  = !document.hidden;
   let typewriterTimer = null;
   let adminPanelTimer = null;
 
-  // DOM Elements — initialised by main/index.js
   let questionContainer, nextBtn, prevBtn, mainTitle, progressBar,
       kioskStartScreen, kioskVideo, adminControls, syncButton,
       adminClearButton, hideAdminButton, unsyncedCountDisplay,
@@ -216,9 +212,9 @@
 
   const configValidation = validateConfiguration();
 
-  // ─── Globals ────────────────────────────────────────────────────────────────
-  window.appState = appState;
-  window.isKioskVisible = isKioskVisible;
+  // ─── Globals ─────────────────────────────────────────────────────────────────
+  window.appState        = appState;
+  window.isKioskVisible  = isKioskVisible;
   window.typewriterTimer = typewriterTimer;
   window.adminPanelTimer = adminPanelTimer;
 
@@ -260,10 +256,9 @@
     get syncAnalyticsButton()  { return syncAnalyticsButton;  }, set syncAnalyticsButton(v)  { syncAnalyticsButton = v;  },
   };
 
-  // ─── window.CONSTANTS remains owned by config.js only ──────────────────────
   window.KIOSK_CONFIG_VALIDATION = configValidation;
 
-  // ─── Boot log ───────────────────────────────────────────────────────────────
+  // ─── Boot log ─────────────────────────────────────────────────────────────────
   const _q1Count = (() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY_QUEUE) || '[]').length; } catch { return 0; }
   })();
@@ -276,8 +271,16 @@
     try { return JSON.parse(localStorage.getItem(_q2Key) || '[]').length; } catch { return 0; }
   })();
 
+  const _q3Key = CONSTANTS.STORAGE_KEY_QUEUE_V3 ||
+                 CONSTANTS.SURVEY_TYPES?.type3?.storageKey ||
+                 'shayonaQueue';
+
+  const _q3Count = (() => {
+    try { return JSON.parse(localStorage.getItem(_q3Key) || '[]').length; } catch { return 0; }
+  })();
+
   console.log('\n📱 Kiosk Survey Application Initialized');
-  console.log('   Version       : 3.4.0');
+  console.log('   Version       : 3.4.3');
   console.log(`   State Key     : ${CANONICAL_STORAGE_KEY_STATE}`);
   console.log(`   State         : ${appState.currentQuestionIndex > 0 ? 'RESUMING' : 'FRESH'}`);
   if (appState.currentQuestionIndex > 0) {
@@ -287,6 +290,7 @@
   console.log(`   Active Survey : ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
   console.log(`   Queue Type 1  : ${_q1Count} records`);
   console.log(`   Queue Type 2  : ${_q2Count} records`);
+  console.log(`   Queue Type 3  : ${_q3Count} records`);
   console.log(`   Online        : ${navigator.onLine ? '✓' : '✗'}`);
   console.log('');
 })();

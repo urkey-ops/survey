@@ -1,6 +1,12 @@
 // FILE: analyticsManager.js
 // PURPOSE: Analytics recording and syncing
-// DEPENDENCIES: storageUtils.js, networkHandler.js, window.CONSTANTS
+// VERSION: 2.0.1
+// CHANGES FROM 2.0.0:
+//   - CLEANUP: Canonical analytics fallback key aligned to config.js ('surveyAnalytics')
+//   - CLEANUP: MAX_ANALYTICS_SIZE fallback aligned to config.js (500)
+//   - KEEP: dynamic analytics key resolution by active survey type
+//   - KEEP: kioskId continues to read from KIOSK_CONFIG.KIOSK_ID,
+//     which now resolves dynamically from DEVICECONFIG after config.js v3.2.1 fix
 
 import { safeGetLocalStorage, safeSetLocalStorage, updateSyncStatus, showUserError } from './storageUtils.js';
 import { sendRequest } from './networkHandler.js';
@@ -13,18 +19,37 @@ import { sendRequest } from './networkHandler.js';
  */
 
 /**
+ * Resolve the correct analytics storage key for the currently active survey type.
+ * Priority:
+ *   1. CONSTANTS.SURVEY_TYPES[activeType].analyticsKey  — type-specific key
+ *   2. CONSTANTS.STORAGE_KEY_ANALYTICS                  — global override
+ *   3. 'surveyAnalytics'                                — canonical fallback
+ *
+ * This ensures café (type3) events are written to 'shayonaAnalytics' and
+ * never mixed into the temple 'surveyAnalytics' store.
+ */
+function _resolveAnalyticsKey() {
+  const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1';
+  const typeKey    = window.CONSTANTS?.SURVEY_TYPES?.[activeType]?.analyticsKey;
+
+  return typeKey
+    || window.CONSTANTS?.STORAGE_KEY_ANALYTICS
+    || 'surveyAnalytics';
+}
+
+/**
  * Record analytics event
  * @param {string} eventType - Type of event (survey_completed, survey_abandoned)
  * @param {Object} data - Additional event data
  */
 export function recordAnalytics(eventType, data = {}) {
   try {
-    const STORAGE_KEY_ANALYTICS = window.CONSTANTS?.STORAGE_KEY_ANALYTICS || 'surveyAnalytics';
-    const MAX_ANALYTICS_SIZE    = window.CONSTANTS?.MAX_ANALYTICS_SIZE    || 1000;
+    const STORAGE_KEY_ANALYTICS = _resolveAnalyticsKey();
+    const MAX_ANALYTICS_SIZE    = window.CONSTANTS?.MAX_ANALYTICS_SIZE || 500;
 
-    const analytics  = safeGetLocalStorage(STORAGE_KEY_ANALYTICS) || [];
-    const timestamp  = new Date().toISOString();
-    const appState   = window.appState;
+    const analytics = safeGetLocalStorage(STORAGE_KEY_ANALYTICS) || [];
+    const timestamp = new Date().toISOString();
+    const appState  = window.appState;
 
     analytics.push({
       timestamp,
@@ -34,7 +59,6 @@ export function recordAnalytics(eventType, data = {}) {
       ...data
     });
 
-    // Trim from oldest if over capacity
     if (analytics.length > MAX_ANALYTICS_SIZE) {
       const excess = analytics.length - MAX_ANALYTICS_SIZE;
       analytics.splice(0, excess);
@@ -42,6 +66,7 @@ export function recordAnalytics(eventType, data = {}) {
     }
 
     safeSetLocalStorage(STORAGE_KEY_ANALYTICS, analytics);
+    console.log(`[ANALYTICS] Recorded "${eventType}" → key: "${STORAGE_KEY_ANALYTICS}"`);
 
   } catch (err) {
     console.error('[ANALYTICS] recordAnalytics error:', err);
@@ -49,12 +74,12 @@ export function recordAnalytics(eventType, data = {}) {
 }
 
 /**
- * Check if analytics should be synced (daily check)
+ * Check if analytics should be synced (daily/interval-based check)
  * @returns {boolean} True if sync is needed
  */
 export function shouldSyncAnalytics() {
   const STORAGE_KEY_LAST_ANALYTICS_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
-  const ANALYTICS_SYNC_INTERVAL_MS      = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS      || 86400000; // 24 hours
+  const ANALYTICS_SYNC_INTERVAL_MS      = window.CONSTANTS?.ANALYTICS_SYNC_INTERVAL_MS || 86400000;
 
   const lastSync = safeGetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC);
   const now      = Date.now();
@@ -72,14 +97,16 @@ export function checkAndSyncAnalytics() {
 }
 
 /**
- * Sync analytics data to server
+ * Sync analytics data to server.
+ * Reads from the active type's analytics key so café and temple
+ * analytics are synced independently.
  * @param {boolean} isManual - Whether this is a manual sync (affects UI feedback)
  * @returns {Promise<boolean>} Success status
  */
 export async function syncAnalytics(isManual = false) {
-  const STORAGE_KEY_ANALYTICS           = window.CONSTANTS?.STORAGE_KEY_ANALYTICS           || 'surveyAnalytics';
+  const STORAGE_KEY_ANALYTICS           = _resolveAnalyticsKey();
   const STORAGE_KEY_LAST_ANALYTICS_SYNC = window.CONSTANTS?.STORAGE_KEY_LAST_ANALYTICS_SYNC || 'lastAnalyticsSync';
-  const ANALYTICS_ENDPOINT             = window.CONSTANTS?.ANALYTICS_ENDPOINT             || '/api/sync-analytics';
+  const ANALYTICS_ENDPOINT              = window.CONSTANTS?.ANALYTICS_ENDPOINT || '/api/sync-analytics';
 
   if (!navigator.onLine) {
     console.warn('[ANALYTICS SYNC] Offline. Skipping sync.');
@@ -92,20 +119,17 @@ export async function syncAnalytics(isManual = false) {
 
   const analytics = safeGetLocalStorage(STORAGE_KEY_ANALYTICS);
   if (!analytics || analytics.length === 0) {
-    console.log('[ANALYTICS SYNC] No analytics data to sync.');
+    console.log(`[ANALYTICS SYNC] No data in "${STORAGE_KEY_ANALYTICS}" to sync.`);
     if (isManual) updateSyncStatus('No analytics data to sync.');
     return true;
   }
 
-  console.log(`[ANALYTICS SYNC] Attempting to sync ${analytics.length} records...`);
+  console.log(`[ANALYTICS SYNC] Syncing ${analytics.length} records from "${STORAGE_KEY_ANALYTICS}"...`);
   if (isManual) updateSyncStatus(`Syncing ${analytics.length} analytics events... ⏳`);
 
-  // Prepare analytics summary data
   const completions  = analytics.filter(a => a.eventType === 'survey_completed');
   const abandonments = analytics.filter(a => a.eventType === 'survey_abandoned');
 
-  // Calculate drop-off by question
-  // Key format: "q{index}:{questionId}" — sortable by index, readable by id
   const dropoffByQuestion = {};
   abandonments.forEach(a => {
     const idx = a.questionIndex !== undefined ? a.questionIndex : '?';
@@ -114,8 +138,7 @@ export async function syncAnalytics(isManual = false) {
     dropoffByQuestion[key] = (dropoffByQuestion[key] || 0) + 1;
   });
 
-  // Calculate average completion time
-  const completionTimes  = completions.map(c => c.totalTimeSeconds).filter(t => t > 0);
+  const completionTimes   = completions.map(c => c.totalTimeSeconds).filter(t => t > 0);
   const avgCompletionTime = completionTimes.length > 0
     ? completionTimes.reduce((a, b) => a + b, 0) / completionTimes.length
     : 0;
@@ -124,24 +147,25 @@ export async function syncAnalytics(isManual = false) {
     analyticsType:            'summary',
     timestamp:                new Date().toISOString(),
     kioskId:                  window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
+    surveyType:               window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? 'type1',
+    analyticsKey:             STORAGE_KEY_ANALYTICS,
     totalCompletions:         completions.length,
     totalAbandonments:        abandonments.length,
     completionRate:           completions.length > 0
-                                ? ((completions.length / (completions.length + abandonments.length)) * 100).toFixed(1)
-                                : 0,
+      ? ((completions.length / (completions.length + abandonments.length)) * 100).toFixed(1)
+      : 0,
     avgCompletionTimeSeconds: avgCompletionTime.toFixed(1),
     dropoffByQuestion,
-    rawEvents:                analytics
+    rawEvents:                analytics,
   };
 
   try {
     const result = await sendRequest(ANALYTICS_ENDPOINT, payload);
 
     if (result.success) {
-      console.log('[ANALYTICS SYNC] Success. Clearing local analytics.');
+      console.log(`[ANALYTICS SYNC] Success — cleared "${STORAGE_KEY_ANALYTICS}" (${analytics.length} events).`);
       localStorage.removeItem(STORAGE_KEY_ANALYTICS);
 
-      // Store timestamp as number (Date.now())
       safeSetLocalStorage(STORAGE_KEY_LAST_ANALYTICS_SYNC, Date.now());
 
       if (isManual) {
@@ -152,7 +176,7 @@ export async function syncAnalytics(isManual = false) {
       return true;
     }
 
-    throw new Error('Analytics sync failed - server returned unsuccessful response');
+    throw new Error('Analytics sync failed — server returned unsuccessful response');
 
   } catch (error) {
     console.error('[ANALYTICS SYNC] Failed:', error.message);
@@ -169,5 +193,5 @@ export default {
   recordAnalytics,
   shouldSyncAnalytics,
   checkAndSyncAnalytics,
-  syncAnalytics
+  syncAnalytics,
 };

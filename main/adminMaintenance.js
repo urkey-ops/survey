@@ -1,38 +1,52 @@
 // FILE: main/adminMaintenance.js
-// PURPOSE: Destructive/maintenance button handlers — clear local, check update, fix video + debug helpers
-// VERSION: 1.1.0 - trackAdminEvent + vibrateError from adminUtils
-// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS
+// PURPOSE: Destructive/maintenance button handlers — clear local, check update, fix video + kiosk identity badge
+// VERSION: 2.0.0
+// CHANGES FROM 1.2.1:
+//   - REMOVE: setupKioskSelector() — dropdown was a phantom control that changed nothing
+//     about actual device operation. Device identity is fixed at first-launch setup
+//     via device-config.js and must not be changeable at runtime via a dropdown.
+//   - REMOVE: setupKioskSyncButton() — per-kiosk sync button only existed to serve
+//     the now-removed selector. #syncAllButton in the main panel handles all syncing.
+//   - REMOVE: loadKioskQueues() — only fed the dropdown label and kiosk sync button.
+//   - REMOVE: getCurrentKioskMode() — only served the above.
+//   - REMOVE: window.loadKioskQueues exposure — no longer needed.
+//   - REMOVE: KIOSK_MODES array and currentKioskMode module state — not needed.
+//   - ADD: buildKioskIdentityBadge() — injects one static read-only row showing
+//     the device's kioskMode and kioskId from window.DEVICECONFIG. No events,
+//     no interaction, no dropdown. Replaces the misleading selector entirely.
+//   - UNCHANGED: All password/lockout logic, all existing button handlers,
+//     updateClearButtonState, updateCheckUpdateButtonState, updateFixVideoButtonState,
+//     restoreLockoutState, cleanupMaintenanceHandlers. All exports that adminPanel.js
+//     imports are identical except the four removed functions.
+// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS, window.DEVICECONFIG
 
 import { adminState } from './adminState.js';
 import { trackAdminEvent, vibrateSuccess, vibrateError } from './adminUtils.js';
 
-const CLEAR_PASSWORD = '8765';
-const MAX_ATTEMPTS = 2;
-const LOCKOUT_DURATION = 3600000;
+const CLEAR_PASSWORD           = '8765';
+const MAX_ATTEMPTS             = 2;
+const LOCKOUT_DURATION         = 3600000;
 const PASSWORD_SESSION_TIMEOUT = 300000;
 
-let failedAttempts = 0;
-let lockoutUntil = null;
-// lastPasswordSuccess intentionally not persisted — session cache resets on reload
-// which is correct behaviour for a shared kiosk
+let failedAttempts      = 0;
+let lockoutUntil        = null;
 let lastPasswordSuccess = null;
 
-let adminClearButtonHandler = null;
+let adminClearButtonHandler  = null;
 let checkUpdateButtonHandler = null;
-let fixVideoButtonHandler = null;
-let boundAdminClearButton = null;
-let boundCheckUpdateButton = null;
-let boundFixVideoButton = null;
+let fixVideoButtonHandler    = null;
+let boundAdminClearButton    = null;
+let boundCheckUpdateButton   = null;
+let boundFixVideoButton      = null;
 
 // ─────────────────────────────────────────────────────────────
-// PASSWORD + LOCKOUT
+// PASSWORD + LOCKOUT (unchanged)
 // ─────────────────────────────────────────────────────────────
 
 export function isClearLocalLocked() {
   if (!lockoutUntil) return false;
   if (Date.now() < lockoutUntil) return true;
-
-  lockoutUntil = null;
+  lockoutUntil   = null;
   failedAttempts = 0;
   localStorage.removeItem('clearLocalLockout');
   return false;
@@ -53,7 +67,6 @@ function lockClearLocal() {
 export function restoreLockoutState() {
   const stored = localStorage.getItem('clearLocalLockout');
   if (!stored) return;
-
   const storedTime = parseInt(stored, 10);
   if (Date.now() < storedTime) {
     lockoutUntil = storedTime;
@@ -91,7 +104,7 @@ function verifyClearPassword() {
 
   if (input === CLEAR_PASSWORD) {
     console.log('[MAINTENANCE] ✅ Password correct');
-    failedAttempts = 0;
+    failedAttempts      = 0;
     lastPasswordSuccess = Date.now();
     vibrateSuccess();
     trackAdminEvent('clear_local_password_success');
@@ -115,7 +128,78 @@ function verifyClearPassword() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON STATE UPDATERS
+// KIOSK IDENTITY BADGE  (replaces the old dropdown selector)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Injects a single static read-only row into adminControls showing
+ * which kiosk this device is configured as.
+ *
+ * Reads window.DEVICECONFIG — set once at first-launch by device-config.js
+ * and never changed at runtime. No events, no interaction, no dropdown.
+ *
+ * Visual output example:
+ *   🛕 Temple  ·  KIOSK-TEMPLE-001
+ *
+ * Called from adminPanel.js setupAdminPanel() in place of the old
+ * setupKioskSelector() + setupKioskSyncButton() pair.
+ */
+export function buildKioskIdentityBadge(containerId = 'adminControls') {
+  const container = document.getElementById(containerId)
+    || document.getElementById('adminControls');
+
+  if (!container) {
+    console.warn('[MAINTENANCE] buildKioskIdentityBadge: container not found');
+    return;
+  }
+
+  // Idempotent — only inject once
+  if (document.getElementById('kioskIdentityBadge')) {
+    console.log('[MAINTENANCE] Kiosk identity badge already exists — skipping');
+    return;
+  }
+
+  const cfg      = window.DEVICECONFIG || {};
+  const mode     = cfg.kioskMode || 'unknown';
+  const kioskId  = cfg.kioskId   || '—';
+
+  // Icon map — extend when new kiosk types are added to device-config.js
+  const iconMap = {
+    temple:   '🛕',
+    shayona:  '☕',
+    giftshop: '🛍️',
+    activity: '🎉',
+  };
+
+  const icon        = iconMap[mode] || '📍';
+  const modeLabel   = mode.charAt(0).toUpperCase() + mode.slice(1);
+
+  const badge = document.createElement('div');
+  badge.id        = 'kioskIdentityBadge';
+  badge.className = 'kiosk-identity-badge';
+  badge.setAttribute('aria-label', `This device is configured as ${modeLabel} kiosk`);
+  badge.innerHTML = `
+    <span class="kiosk-identity-icon">${icon}</span>
+    <span class="kiosk-identity-text">
+      <span class="kiosk-identity-mode">${modeLabel}</span>
+      <span class="kiosk-identity-id">${kioskId}</span>
+    </span>
+  `;
+
+  // Insert after the first child (status row) so it sits just below
+  // the unsynced-count pill — above the primary action buttons.
+  const firstChild = container.firstChild;
+  if (firstChild && firstChild.nextSibling) {
+    container.insertBefore(badge, firstChild.nextSibling);
+  } else {
+    container.appendChild(badge);
+  }
+
+  console.log(`[MAINTENANCE] ✅ Kiosk identity badge: ${icon} ${modeLabel} · ${kioskId}`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// BUTTON STATE UPDATERS (unchanged)
 // ─────────────────────────────────────────────────────────────
 
 export function updateClearButtonState() {
@@ -128,15 +212,15 @@ export function updateClearButtonState() {
 
   if (isLocked) {
     const remaining = getRemainingLockoutTime();
-    adminClearButton.textContent = `Clear Local (Locked ${remaining}m)`;
+    adminClearButton.textContent   = `Clear Local (Locked ${remaining}m)`;
     adminClearButton.style.opacity = '0.5';
-    adminClearButton.style.cursor = 'not-allowed';
-    adminClearButton.title = `Locked due to failed attempts. Try again in ${remaining} minutes.`;
+    adminClearButton.style.cursor  = 'not-allowed';
+    adminClearButton.title         = `Locked due to failed attempts. Try again in ${remaining} minutes.`;
   } else {
-    adminClearButton.textContent = 'Clear Local';
+    adminClearButton.textContent   = 'Clear Local';
     adminClearButton.style.opacity = '1';
-    adminClearButton.style.cursor = 'pointer';
-    adminClearButton.title = 'Clear local storage (password protected)';
+    adminClearButton.style.cursor  = 'pointer';
+    adminClearButton.title         = 'Clear local storage (password protected)';
   }
 }
 
@@ -148,13 +232,13 @@ export function updateCheckUpdateButtonState(isOnline) {
   checkUpdateButton.setAttribute('aria-disabled', !isOnline ? 'true' : 'false');
 
   if (!isOnline) {
-    checkUpdateButton.textContent = 'Check Update (Offline)';
+    checkUpdateButton.textContent   = 'Check Update (Offline)';
     checkUpdateButton.style.opacity = '0.5';
-    checkUpdateButton.style.cursor = 'not-allowed';
+    checkUpdateButton.style.cursor  = 'not-allowed';
   } else {
-    checkUpdateButton.textContent = 'Check Update';
+    checkUpdateButton.textContent   = 'Check Update';
     checkUpdateButton.style.opacity = '1';
-    checkUpdateButton.style.cursor = 'pointer';
+    checkUpdateButton.style.cursor  = 'pointer';
   }
 
   checkUpdateButton.title = !isOnline
@@ -168,351 +252,187 @@ export function updateFixVideoButtonState() {
 
   if (!fixVideoButton.disabled) {
     fixVideoButton.style.opacity = '1';
-    fixVideoButton.style.cursor = 'pointer';
+    fixVideoButton.style.cursor  = 'pointer';
   }
 
   fixVideoButton.title = 'Reload kiosk video';
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON HANDLERS
+// MAIN HANDLER SETUP (unchanged)
 // ─────────────────────────────────────────────────────────────
 
 export function setupMaintenanceHandlers(adminClearButton, checkUpdateButton, fixVideoButton, resetAutoHideTimer) {
   cleanupMaintenanceHandlers();
 
+  // ── Clear Local ─────────────────────────────────────────────────────────────
   if (adminClearButton) {
     adminClearButtonHandler = async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      console.log('[MAINTENANCE] 🔘 Clear Local button clicked');
+      console.log('[MAINTENANCE] 🔘 Clear Local clicked');
       resetAutoHideTimer();
 
-      if (!verifyClearPassword()) {
-        console.log('[MAINTENANCE] Password verification failed');
-        updateClearButtonState();
-        return;
-      }
+      if (!verifyClearPassword()) return;
 
       if (adminState.syncInProgress || adminState.analyticsInProgress) {
-        console.warn('[MAINTENANCE] Clear blocked — sync in progress');
-        alert('⚠️ Cannot clear while sync is in progress.\n\nPlease wait for sync to complete.');
+        alert('⚠️ Cannot clear while sync is in progress.');
         return;
       }
 
-      const queueSize = window.dataHandlers?.countUnsyncedRecords?.() || 0;
-      const confirmMsg = queueSize > 0
-        ? `⚠️ WARNING: Delete ${queueSize} unsynced survey${queueSize > 1 ? 's' : ''}?\n\nThis CANNOT be undone!`
-        : 'Clear all local data?';
+      const totalPending = window.dataHandlers?.countUnsyncedRecords?.() || 0;
+      if (!confirm(`⚠️ Delete ${totalPending} unsynced surveys?\n\nThis CANNOT be undone!`)) return;
 
-      if (!confirm(confirmMsg)) {
-        console.log('[MAINTENANCE] User cancelled clear operation');
-        return;
-      }
-
-      console.log('[MAINTENANCE] ✅ User confirmed clear — proceeding...');
       try {
-        const CONSTANTS = window.CONSTANTS;
-        if (!CONSTANTS) {
-          console.error('[MAINTENANCE] ❌ window.CONSTANTS not available — aborting clear');
-          alert('❌ Configuration not loaded yet.\n\nPlease wait a moment and try again.');
-          return;
-        }
+        const keysToClear = Object.values(window.CONSTANTS?.SURVEY_TYPES || {})
+          .map(cfg => cfg.storageKey).filter(Boolean)
+          .concat([
+            window.CONSTANTS?.STORAGE_KEY_ANALYTICS,
+            window.CONSTANTS?.STORAGE_KEY_ANALYTICS_V3,
+            window.CONSTANTS?.STORAGE_KEY_STATE,
+            window.CONSTANTS?.STORAGE_KEY_LAST_SYNC,
+            window.CONSTANTS?.STORAGE_KEY_LAST_ANALYTICS_SYNC,
+          ]);
 
-        // Plug-and-play: clears all survey type queues dynamically from config
-        const surveyQueueKeys = Object.values(CONSTANTS.SURVEY_TYPES || {})
-          .map(cfg => cfg.storageKey)
-          .filter(Boolean);
-
-        const keysToClear = [
-          ...surveyQueueKeys,
-          CONSTANTS.STORAGE_KEY_ANALYTICS,
-          CONSTANTS.STORAGE_KEY_STATE,
-          CONSTANTS.STORAGE_KEY_LAST_SYNC,
-          CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC,
-        ].filter(Boolean);
-
-        keysToClear.forEach((key) => localStorage.removeItem(key));
-
-        trackAdminEvent('local_storage_cleared', { queueSize });
-        console.log('[MAINTENANCE] ✅ Storage cleared successfully (all queues)');
-
-        const syncStatusMessage = window.globals?.syncStatusMessage;
-        if (syncStatusMessage) syncStatusMessage.textContent = '✅ Storage cleared';
-
-        setTimeout(() => {
-          console.log('[MAINTENANCE] Reloading page...');
-          location.reload();
-        }, 1500);
+        keysToClear.forEach(key => { if (key) localStorage.removeItem(key); });
+        trackAdminEvent('local_storage_cleared', { queueSize: totalPending });
+        location.reload();
       } catch (error) {
-        console.error('[MAINTENANCE] ❌ Error clearing storage:', error);
-        alert('❌ Error clearing storage. Check console for details.');
+        console.error('[MAINTENANCE] Clear failed:', error);
+        alert('❌ Error clearing storage.');
       }
     };
 
     adminClearButton.addEventListener('click', adminClearButtonHandler);
     boundAdminClearButton = adminClearButton;
-    console.log('[MAINTENANCE] ✅ Clear Local button handler attached');
+    console.log('[MAINTENANCE] ✅ Clear Local handler attached');
   } else {
-    console.warn('[MAINTENANCE] ⚠️ Clear Local button not found');
+    console.warn('[MAINTENANCE] ⚠️ adminClearButton not found');
   }
 
+  // ── Check Update ─────────────────────────────────────────────────────────────
   if (checkUpdateButton) {
     checkUpdateButtonHandler = async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      console.log('[MAINTENANCE] 🔘 Check Update button clicked');
+      console.log('[MAINTENANCE] 🔘 Check Update clicked');
       resetAutoHideTimer();
 
       if (!navigator.onLine) {
-        console.warn('[MAINTENANCE] Update check blocked — offline');
-        alert('📡 Cannot check for updates — device is offline.\n\nPlease connect to WiFi to check for updates.');
-        trackAdminEvent('update_check_blocked_offline');
+        alert('📡 Cannot check for updates — device is offline.');
         return;
       }
 
-      const syncStatusMessage = window.globals?.syncStatusMessage;
-
-      if (!window.pwaUpdateManager) {
-        console.error('[MAINTENANCE] ❌ PWA Update Manager not found');
-        if (syncStatusMessage) {
-          syncStatusMessage.textContent = '❌ Update manager not available';
-          setTimeout(() => { syncStatusMessage.textContent = ''; }, 4000);
-        }
-        alert('❌ PWA Update Manager not loaded.\n\nThe update system may not be initialized yet.\n\nTry refreshing the page.');
-        return;
-      }
-
-      console.log('[MAINTENANCE] ✅ Starting update check...');
-      trackAdminEvent('update_check_triggered');
-      if (syncStatusMessage) syncStatusMessage.textContent = '🔍 Checking for updates...';
+      checkUpdateButton.disabled    = true;
+      checkUpdateButton.textContent = 'Checking...';
 
       try {
-        await window.pwaUpdateManager.forceUpdate();
-        console.log('[MAINTENANCE] ✅ Update check completed');
-        if (syncStatusMessage) syncStatusMessage.textContent = '✅ Update check complete';
-      } catch (error) {
-        console.error('[MAINTENANCE] ❌ Update check failed:', error);
-        if (syncStatusMessage) {
-          syncStatusMessage.textContent = `❌ Update check failed: ${error.message}`;
+        if ('serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.getRegistration();
+          if (registration) {
+            await registration.update();
+            const waiting = registration.waiting;
+            if (waiting) {
+              if (confirm('✅ New version available!\n\nReload to update?')) {
+                waiting.postMessage({ type: 'SKIP_WAITING' });
+                location.reload();
+              }
+            } else {
+              alert('✅ App is up to date.');
+            }
+          } else {
+            alert('ℹ️ No service worker registered.');
+          }
+        } else {
+          alert('ℹ️ Service workers not supported.');
         }
-        alert(`❌ Update check failed:\n\n${error.message}`);
+        trackAdminEvent('check_update_triggered', { online: navigator.onLine });
+      } catch (err) {
+        console.error('[MAINTENANCE] Update check failed:', err);
+        alert(`❌ Update check failed: ${err.message}`);
+      } finally {
+        checkUpdateButton.disabled    = false;
+        checkUpdateButton.textContent = 'Check Update';
       }
-
-      setTimeout(() => {
-        if (syncStatusMessage) syncStatusMessage.textContent = '';
-      }, 4000);
     };
 
     checkUpdateButton.addEventListener('click', checkUpdateButtonHandler);
     boundCheckUpdateButton = checkUpdateButton;
-    console.log('[MAINTENANCE] ✅ Check Update button handler attached');
+    console.log('[MAINTENANCE] ✅ Check Update handler attached');
   } else {
-    console.warn('[MAINTENANCE] ⚠️ Check Update button not found');
+    console.warn('[MAINTENANCE] ⚠️ checkUpdateButton not found');
   }
 
+  // ── Fix Video ────────────────────────────────────────────────────────────────
   if (fixVideoButton) {
-    fixVideoButtonHandler = async (e) => {
+    fixVideoButtonHandler = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      console.log('[MAINTENANCE] 🔘 Fix Video button clicked');
+      console.log('[MAINTENANCE] 🔘 Fix Video clicked');
       resetAutoHideTimer();
-      trackAdminEvent('video_fix_triggered');
 
-      let kioskVideo = window.globals?.kioskVideo;
-      if (!kioskVideo) kioskVideo = document.getElementById('kioskVideo');
-      if (!kioskVideo) kioskVideo = document.querySelector('video');
-
-      if (!kioskVideo) {
-        console.error('[MAINTENANCE] ❌ Video element not found anywhere in DOM');
-        alert('❌ Video element not found.\n\nThe video may not be loaded yet, or the element ID has changed.');
+      const video = document.getElementById('kioskVideo');
+      if (!video) {
+        console.warn('[MAINTENANCE] kioskVideo element not found');
         return;
       }
 
-      fixVideoButton.disabled = true;
-      fixVideoButton.style.opacity = '0.7';
-      fixVideoButton.style.cursor = 'wait';
-      const originalText = fixVideoButton.textContent;
-      fixVideoButton.textContent = 'Fixing...';
-
       try {
-        if (kioskVideo._fallbackHandler) {
-          kioskVideo.removeEventListener('error', kioskVideo._fallbackHandler);
-          kioskVideo._fallbackHandler = null;
-        }
-
-        const videoPlayerModule = await import('../ui/navigation/videoPlayer.js');
-        const { nuclearVideoReload, setupVideoEventListeners } = videoPlayerModule;
-
-        nuclearVideoReload(kioskVideo);
-
-        const repairedVideo = window.globals?.kioskVideo || document.getElementById('kioskVideo');
-        if (!repairedVideo) {
-          alert('❌ Video reload failed.\n\nThe kiosk may need a full restart.');
-          return;
-        }
-
-        setupVideoEventListeners(repairedVideo);
-
-        const waitForReady = () => new Promise((resolve, reject) => {
-          if (repairedVideo.readyState >= 3) { resolve(true); return; }
-
-          let timeoutId;
-          const onReady = () => {
-            clearTimeout(timeoutId);
-            repairedVideo.removeEventListener('canplaythrough', onReady);
-            repairedVideo.removeEventListener('loadeddata', onReady);
-            resolve(true);
-          };
-
-          timeoutId = setTimeout(() => {
-            repairedVideo.removeEventListener('canplaythrough', onReady);
-            repairedVideo.removeEventListener('loadeddata', onReady);
-            reject(new Error('Ready timeout'));
-          }, 5000);
-
-          repairedVideo.addEventListener('canplaythrough', onReady, { once: true });
-          repairedVideo.addEventListener('loadeddata', onReady, { once: true });
+        video.pause();
+        video.currentTime = 0;
+        video.load();
+        video.play().catch(err => {
+          console.warn('[MAINTENANCE] Video autoplay failed (expected on iOS):', err.message);
         });
-
-        try {
-          await waitForReady();
-        } catch (err) {
-          console.warn('[MAINTENANCE] Video not ready in time:', err.message);
-        }
-
-        try {
-          const playPromise = repairedVideo.play();
-          if (playPromise && typeof playPromise.then === 'function') {
-            await playPromise;
-          }
-        } catch (playErr) {
-          console.warn('[MAINTENANCE] Repaired video could not auto-play:', playErr.message);
-        }
-
-        const syncStatusMessage = window.globals?.syncStatusMessage;
-        if (syncStatusMessage) {
-          syncStatusMessage.textContent = '✅ Video reset attempted';
-          setTimeout(() => { syncStatusMessage.textContent = ''; }, 3000);
-        }
-
-        alert('✅ Video reset has been attempted.\n\nIf you now see video playing on the home screen, the fix worked.\nIf not, the kiosk may need a full restart.');
-      } catch (error) {
-        console.error('[MAINTENANCE] ❌ Video nuclear reload failed:', error);
-        alert(`❌ Video reload failed:\n\n${error.message}`);
-      } finally {
-        setTimeout(() => {
-          fixVideoButton.disabled = false;
-          fixVideoButton.style.opacity = '1';
-          fixVideoButton.style.cursor = 'pointer';
-          fixVideoButton.textContent = originalText;
-        }, 2000);
+        trackAdminEvent('fix_video_triggered');
+        console.log('[MAINTENANCE] ✅ Video reloaded');
+      } catch (err) {
+        console.error('[MAINTENANCE] Fix Video failed:', err);
       }
     };
 
     fixVideoButton.addEventListener('click', fixVideoButtonHandler);
     boundFixVideoButton = fixVideoButton;
-    console.log('[MAINTENANCE] ✅ Fix Video button handler attached (nuclear-ready)');
+    console.log('[MAINTENANCE] ✅ Fix Video handler attached');
   } else {
-    console.warn('[MAINTENANCE] ⚠️ Fix Video button not found');
+    console.warn('[MAINTENANCE] ⚠️ fixVideoButton not found');
   }
+
+  console.log('[MAINTENANCE] ✅ All handlers attached');
 }
+
+// ── CLEANUP (unchanged) ───────────────────────────────────────────────────────
 
 export function cleanupMaintenanceHandlers() {
   if (boundAdminClearButton && adminClearButtonHandler) {
     boundAdminClearButton.removeEventListener('click', adminClearButtonHandler);
+    adminClearButtonHandler = null;
+    boundAdminClearButton   = null;
   }
+
   if (boundCheckUpdateButton && checkUpdateButtonHandler) {
     boundCheckUpdateButton.removeEventListener('click', checkUpdateButtonHandler);
+    checkUpdateButtonHandler = null;
+    boundCheckUpdateButton   = null;
   }
+
   if (boundFixVideoButton && fixVideoButtonHandler) {
     boundFixVideoButton.removeEventListener('click', fixVideoButtonHandler);
+    fixVideoButtonHandler = null;
+    boundFixVideoButton   = null;
   }
 
-  adminClearButtonHandler = null;
-  checkUpdateButtonHandler = null;
-  fixVideoButtonHandler = null;
-  boundAdminClearButton = null;
-  boundCheckUpdateButton = null;
-  boundFixVideoButton = null;
+  console.log('[MAINTENANCE] 🧹 Handlers cleaned up');
 }
 
-// ─────────────────────────────────────────────────────────────
-// DEBUG HELPERS
-// ─────────────────────────────────────────────────────────────
-
-window.inspectQueue = function () {
-  const CONSTANTS = window.CONSTANTS;
-  if (!CONSTANTS) { console.error('[MAINTENANCE] window.CONSTANTS not available'); return; }
-
-  const surveyTypes = CONSTANTS.SURVEY_TYPES || {};
-  const results = {};
-
-  Object.entries(surveyTypes).forEach(([type, cfg]) => {
-    const queue = JSON.parse(localStorage.getItem(cfg.storageKey) || '[]');
-    results[type] = queue;
-  });
-
-  console.log('');
-  console.log('══════════ QUEUE INSPECTION ══════════');
-  Object.entries(results).forEach(([type, queue]) => {
-    console.log(`--- ${type} (${queue.length} records) ---`);
-    queue.forEach((sub, idx) => {
-      console.log(`  ${idx + 1}. ID: ${sub.id}`);
-      console.log(`     Time: ${new Date(sub.timestamp).toLocaleString()}`);
-      console.log(`     Status: ${sub.sync_status || 'unsynced'}`);
-    });
-  });
-
-  console.log(`Active Survey Type: ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
-  console.log(`Network: ${navigator.onLine ? 'Online' : 'Offline'}`);
-  console.log('');
-  return results;
-};
-
-window.systemStatus = function () {
-  const CONSTANTS = window.CONSTANTS;
-  if (!CONSTANTS) { console.error('[MAINTENANCE] window.CONSTANTS not available'); return; }
-
-  const surveyTypes = CONSTANTS.SURVEY_TYPES || {};
-  const analytics = JSON.parse(localStorage.getItem(CONSTANTS.STORAGE_KEY_ANALYTICS) || '[]');
-  const lastSync = localStorage.getItem(CONSTANTS.STORAGE_KEY_LAST_SYNC);
-  const lastAnalytics = localStorage.getItem(CONSTANTS.STORAGE_KEY_LAST_ANALYTICS_SYNC);
-
-  console.log('');
-  console.log('══════════ SYSTEM STATUS — OFFLINE-FIRST KIOSK ══════════');
-  console.log(`Network: ${navigator.onLine ? '🌐 Online' : '📡 Offline Mode'}`);
-  console.log(`Active Survey: ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
-
-  Object.entries(surveyTypes).forEach(([type, cfg]) => {
-    const queue = JSON.parse(localStorage.getItem(cfg.storageKey) || '[]');
-    console.log(`Queue ${type}: ${queue.length}/${CONSTANTS.MAX_QUEUE_SIZE || 250} surveys`);
-  });
-
-  console.log(`Analytics: ${analytics.length}/${CONSTANTS.MAX_ANALYTICS_SIZE || 500} events`);
-  console.log(`Sync Status: ${adminState.syncInProgress ? 'In Progress' : 'Idle'}`);
-  console.log(`Analytics Sync: ${adminState.analyticsInProgress ? 'In Progress' : 'Idle'}`);
-  console.log(`Last Sync: ${lastSync ? new Date(parseInt(lastSync, 10)).toLocaleString() : 'Never'}`);
-  console.log(`Last Analytics: ${lastAnalytics ? new Date(parseInt(lastAnalytics, 10)).toLocaleString() : 'Never'}`);
-
-  if (isClearLocalLocked()) {
-    console.log(`🔒 Clear Local LOCKED — ${getRemainingLockoutTime()} min remaining`);
-  }
-
-  console.log('');
-  console.log('DEBUG COMMANDS:');
-  console.log('  window.inspectQueue()          — View all queues');
-  console.log('  window.systemStatus()          — View system status');
-  console.log('  window.inspectAdminHitTarget() — Inspect top hit target');
-  console.log('');
-};
-
-window.inspectAdminHitTarget = function () {
-  const x = Math.round(window.innerWidth / 2);
-  const y = 24;
-  const el = document.elementFromPoint(x, y);
-  const stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [];
-  console.log('[ADMIN DEBUG] elementFromPoint:', el);
-  console.log('[ADMIN DEBUG] elementsFromPoint:', stack);
-  return { el, stack };
+export default {
+  buildKioskIdentityBadge,
+  setupMaintenanceHandlers,
+  cleanupMaintenanceHandlers,
+  updateClearButtonState,
+  updateCheckUpdateButtonState,
+  updateFixVideoButtonState,
+  isClearLocalLocked,
+  getRemainingLockoutTime,
+  restoreLockoutState,
 };

@@ -1,39 +1,71 @@
 // FILE: sync/queueManager.js
-// PURPOSE: Queue access and maintenance for dual-survey offline storage
-// VERSION: 3.1.0
-// FIXES:
-//   - centralizes queue key resolution through config helpers
-//   - safely handles localStorage remove failures
-//   - validates both legacy and current timestamp fields
-//   - keeps admin counts accurate across both queues
-//   - deduplicates queue records by id when reading malformed storage
+// PURPOSE: Queue access and maintenance for multi-survey offline storage
+// VERSION: 3.3.0  ← UPGRADED
+// CHANGES FROM 3.2.1:
+//   - NEW: getKioskQueues(mode) — returns ONLY queues for current kiosk mode
+//     (temple → type1/type2; shayona → type3 only). Fixes admin panel global display.
+//   - NEW: getAllQueueConfigsWithData() now accepts mode param (defaults 'all')
+//   - INTEGRATES: window.DEVICECONFIG.kioskMode from device-config.js v1.1.5
+//   - BACKWARD COMPATIBLE: All existing functions unchanged
 // DEPENDENCIES: storageUtils.js
 
 import { safeGetLocalStorage, safeSetLocalStorage } from './storageUtils.js';
 
-function getSurveyTypeConfigs() {
-  const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
+// ── KIOSK MODE → QUEUE MAPPING ───────────────────────────────────────────────
+const KIOSK_QUEUE_CONFIGS = {
+  temple: {
+    type1: 'submissionQueue',
+    type2: 'submissionQueueV2'
+  },
+  shayona: {
+    type3: 'shayonaQueue'
+    // Add type3b: 'shayonaQueueV2' when needed
+  },
+  // FUTURE: giftShop: { type1: 'giftShopQueue1', type2: 'giftShopQueue2' },
+  // FUTURE: activity: { type1: 'activityQueue1', type2: 'activityQueue2' }
+};
 
-  return [
-    {
-      surveyType: 'type1',
-      queueKey:
-        surveyTypes?.type1?.storageKey ||
-        window.CONSTANTS?.STORAGE_KEY_QUEUE ||
-        'submissionQueue'
-    },
-    {
-      surveyType: 'type2',
-      queueKey:
-        surveyTypes?.type2?.storageKey ||
-        window.CONSTANTS?.STORAGE_KEY_QUEUE_V2 ||
-        'submissionQueueV2'
+function getSurveyTypeConfigs(mode = 'all') {
+  if (mode === 'all') {
+    const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
+    const typeKeys    = Object.keys(surveyTypes);
+
+    if (typeKeys.length === 0) {
+      return [{
+        surveyType: 'type1',
+        queueKey:   window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue'
+      }];
     }
-  ];
+
+    return typeKeys.map(typeKey => {
+      const cfg         = surveyTypes[typeKey] || {};
+      const fallbackKey = typeKey === 'type1'
+        ? (window.CONSTANTS?.STORAGE_KEY_QUEUE || 'submissionQueue')
+        : `${typeKey}Queue`;
+
+      return {
+        surveyType: typeKey,
+        queueKey:   cfg.storageKey || fallbackKey
+      };
+    });
+  }
+
+  // MODE-SPECIFIC: Only kiosk-relevant queues
+  const kioskQueues = KIOSK_QUEUE_CONFIGS[mode];
+  if (!kioskQueues) {
+    console.warn(`[QUEUE] Unknown kiosk mode "${mode}" — returning empty`);
+    return [];
+  }
+
+  return Object.entries(kioskQueues).map(([surveyType, queueKey]) => ({
+    surveyType,
+    queueKey
+  }));
 }
 
 function resolveActiveSurveyType() {
   return window.KIOSK_CONFIG?.getActiveSurveyType?.() ||
+         window.DEVICECONFIG?.defaultSurveyType ||  // ← NEW: Uses device-config v1.1.5
          window.CONSTANTS?.DEFAULT_SURVEY_TYPE ||
          'type1';
 }
@@ -45,7 +77,7 @@ function getQueueKey(overrideKey) {
     return window.KIOSK_CONFIG.getQueueKeyForSurveyType(resolveActiveSurveyType());
   }
 
-  const surveyType = resolveActiveSurveyType();
+  const surveyType   = resolveActiveSurveyType();
   const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
 
   return surveyConfig?.storageKey ||
@@ -53,6 +85,7 @@ function getQueueKey(overrideKey) {
          'submissionQueue';
 }
 
+// ── EXISTING FUNCTIONS (UNCHANGED — BACKWARD COMPAT) ─────────────────────────
 function safeRemoveLocalStorage(key) {
   try {
     localStorage.removeItem(key);
@@ -64,30 +97,25 @@ function safeRemoveLocalStorage(key) {
 }
 
 function checkQueueHealth(queueSize) {
-  const MAX = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
+  const MAX     = window.CONSTANTS?.MAX_QUEUE_SIZE          || 250;
   const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 200;
 
   if (queueSize >= WARNING) {
     console.warn(`⚠️ [QUEUE WARNING] Queue at ${queueSize}/${MAX} records`);
   }
-
   if (queueSize >= MAX - 50) {
     console.error(`🚨 [QUEUE CRITICAL] Queue nearly full: ${queueSize}/${MAX}`);
   }
 }
 
 function normalizeQueue(rawQueue, key) {
-  if (!Array.isArray(rawQueue)) {
-    return [];
-  }
+  if (!Array.isArray(rawQueue)) return [];
 
-  const seenIds = new Set();
+  const seenIds    = new Set();
   const normalized = [];
 
   rawQueue.forEach((item) => {
-    if (!item || typeof item !== 'object') {
-      return;
-    }
+    if (!item || typeof item !== 'object') return;
 
     const id = item.id;
     if (id && seenIds.has(id)) {
@@ -95,31 +123,11 @@ function normalizeQueue(rawQueue, key) {
       return;
     }
 
-    if (id) {
-      seenIds.add(id);
-    }
-
+    if (id) seenIds.add(id);
     normalized.push(item);
   });
 
   return normalized;
-}
-
-function getCountsByQueue() {
-  return getSurveyTypeConfigs().map(({ surveyType, queueKey }) => {
-    const queue = safeGetLocalStorage(queueKey);
-    const normalized = normalizeQueue(queue, queueKey);
-
-    if (Array.isArray(queue) && normalized.length !== queue.length) {
-      safeSetLocalStorage(queueKey, normalized);
-    }
-
-    return {
-      surveyType,
-      queueKey,
-      count: normalized.length
-    };
-  });
 }
 
 function hasValidSubmissionIdentity(submission) {
@@ -127,21 +135,45 @@ function hasValidSubmissionIdentity(submission) {
 }
 
 function hasValidSubmissionTimestamp(submission) {
-  return !!(
-    submission?.timestamp ||
-    submission?.completedAt ||
-    submission?.createdAt ||
-    submission?.submittedAt
-  );
+  return !!(submission?.timestamp || submission?.completedAt || submission?.createdAt || submission?.submittedAt);
 }
 
-/**
- * Get submission queue from localStorage
- * @param {string} [overrideKey] - Optional explicit storage key
- */
+// ── NEW: MODE-AWARE COUNTS ───────────────────────────────────────────────────
+function getCountsByQueue(mode = 'all') {
+  return getSurveyTypeConfigs(mode).map(({ surveyType, queueKey }) => {
+    const queue      = safeGetLocalStorage(queueKey);
+    const normalized = normalizeQueue(queue, queueKey);
+
+    if (Array.isArray(queue) && normalized.length !== queue.length) {
+      safeSetLocalStorage(queueKey, normalized);
+    }
+
+    return { surveyType, queueKey, count: normalized.length };
+  });
+}
+
+function getKioskQueues(mode = window.DEVICECONFIG?.kioskMode) {
+  /**
+   * CRITICAL: Returns ONLY queues for this kiosk mode
+   * temple → ['submissionQueue', 'submissionQueueV2']
+   * shayona → ['shayonaQueue']
+   */
+  if (!mode) {
+    console.warn('[QUEUE] getKioskQueues() no mode — using all');
+    return getSurveyTypeConfigs('all').map(c => c.queueKey);
+  }
+  
+  const configs = getSurveyTypeConfigs(mode);
+  return configs.map(c => c.queueKey);
+}
+
+// ─────────────────────────────────────────────────────────────
+// EXPORTS (BACKWARD COMPAT + NEW)
+// ─────────────────────────────────────────────────────────────
+
 export function getSubmissionQueue(overrideKey) {
-  const key = getQueueKey(overrideKey);
-  const queue = safeGetLocalStorage(key);
+  const key        = getQueueKey(overrideKey);
+  const queue      = safeGetLocalStorage(key);
   const normalized = normalizeQueue(queue, key);
 
   if (Array.isArray(queue) && normalized.length !== queue.length) {
@@ -151,46 +183,34 @@ export function getSubmissionQueue(overrideKey) {
   return normalized;
 }
 
-export function countUnsyncedRecords(overrideKey) {
+export function countUnsyncedRecords(overrideKey, mode) {
   if (overrideKey) {
     return getSubmissionQueue(overrideKey).length;
   }
-
-  return getCountsByQueue().reduce((sum, item) => sum + item.count, 0);
+  // NEW: mode-aware total
+  return getCountsByQueue(mode).reduce((sum, item) => sum + item.count, 0);
 }
 
-export function updateAdminCount() {
-  const counts = getCountsByQueue();
-  const total = counts.reduce((sum, item) => sum + item.count, 0);
+export function updateAdminCount(mode = window.DEVICECONFIG?.kioskMode) {
+  const counts = getCountsByQueue(mode);
+  const total  = counts.reduce((sum, item) => sum + item.count, 0);
 
-  const display =
-    window.globals?.unsyncedCountDisplay ||
-    document.getElementById('unsyncedCountDisplay');
-
+  const display = window.globals?.unsyncedCountDisplay || document.getElementById('unsyncedCountDisplay');
   if (display) {
     display.textContent = String(total);
-
-    const type1 = counts.find(c => c.surveyType === 'type1')?.count || 0;
-    const type2 = counts.find(c => c.surveyType === 'type2')?.count || 0;
-
-    display.title =
-      type1 > 0 || type2 > 0
-        ? `Type 1: ${type1} | Type 2: ${type2}`
-        : 'No unsynced records';
+    const nonZero = counts.filter(c => c.count > 0);
+    display.title = nonZero.length > 0
+      ? `${mode || 'All'}: ${nonZero.map(c => `${c.surveyType}: ${c.count}`).join(' | ')}`
+      : `No unsynced records (${mode || 'all'})`;
   }
 
   return total;
 }
 
-/**
- * Add submission to queue
- * @param {Object} submission
- * @param {string} [overrideKey]
- */
 export function addToQueue(submission, overrideKey) {
-  const key = getQueueKey(overrideKey);
+  const key            = getQueueKey(overrideKey);
   const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
-  let submissionQueue = getSubmissionQueue(key);
+  let submissionQueue  = getSubmissionQueue(key);
 
   checkQueueHealth(submissionQueue.length);
 
@@ -199,7 +219,8 @@ export function addToQueue(submission, overrideKey) {
   }
 
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-    console.error(`🚨 [QUEUE] Full at ${MAX_QUEUE_SIZE} - removing oldest`);
+    const dropCount = submissionQueue.length - (MAX_QUEUE_SIZE - 1);
+    console.error(`🚨 [QUEUE] Full at ${submissionQueue.length}/${MAX_QUEUE_SIZE} — dropping ${dropCount} oldest`);
     submissionQueue = submissionQueue.slice(-(MAX_QUEUE_SIZE - 1));
   }
 
@@ -207,16 +228,11 @@ export function addToQueue(submission, overrideKey) {
   safeSetLocalStorage(key, submissionQueue);
 
   console.log(`[QUEUE] Added to "${key}". Size: ${submissionQueue.length}/${MAX_QUEUE_SIZE}`);
-  updateAdminCount();
+  updateAdminCount();  // Auto-updates for current mode
 }
 
-/**
- * Remove submissions by IDs
- * @param {Array} ids
- * @param {string} [overrideKey]
- */
 export function removeFromQueue(ids, overrideKey) {
-  const key = getQueueKey(overrideKey);
+  const key             = getQueueKey(overrideKey);
   const submissionQueue = getSubmissionQueue(key);
 
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -224,9 +240,9 @@ export function removeFromQueue(ids, overrideKey) {
     return 0;
   }
 
-  const idsToRemove = new Set(ids.filter(Boolean));
+  const idsToRemove   = new Set(ids.filter(Boolean));
   const filteredQueue = submissionQueue.filter(sub => !idsToRemove.has(sub?.id));
-  const removedCount = submissionQueue.length - filteredQueue.length;
+  const removedCount  = submissionQueue.length - filteredQueue.length;
 
   console.log(`[QUEUE] Removed ${removedCount} from "${key}". Remaining: ${filteredQueue.length}`);
   safeSetLocalStorage(key, filteredQueue);
@@ -235,12 +251,8 @@ export function removeFromQueue(ids, overrideKey) {
   return removedCount;
 }
 
-/**
- * Clear entire queue
- * @param {string} [overrideKey]
- */
 export function clearQueue(overrideKey) {
-  const key = getQueueKey(overrideKey);
+  const key       = getQueueKey(overrideKey);
   const queueSize = getSubmissionQueue(key).length;
 
   const removed = safeRemoveLocalStorage(key);
@@ -252,14 +264,10 @@ export function clearQueue(overrideKey) {
   return removed;
 }
 
-/**
- * Validate queue submissions
- * @param {string} [overrideKey]
- */
 export function validateQueue(overrideKey) {
-  const key = getQueueKey(overrideKey);
+  const key   = getQueueKey(overrideKey);
   const queue = getSubmissionQueue(key);
-  const valid = [];
+  const valid   = [];
   const invalid = [];
 
   queue.forEach((submission) => {
@@ -278,6 +286,13 @@ export function validateQueue(overrideKey) {
   return { valid, invalid };
 }
 
+export function getAllQueueConfigsWithData(mode = 'all') {
+  /**
+   * BACKWARD COMPAT: Admin panel uses this — now mode-aware
+   */
+  return getCountsByQueue(mode);
+}
+
 export default {
   getSubmissionQueue,
   countUnsyncedRecords,
@@ -285,5 +300,7 @@ export default {
   addToQueue,
   removeFromQueue,
   clearQueue,
-  validateQueue
+  validateQueue,
+  getKioskQueues,           // ← NEW: Critical for admin filter
+  getAllQueueConfigsWithData // ← FIXED: Now mode-aware
 };

@@ -1,6 +1,21 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel shell — show/hide, unlock gesture, auto-hide, online indicator, orchestration
-// VERSION: 8.1.0 - vibrateSuccess/vibrateTap from adminUtils, resetAdminState from adminState
+// VERSION: 9.1.0
+// CHANGES FROM 9.0.0:
+//   - REMOVE: setupKioskSelector() call — replaced by buildKioskIdentityBadge()
+//   - REMOVE: setupKioskSyncButton() call — per-kiosk sync button removed;
+//     #syncAllButton in main panel handles all syncing
+//   - REMOVE: bindKioskSelector() function — nothing left to bind
+//   - REMOVE: unbindKioskSelector() function — nothing left to unbind
+//   - REMOVE: unbindKioskSelector() call in cleanupAdminPanel()
+//   - REMOVE: loadKioskQueues, getCurrentKioskMode, setupKioskSelector,
+//     setupKioskSyncButton imports from adminMaintenance.js — all removed
+//   - ADD: buildKioskIdentityBadge import from adminMaintenance.js
+//   - ADD: buildKioskIdentityBadge() call in setupAdminPanel() replacing the
+//     two removed setup calls — single line, no wiring needed (static badge)
+//   - UNCHANGED: Everything else — unlock gesture, hide button, sync all button,
+//     settings/drawer toggle, survey controls, maintenance handlers, device reset
+//     button relocation, network listeners, countdown, all state management
 // DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js
 
 import { adminState, resetAdminState } from './adminState.js';
@@ -22,31 +37,36 @@ import {
   updateFixVideoButtonState,
   setupMaintenanceHandlers,
   cleanupMaintenanceHandlers,
+  buildKioskIdentityBadge,
 } from './adminMaintenance.js';
 
 // ─────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
-const VERSION = 'v8.1.0';
-const AUTO_HIDE_DELAY = 20000;
+const VERSION                   = 'v9.1.0';
+const AUTO_HIDE_DELAY           = 20000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
-const STUCK_FLAG_TIMEOUT_MS = 60000;
+const STUCK_FLAG_TIMEOUT_MS     = 60000;
 
 // ─────────────────────────────────────────────────────────────
 // LOCAL STATE
 // ─────────────────────────────────────────────────────────────
 
-let autoHideTimer = null;
-let countdownInterval = null;
-let handleTitlePointerUp = null;
-let unlockTapCount = 0;
-let unlockTapTimeout = null;
-let unlockLastTapTime = 0;
-let onlineHandler = null;
-let offlineHandler = null;
+let autoHideTimer          = null;
+let countdownInterval      = null;
+let handleTitlePointerUp   = null;
+let unlockTapCount         = 0;
+let unlockTapTimeout       = null;
+let unlockLastTapTime      = 0;
+let onlineHandler          = null;
+let offlineHandler         = null;
 let hideAdminButtonHandler = null;
-let boundHideAdminButton = null;
+let boundHideAdminButton   = null;
+let syncAllButtonHandler   = null;
+let boundSyncAllButton     = null;
+let settingsButtonHandler  = null;
+let boundSettingsButton    = null;
 
 // ─────────────────────────────────────────────────────────────
 // STUCK FLAG RESET
@@ -55,17 +75,19 @@ let boundHideAdminButton = null;
 function resetStuckFlagsIfNeeded() {
   const now = Date.now();
 
-  if (adminState.syncInProgress && adminState.syncStartedAt && (now - adminState.syncStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
+  if (adminState.syncInProgress && adminState.syncStartedAt &&
+      (now - adminState.syncStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
     console.warn('[ADMIN] ⚠️ syncInProgress was stuck >60s — resetting');
     adminState.syncInProgress = false;
-    adminState.syncStartedAt = null;
+    adminState.syncStartedAt  = null;
     updateSyncButtonState(navigator.onLine);
   }
 
-  if (adminState.analyticsInProgress && adminState.analyticsStartedAt && (now - adminState.analyticsStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
+  if (adminState.analyticsInProgress && adminState.analyticsStartedAt &&
+      (now - adminState.analyticsStartedAt) > STUCK_FLAG_TIMEOUT_MS) {
     console.warn('[ADMIN] ⚠️ analyticsInProgress was stuck >60s — resetting');
     adminState.analyticsInProgress = false;
-    adminState.analyticsStartedAt = null;
+    adminState.analyticsStartedAt  = null;
     updateAnalyticsButtonState(navigator.onLine);
   }
 }
@@ -78,11 +100,11 @@ function updateCountdown() {
   const countdownEl = document.getElementById('adminCountdown');
   if (!countdownEl || !adminState.adminPanelVisible || !adminState.autoHideStartTime) return;
 
-  const elapsed = Date.now() - adminState.autoHideStartTime;
+  const elapsed   = Date.now() - adminState.autoHideStartTime;
   const remaining = Math.max(0, Math.ceil((AUTO_HIDE_DELAY - elapsed) / 1000));
 
   if (remaining > 0) {
-    countdownEl.textContent = `Auto-hide in ${remaining}s`;
+    countdownEl.textContent   = `Auto-hide in ${remaining}s`;
     countdownEl.style.opacity = remaining <= 5 ? '1' : '0.6';
   } else {
     countdownEl.textContent = '';
@@ -90,7 +112,7 @@ function updateCountdown() {
 }
 
 function startAutoHideTimer() {
-  if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
+  if (autoHideTimer)     { clearTimeout(autoHideTimer);      autoHideTimer     = null; }
   if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
 
   adminState.autoHideStartTime = Date.now();
@@ -110,9 +132,9 @@ function resetAutoHideTimer() {
 }
 
 function clearManagedTimers() {
-  if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
-  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
-  if (unlockTapTimeout) { clearTimeout(unlockTapTimeout); unlockTapTimeout = null; }
+  if (autoHideTimer)    { clearTimeout(autoHideTimer);      autoHideTimer     = null; }
+  if (countdownInterval){ clearInterval(countdownInterval); countdownInterval = null; }
+  if (unlockTapTimeout) { clearTimeout(unlockTapTimeout);   unlockTapTimeout  = null; }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -123,8 +145,15 @@ function hideAdminPanel() {
   const adminControls = window.globals?.adminControls;
   if (adminControls) {
     adminControls.classList.add('hidden');
+    adminControls.classList.remove('admin-maintenance-open');
     document.body.classList.remove('admin-active');
   }
+
+  const settingsBtn = document.getElementById('adminSettingsButton');
+  if (settingsBtn) settingsBtn.setAttribute('aria-expanded', 'false');
+
+  const drawer = document.getElementById('admin-maintenance-drawer');
+  if (drawer) drawer.setAttribute('aria-hidden', 'true');
 
   adminState.adminPanelVisible = false;
   adminState.autoHideStartTime = null;
@@ -152,6 +181,8 @@ function showAdminPanel() {
 
   updateAllButtonStates();
   updateSurveyTypeSwitcher();
+  _updateSyncAllButtonState(navigator.onLine);
+
   startAutoHideTimer();
   vibrateSuccess();
   trackAdminEvent('admin_panel_opened');
@@ -180,7 +211,199 @@ function updateAllButtonStates() {
   updateCheckUpdateButtonState(isOnline);
   updateFixVideoButtonState();
   updateClearButtonState();
+  _updateSyncAllButtonState(isOnline);
   console.log(`[ADMIN] 🔘 All buttons updated (${isOnline ? 'ONLINE' : 'OFFLINE'})`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// SYNC ALL BUTTON
+// ─────────────────────────────────────────────────────────────
+
+function _updateSyncAllButtonState(isOnline) {
+  const btn = document.getElementById('syncAllButton');
+  if (!btn) return;
+
+  const isBusy        = adminState.syncInProgress || adminState.analyticsInProgress;
+  const shouldDisable = !isOnline || isBusy;
+
+  btn.disabled = shouldDisable;
+  btn.setAttribute('aria-busy',     isBusy        ? 'true' : 'false');
+  btn.setAttribute('aria-disabled', shouldDisable ? 'true' : 'false');
+
+  if (isBusy) {
+    btn.textContent   = 'Syncing…';
+    btn.style.opacity = '0.7';
+    btn.style.cursor  = 'wait';
+  } else if (!isOnline) {
+    btn.textContent   = 'Sync (Offline)';
+    btn.style.opacity = '0.5';
+    btn.style.cursor  = 'not-allowed';
+  } else {
+    btn.textContent   = 'Sync';
+    btn.style.opacity = '1';
+    btn.style.cursor  = 'pointer';
+  }
+
+  btn.title = isBusy
+    ? 'Sync in progress…'
+    : !isOnline
+      ? 'Cannot sync — device is offline'
+      : 'Sync all data and analytics to server';
+}
+
+function wireSyncAllButton() {
+  if (boundSyncAllButton && syncAllButtonHandler) {
+    boundSyncAllButton.removeEventListener('click', syncAllButtonHandler);
+    syncAllButtonHandler = null;
+    boundSyncAllButton   = null;
+  }
+
+  const btn = document.getElementById('syncAllButton');
+  if (!btn) {
+    console.warn('[ADMIN] ⚠️ #syncAllButton not found in DOM');
+    return;
+  }
+
+  syncAllButtonHandler = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resetAutoHideTimer();
+
+    if (!navigator.onLine) {
+      alert('📡 Cannot sync — device is offline.\n\nData will sync automatically when connection is restored.');
+      trackAdminEvent('sync_all_blocked_offline');
+      return;
+    }
+
+    if (adminState.syncInProgress || adminState.analyticsInProgress) {
+      console.warn('[ADMIN] Sync All blocked — already in progress');
+      return;
+    }
+
+    console.log('[ADMIN] 🔄 Sync All triggered (data + analytics)');
+    trackAdminEvent('sync_all_triggered');
+
+    // ── Phase 1: Sync data ─────────────────────────────────────────────────
+    adminState.syncInProgress = true;
+    adminState.syncStartedAt  = Date.now();
+    _updateSyncAllButtonState(true);
+    updateSyncButtonState(true);
+
+    try {
+      if (window.dataHandlers?.syncData) {
+        await window.dataHandlers.syncData(true, { syncBothQueues: true });
+        console.log('[ADMIN] ✅ Sync All — data phase complete');
+      } else {
+        console.error('[ADMIN] ❌ syncData not available');
+        alert('❌ Sync function not available.');
+        return;
+      }
+    } catch (err) {
+      console.error('[ADMIN] ❌ Sync All — data phase failed:', err);
+      alert(`❌ Data sync failed: ${err.message}`);
+    } finally {
+      adminState.syncInProgress = false;
+      adminState.syncStartedAt  = null;
+      updateSyncButtonState(navigator.onLine);
+    }
+
+    // ── Phase 2: Sync analytics ────────────────────────────────────────────
+    adminState.analyticsInProgress = true;
+    adminState.analyticsStartedAt  = Date.now();
+    _updateSyncAllButtonState(true);
+    updateAnalyticsButtonState(true);
+
+    try {
+      if (window.dataHandlers?.syncAnalytics) {
+        await window.dataHandlers.syncAnalytics(true);
+        console.log('[ADMIN] ✅ Sync All — analytics phase complete');
+      } else {
+        console.error('[ADMIN] ❌ syncAnalytics not available');
+      }
+    } catch (err) {
+      console.error('[ADMIN] ❌ Sync All — analytics phase failed:', err);
+    } finally {
+      adminState.analyticsInProgress = false;
+      adminState.analyticsStartedAt  = null;
+      updateAnalyticsButtonState(navigator.onLine);
+      _updateSyncAllButtonState(navigator.onLine);
+    }
+
+    console.log('[ADMIN] ✅ Sync All complete');
+    trackAdminEvent('sync_all_complete');
+  };
+
+  btn.addEventListener('click', syncAllButtonHandler);
+  boundSyncAllButton = btn;
+  console.log('[ADMIN] ✅ Sync All button wired');
+}
+
+// ─────────────────────────────────────────────────────────────
+// SETTINGS / DRAWER TOGGLE
+// ─────────────────────────────────────────────────────────────
+
+function wireSettingsButton() {
+  if (boundSettingsButton && settingsButtonHandler) {
+    boundSettingsButton.removeEventListener('click', settingsButtonHandler);
+    settingsButtonHandler = null;
+    boundSettingsButton   = null;
+  }
+
+  const btn = document.getElementById('adminSettingsButton');
+  if (!btn) {
+    console.warn('[ADMIN] ⚠️ #adminSettingsButton not found in DOM');
+    return;
+  }
+
+  settingsButtonHandler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resetAutoHideTimer();
+
+    const adminControls = window.globals?.adminControls;
+    if (!adminControls) return;
+
+    const isOpen = adminControls.classList.toggle('admin-maintenance-open');
+
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+
+    const drawer = document.getElementById('admin-maintenance-drawer');
+    if (drawer) drawer.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+
+    console.log(`[ADMIN] 🔧 Maintenance drawer ${isOpen ? 'opened' : 'closed'}`);
+    trackAdminEvent('maintenance_drawer_toggled', { open: isOpen });
+  };
+
+  btn.addEventListener('click', settingsButtonHandler);
+  boundSettingsButton = btn;
+  console.log('[ADMIN] ✅ Settings button wired');
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEVICE RESET BUTTON RELOCATION
+// ─────────────────────────────────────────────────────────────
+
+function _relocateDeviceResetButton() {
+  const resetBtn = document.getElementById('adminDeviceResetBtn');
+  const drawer   = document.getElementById('admin-maintenance-drawer');
+
+  if (!resetBtn) {
+    console.warn('[ADMIN] _relocateDeviceResetButton: #adminDeviceResetBtn not found');
+    return;
+  }
+
+  if (!drawer) {
+    console.warn('[ADMIN] _relocateDeviceResetButton: #admin-maintenance-drawer not found');
+    return;
+  }
+
+  const prevSibling = resetBtn.previousElementSibling;
+  if (prevSibling && prevSibling.tagName === 'HR') {
+    drawer.appendChild(prevSibling);
+  }
+
+  drawer.appendChild(resetBtn);
+  console.log('[ADMIN] ✅ #adminDeviceResetBtn relocated into maintenance drawer');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -228,7 +451,7 @@ function bindAdminUnlock() {
     document.removeEventListener('pointerup', handleTitlePointerUp, true);
   }
 
-  unlockTapCount = 0;
+  unlockTapCount    = 0;
   unlockLastTapTime = 0;
   if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
   unlockTapTimeout = null;
@@ -248,7 +471,7 @@ function bindAdminUnlock() {
 
     if (unlockTapTimeout) clearTimeout(unlockTapTimeout);
     unlockTapTimeout = setTimeout(() => {
-      unlockTapCount = 0;
+      unlockTapCount   = 0;
       unlockTapTimeout = null;
     }, 2000);
 
@@ -271,9 +494,45 @@ function unbindAdminUnlock() {
     handleTitlePointerUp = null;
   }
 
-  unlockTapCount = 0;
+  unlockTapCount    = 0;
   unlockLastTapTime = 0;
   if (unlockTapTimeout) { clearTimeout(unlockTapTimeout); unlockTapTimeout = null; }
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEVICE RESET BUTTON BUILDER
+// ─────────────────────────────────────────────────────────────
+
+function _buildDeviceResetButton(adminControls) {
+  if (document.getElementById('adminDeviceResetBtn')) return;
+
+  const divider = document.createElement('hr');
+  divider.style.cssText = 'border:none;border-top:1px solid #e5e7eb;margin:8px 0';
+
+  const resetBtn = document.createElement('button');
+  resetBtn.id          = 'adminDeviceResetBtn';
+  resetBtn.type        = 'button';
+  resetBtn.textContent = '🔄 Reset Device Type';
+  resetBtn.style.cssText = `
+    width:100%;padding:0.6rem 1rem;background:#fef3c7;color:#92400e;
+    border:1px solid #fcd34d;border-radius:6px;font-size:0.85rem;
+    font-weight:600;cursor:pointer;margin-top:4px;
+  `;
+
+  resetBtn.addEventListener('click', () => {
+    resetAutoHideTimer();
+    if (confirm('This will reset the kiosk device type.\nThe setup screen will appear on the next reload.\n\nContinue?')) {
+      localStorage.removeItem('deviceConfig');
+      localStorage.removeItem('kioskState');
+      console.log('[ADMIN] 🔄 deviceConfig + kioskState cleared — reloading for setup screen');
+      trackAdminEvent('device_type_reset');
+      location.reload();
+    }
+  });
+
+  adminControls.appendChild(divider);
+  adminControls.appendChild(resetBtn);
+  console.log('[ADMIN] ✅ Device reset button added');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -281,7 +540,7 @@ function unbindAdminUnlock() {
 // ─────────────────────────────────────────────────────────────
 
 export function setupAdminPanel() {
-  const mainTitle = window.globals?.mainTitle;
+  const mainTitle     = window.globals?.mainTitle;
   const adminControls = window.globals?.adminControls;
 
   if (!mainTitle || !adminControls) {
@@ -289,16 +548,17 @@ export function setupAdminPanel() {
     return;
   }
 
-  if (onlineHandler) window.removeEventListener('online', onlineHandler);
+  if (onlineHandler)  window.removeEventListener('online',  onlineHandler);
   if (offlineHandler) window.removeEventListener('offline', offlineHandler);
 
+  // ── Status row (online indicator + countdown) ─────────────────────────────
   if (!document.getElementById('adminCountdown')) {
     const statusRow = document.createElement('div');
     statusRow.className = 'admin-status-row';
 
     const onlineStatus = document.createElement('p');
-    onlineStatus.id = 'adminOnlineStatus';
-    onlineStatus.className = 'admin-online-state';
+    onlineStatus.id          = 'adminOnlineStatus';
+    onlineStatus.className   = 'admin-online-state';
     onlineStatus.textContent = navigator.onLine ? '🌐 Online' : '📡 Offline Mode';
 
     const countdown = document.createElement('p');
@@ -315,16 +575,42 @@ export function setupAdminPanel() {
   adminState.adminPanelVisible = false;
   adminState.autoHideStartTime = null;
 
-  buildSurveyTypeSwitcher(adminControls, resetAutoHideTimer);
+  // ── Survey type switcher ──────────────────────────────────────────────────
+  // Shown only when device has more than one allowed survey type.
+  // Temple: ['type1','type2'] → two pills shown with operational labels.
+  // Shayona: ['type3'] → switcher hidden entirely (single type device).
+  const allowedTypes = window.DEVICECONFIG?.allowedSurveyTypes ?? [];
+  if (allowedTypes.length > 1) {
+    buildSurveyTypeSwitcher(adminControls, resetAutoHideTimer);
+    console.log('[ADMIN] ✅ Survey type switcher built');
+  } else {
+    console.log('[ADMIN] ℹ️ Single survey type — switcher hidden');
+  }
+
+  // ── Kiosk identity badge ──────────────────────────────────────────────────
+  // Static read-only badge showing which kiosk this device is configured as.
+  // Reads window.DEVICECONFIG.kioskMode + kioskId — set once at first-launch,
+  // never changeable at runtime. Replaces the old dropdown selector (which
+  // changed nothing about actual device operation) and the paired per-kiosk
+  // sync button (redundant — #syncAllButton covers all syncing on this device).
+  buildKioskIdentityBadge('adminControls');
+
+  // ── Unlock + hide button ──────────────────────────────────────────────────
   bindAdminUnlock();
   bindHideButton(window.globals?.hideAdminButton);
 
+  // ── Primary action buttons ────────────────────────────────────────────────
+  wireSyncAllButton();
+  wireSettingsButton();
+
+  // ── Drawer: survey sync buttons (Sync Data, Sync Analytics) ──────────────
   setupSurveyControls(
     window.globals?.syncButton,
     window.globals?.syncAnalyticsButton,
     resetAutoHideTimer
   );
 
+  // ── Drawer: maintenance button handlers ───────────────────────────────────
   setupMaintenanceHandlers(
     window.globals?.adminClearButton,
     window.globals?.checkUpdateButton,
@@ -332,6 +618,11 @@ export function setupAdminPanel() {
     resetAutoHideTimer
   );
 
+  // ── Drawer: device reset button — build then move into drawer ────────────
+  _buildDeviceResetButton(adminControls);
+  _relocateDeviceResetButton();
+
+  // ── Network listeners ─────────────────────────────────────────────────────
   onlineHandler = () => {
     console.log('[ADMIN] 🌐 Connection restored');
     if (adminState.adminPanelVisible) updateAllButtonStates();
@@ -344,28 +635,35 @@ export function setupAdminPanel() {
     trackAdminEvent('connection_lost');
   };
 
-  window.addEventListener('online', onlineHandler);
+  window.addEventListener('online',  onlineHandler);
   window.addEventListener('offline', offlineHandler);
 
-  window.setupAdminPanel = setupAdminPanel;
+  window.setupAdminPanel   = setupAdminPanel;
   window.cleanupAdminPanel = cleanupAdminPanel;
 
   console.log('═══════════════════════════════════════════════════════');
   console.log(`🎛️ ADMIN PANEL CONFIGURED (${VERSION} — modular split)`);
   console.log('═══════════════════════════════════════════════════════');
-  console.log('  Mode:           Offline-First iPad Kiosk PWA');
-  console.log(`  Auto-hide:      ${AUTO_HIDE_DELAY / 1000}s`);
-  console.log(`  Active Survey:  ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
-  console.log(`  Network status: ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
+  console.log('  Mode:             Offline-First iPad Kiosk PWA');
+  console.log(`  Auto-hide:        ${AUTO_HIDE_DELAY / 1000}s`);
+  console.log(`  Device mode:      ${window.DEVICECONFIG?.kioskMode ?? 'unknown'}`);
+  console.log(`  Identity badge:   ${document.getElementById('kioskIdentityBadge') ? '✅' : '❌'}`);
+  console.log(`  Sync All button:  ${document.getElementById('syncAllButton') ? '✅' : '❌'}`);
+  console.log(`  Settings button:  ${document.getElementById('adminSettingsButton') ? '✅' : '❌'}`);
+  console.log(`  Maint. drawer:    ${document.getElementById('admin-maintenance-drawer') ? '✅' : '❌'}`);
+  console.log(`  Device reset:     ${document.getElementById('adminDeviceResetBtn') ? '✅ (in drawer)' : '❌'}`);
+  console.log(`  Survey types:     ${(allowedTypes.length > 0 ? allowedTypes : ['type1']).join(', ')}`);
+  console.log(`  Active Survey:    ${window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1'}`);
+  console.log(`  Network status:   ${navigator.onLine ? '🌐 Online' : '📡 Offline'}`);
   console.log('═══════════════════════════════════════════════════════');
 }
 
 export function cleanupAdminPanel() {
   clearManagedTimers();
 
-  if (onlineHandler) window.removeEventListener('online', onlineHandler);
+  if (onlineHandler)  window.removeEventListener('online',  onlineHandler);
   if (offlineHandler) window.removeEventListener('offline', offlineHandler);
-  onlineHandler = null;
+  onlineHandler  = null;
   offlineHandler = null;
 
   unbindAdminUnlock();
@@ -373,17 +671,31 @@ export function cleanupAdminPanel() {
   if (boundHideAdminButton && hideAdminButtonHandler) {
     boundHideAdminButton.removeEventListener('click', hideAdminButtonHandler);
     hideAdminButtonHandler = null;
-    boundHideAdminButton = null;
+    boundHideAdminButton   = null;
+  }
+
+  if (boundSyncAllButton && syncAllButtonHandler) {
+    boundSyncAllButton.removeEventListener('click', syncAllButtonHandler);
+    syncAllButtonHandler = null;
+    boundSyncAllButton   = null;
+  }
+
+  if (boundSettingsButton && settingsButtonHandler) {
+    boundSettingsButton.removeEventListener('click', settingsButtonHandler);
+    settingsButtonHandler = null;
+    boundSettingsButton   = null;
   }
 
   cleanupSurveyControls();
   cleanupMaintenanceHandlers();
 
-  // Single call resets all shared flags — no risk of missing one
   resetAdminState();
 
   const adminControls = window.globals?.adminControls;
-  if (adminControls) adminControls.classList.add('hidden');
+  if (adminControls) {
+    adminControls.classList.add('hidden');
+    adminControls.classList.remove('admin-maintenance-open');
+  }
   document.body.classList.remove('admin-active');
 
   const countdownEl = document.getElementById('adminCountdown');

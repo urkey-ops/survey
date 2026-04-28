@@ -1,6 +1,16 @@
 // FILE: uiHandlers.js
 // PURPOSE: Bridge file to collect all modular exports and assign to window.uiHandlers
-// This maintains backward compatibility with older non-module access patterns
+// VERSION: 2.1.0
+// CHANGES FROM 2.0.0:
+//   - REMOVE: import from './ui/typewriterEffect.js' — file removed in Phase 2,
+//     404 was aborting the entire ES module and preventing window.uiHandlers
+//     from ever being assigned. All downstream handlers (submitSurvey,
+//     addInactivityListeners, performKioskReset, goNext, goPrev) were
+//     silently undefined as a result.
+//   - REMOVE: typewriterManager, addTypewriterEffect, rotateQuestionText,
+//     clearTypewriterTimers from window.uiHandlers (no replacement needed —
+//     core.js already has a window.addTypewriterEffect fallback guard)
+//   - KEEP: clearTimerManagerTypewriterTimers from timerManager (safe, exists)
 
 import {
     resetInactivityTimer,
@@ -32,13 +42,6 @@ import {
 } from './timers/timerManager.js';
 
 import {
-    typewriterManager,
-    addTypewriterEffect,
-    clearTypewriterTimers as clearTypewriterEffectTimers,
-    rotateQuestionText
-} from './ui/typewriterEffect.js';
-
-import {
     validateQuestion,
     clearErrors,
     validateEmail,
@@ -67,25 +70,10 @@ import {
 } from './ui/navigation/index.js';
 
 // Assign required globals for module compatibility
-window.typewriterManager = typewriterManager;
-window.timerManager = timerManager;
-window.validateQuestion = validateQuestion;
-window.clearErrors = clearErrors;
-
-// Unified helper so legacy callers can clear both timer-manager and typewriter-owned timers safely
-function clearAllTypewriterTimers() {
-    try {
-        clearTimerManagerTypewriterTimers();
-    } catch (error) {
-        console.warn('[UI HANDLERS] Timer manager typewriter cleanup failed:', error);
-    }
-
-    try {
-        clearTypewriterEffectTimers();
-    } catch (error) {
-        console.warn('[UI HANDLERS] Typewriter effect cleanup failed:', error);
-    }
-}
+window.timerManager      = timerManager;
+window.validateQuestion  = validateQuestion;
+window.clearErrors       = clearErrors;
+// window.typewriterManager intentionally not set — typewriterEffect.js removed in Phase 2
 
 window.uiHandlers = {
     // Inactivity handlers
@@ -105,7 +93,7 @@ window.uiHandlers = {
     clearSyncTimer,
     clearCountdownTimer,
     clearRotationTimer,
-    clearTypewriterTimers: clearAllTypewriterTimers,
+    clearTypewriterTimers: clearTimerManagerTypewriterTimers,
     clearIntervals,
     setInactivityTimer,
     setSyncTimer,
@@ -114,11 +102,6 @@ window.uiHandlers = {
     getTimerStatus,
     hasActiveTimers,
     emergencyStopAllTimers,
-
-    // Typewriter effect
-    typewriterManager,
-    addTypewriterEffect,
-    rotateQuestionText,
 
     // Validation
     validateQuestion,

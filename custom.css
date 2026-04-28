@@ -1,55 +1,102 @@
 /* FILE: custom.css
-   VERSION: 5.7.0
-   CHANGES FROM 5.6.0:
-   - Progress bar height 8px → 12px
-   - #stepCounter font-size 0.875rem → 1rem, top offset adjusted for taller bar
-   - #nextBtn box-shadow boosted, min-width 200px
-   - scale(1.03) added to all selected option labels (global + per-component)
-   - Scroll fade ::after gradient added to #surveyContent
+   VERSION: 7.0.0
+   CHANGES FROM 6.0.0:
+   - ADD: #syncAllButton — primary visible "Sync" button (green, prominent)
+   - ADD: .admin-primary-actions — flex row holding Sync All + Hide + Settings toggle
+   - ADD: #adminSettingsButton — compact ⚙️ icon button that toggles the drawer
+   - ADD: .admin-maintenance-drawer — hidden-by-default drawer containing all
+          rarely-used maintenance controls (Sync Data, Sync Analytics, Check Update,
+          Fix Video, Clear Local, and injected device-reset button)
+   - ADD: .admin-drawer-label — small "Maintenance" section label inside drawer
+   - ADD: .admin-maintenance-open modifier on #adminControls — slides drawer open
+   - ADD: .admin-kiosk-sync-row — compact row for injected kiosk sync button
+   - COMPACT: .admin-actions-grid inside drawer uses repeat(3) columns (unchanged)
+   - COMPACT: .admin-primary-actions collapses gracefully on portrait breakpoint
+   - UNCHANGED: All existing tokens, component styles, survey styles, start screen,
+     progress bar, survey content, button container, option labels, etc.
+   - UNCHANGED: All IDs/classes referenced by JS — no renames, no removals
 */
 
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
 :root {
-  --orange:          #E86000;
-  --orange-dark:     #C45200;
-  --orange-darker:   #8B3A00;
-  --orange-light:    #FFE5CC;
-  --orange-mid:      #FFD4B0;
-  --bg:              #EDEBE7;
-  --card-bg:         #FFFFFF;
-  --card-border:     1px solid rgba(0,0,0,0.07);
-  --card-radius:     14px;
-  --card-shadow:     0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
-  --text-primary:    #111827;
-  --text-secondary:  #4B5563;
-  --text-muted:      #5A6270;
-  --border-default:  1.5px solid #D1D5DB;
-  --border-selected: 3px solid var(--orange);
-  --radius-sm:       8px;
-  --radius-md:       10px;
-  --radius-lg:       14px;
-  --min-tap:         60px;
-  --font-option:     1.125rem;
-  --gap-grid:        8px;
-  --gap-question:    20px;
-  --transition:      background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
-  --card-gap:        10px;
-  --page-h-pad:      20px;
-  --page-v-pad:      16px;
-  --col-max:         820px;
-  --keyboard-height: 0px;
-  --header-height:   0px;
+  /* Brand */
+  --orange:           #E86000;
+  --orange-dark:      #C45200;
+  --orange-darker:    #8B3A00;
+  --orange-light:     #FFE5CC;
+  --orange-mid:       #FFD4B0;
+  --orange-glow:      rgba(232, 96, 0, 0.15);
+
+  /* Surfaces */
+  --bg:               #EDEBE7;
+  --card-bg:          #FFFFFF;
+  --surface-offset:   #FAFAFA;
+  --surface-hover:    #F3F0EC;
+
+  /* Borders */
+  --card-border:      1px solid rgba(0, 0, 0, 0.07);
+  --border-default:   1.5px solid #D1D5DB;
+  --border-hover:     #9CA3AF;
+  --border-divider:   #F0EEE8;
+
+  /* Shadows */
+  --card-shadow:      0 2px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --btn-shadow:       0 4px 14px rgba(196, 82, 0, 0.45);
+  --btn-shadow-hover: 0 6px 18px rgba(196, 82, 0, 0.52);
+  --selected-glow:    0 0 0 3px var(--orange-glow);
+
+  /* Text */
+  --text-primary:     #111827;
+  --text-secondary:   #4B5563;
+  --text-muted:       #5A6270;
+
+  /* Radius */
+  --card-radius:      14px;
+  --radius-sm:        8px;
+  --radius-md:        10px;
+  --radius-lg:        14px;
+  --radius-pill:      9999px;
+
+  /* Spacing / sizing */
+  --min-tap:          60px;
+  --gap-grid:         8px;
+  --gap-question:     20px;
+  --card-gap:         10px;
+  --page-h-pad:       20px;
+  --page-v-pad:       16px;
+  --col-max:          820px;
+
+  /* Typography */
+  --font-option:      1.125rem;
+
+  /* Motion */
+  --transition:       background 0.12s ease,
+                      border-color 0.12s ease,
+                      color 0.12s ease,
+                      transform 0.08s ease,
+                      box-shadow 0.12s ease;
+
+  /* Runtime (set by JS) */
+  --keyboard-height:  0px;
+  --header-height:    0px;
+
+  /* ── Admin drawer ────────────────────────────────────────────────────── */
+  --drawer-transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                       opacity    0.18s ease,
+                       visibility 0.18s ease;
 }
 
+/* ── Reset ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
-  background: var(--bg);
+  margin: 0;
+  padding: 0 !important;
   min-height: 100vh;
   width: 100%;
   overflow: hidden;
   display: block !important;
-  padding: 0 !important;
-  margin: 0;
+  background: var(--bg);
   font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   color: var(--text-primary);
@@ -62,7 +109,7 @@ label {
   touch-action: manipulation;
 }
 
-/* ── Start screen ── */
+/* ── Start screen ────────────────────────────────────────────────────────── */
 #kioskStartScreen {
   position: fixed !important;
   inset: 0;
@@ -74,11 +121,17 @@ label {
   justify-content: center;
   overflow: hidden;
   color: #fff;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
+
+#kioskStartScreen h1,
+#kioskStartScreen h2,
+#kioskStartScreen h3,
+#kioskStartScreen p,
+#kioskStartScreen span { color: #fff; }
 
 #kioskStartScreen.hidden,
 #kioskStartScreen.start-screen-fade-out,
@@ -88,24 +141,16 @@ label {
   pointer-events: none !important;
 }
 
-#kioskStartScreen.hidden {
-  display: none !important;
-}
-
-#kioskStartScreen h1,
-#kioskStartScreen h2,
-#kioskStartScreen h3,
-#kioskStartScreen p,
-#kioskStartScreen span { color: #fff; }
+#kioskStartScreen.hidden { display: none !important; }
 
 #rotatingQuestion {
   color: #fff;
   font-weight: 600;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
   text-align: center;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
 }
 
-/* ── Main shell ── */
+/* ── Main shell ──────────────────────────────────────────────────────────── */
 main {
   position: fixed !important;
   inset: 0;
@@ -121,7 +166,7 @@ main {
 
 main:not(.hidden) { display: flex !important; }
 
-/* ── Header card ── */
+/* ── Header card ─────────────────────────────────────────────────────────── */
 header {
   position: relative;
   z-index: 200;
@@ -151,22 +196,22 @@ header {
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
-  cursor: pointer;
-  border-radius: 6px;
   min-height: 36px;
   display: inline-flex;
   align-items: center;
-  transition: background 0.15s ease;
-  -webkit-user-select: none;
-  user-select: none;
+  border-radius: 6px;
+  cursor: pointer;
   pointer-events: auto !important;
   touch-action: manipulation !important;
-  -webkit-tap-highlight-color: rgba(232,96,0,0.12);
+  -webkit-tap-highlight-color: rgba(232, 96, 0, 0.12);
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background 0.15s ease;
 }
 
-#mainTitle:active { background: rgba(232,96,0,0.10); }
+#mainTitle:active { background: rgba(232, 96, 0, 0.10); }
 
-/* ── Admin controls ── */
+/* ── Admin controls ──────────────────────────────────────────────────────── */
 #adminControls {
   position: relative;
   z-index: 205;
@@ -174,13 +219,15 @@ header {
   grid-row: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
+  align-items: stretch;
+  gap: 6px;
   min-width: 0;
+  /* Drawer needs a positioned ancestor for absolute children */
 }
 
 #adminControls.hidden { display: none !important; }
 
+/* ── Status row ──────────────────────────────────────────────────────────── */
 .admin-status-row {
   display: flex;
   width: 100%;
@@ -192,7 +239,7 @@ header {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -200,68 +247,66 @@ header {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
-  padding: 7px 11px;
-  margin: 0;
-  border-radius: 9999px;
-  background: rgba(16,185,129,0.10);
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(16, 185, 129, 0.10);
   color: #0f172a;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .admin-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 9999px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
   background: #10b981;
-  box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
   flex: 0 0 auto;
 }
 
 .admin-status-text {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.3;
   color: #64748b;
-  min-height: 16px;
+  min-height: 14px;
   text-align: right;
 }
 
-.admin-online-state {
-  display: none;
-}
+.admin-online-state { display: none; }
 
 #adminOnlineStatus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px 10px;
-  border-radius: 9999px;
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: #059669;
-  background: rgba(16,185,129,0.08);
+  background: rgba(16, 185, 129, 0.08);
   white-space: nowrap;
   margin: 0;
 }
 
+/* ── Survey type switcher (injected — layout unchanged) ──────────────────── */
 .survey-type-switcher {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(248,250,252,0.95);
-  border: 1px solid rgba(148,163,184,0.18);
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.18);
   width: 100%;
 }
 
 .survey-type-label {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -270,97 +315,251 @@ header {
 
 .survey-type-current {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
 }
 
 .survey-type-pills {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .survey-type-pills button {
-  min-height: 48px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(2,132,199,0.22);
-  background: #ffffff;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  background: #fff;
   color: #0369a1;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: var(--transition);
 }
 
 .survey-type-pills button:active { transform: scale(0.98); }
 
-.admin-actions-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+/* ── Kiosk identity badge (static — replaces old dropdown selector) ──────── */
+/*
+  Read-only. Injected by buildKioskIdentityBadge() in adminMaintenance.js.
+  Shows which kiosk this device is permanently configured as.
+  No hover, no cursor:pointer — information, not a control.
+*/
+.kiosk-identity-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.admin-actions-grid button {
-  min-height: 48px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(15,23,42,0.10);
-  background: #f8fafc;
-  color: #0f172a;
+.kiosk-identity-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.kiosk-identity-text {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.kiosk-identity-mode {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.kiosk-identity-id {
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Primary visible actions row ─────────────────────────────────────────── */
+/*
+  Contains: #syncAllButton  #hideAdminButton  #adminSettingsButton
+  Always visible. Compact height. Right-aligned.
+*/
+.admin-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+/* Sync All — main CTA, green */
+.admin-sync-all-btn {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(16, 185, 129, 0.30);
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.admin-sync-all-btn:hover  { background: rgba(16, 185, 129, 0.20); }
+.admin-sync-all-btn:active { transform: scale(0.97); opacity: 0.85; }
+
+/* Disabled / in-progress state applied by JS */
+.admin-sync-all-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Hide button */
+.admin-hide-btn {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: rgba(15, 23, 42, 0.04);
+  color: #334155;
   font-size: 13px;
   font-weight: 700;
-  line-height: 1.1;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.admin-actions-grid button:active { transform: scale(0.98); }
+.admin-hide-btn:hover  { background: rgba(15, 23, 42, 0.08); }
+.admin-hide-btn:active { transform: scale(0.97); }
 
-#syncButton {
-  background: rgba(16,185,129,0.10) !important;
-  border-color: rgba(16,185,129,0.22) !important;
-  color: #047857 !important;
+/* Settings / wrench toggle */
+.admin-settings-btn {
+  min-height: 40px;
+  min-width: 40px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(100, 116, 139, 0.18);
+  background: rgba(248, 250, 252, 0.9);
+  color: #475569;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-#syncAnalyticsButton {
-  background: rgba(59,130,246,0.10) !important;
-  border-color: rgba(59,130,246,0.22) !important;
-  color: #1d4ed8 !important;
+.admin-settings-btn:hover  { background: #f1f5f9; border-color: #94a3b8; }
+.admin-settings-btn:active { transform: scale(0.97); }
+
+/* Highlighted when drawer is open */
+.admin-maintenance-open .admin-settings-btn {
+  background: rgba(100, 116, 139, 0.12);
+  border-color: #94a3b8;
+  color: #1e293b;
 }
 
-#checkUpdateButton {
-  background: rgba(168,85,247,0.10) !important;
-  border-color: rgba(168,85,247,0.22) !important;
-  color: #7c3aed !important;
+/* ── Maintenance drawer ───────────────────────────────────────────────────── */
+/*
+  Hidden by default. Revealed by toggling .admin-maintenance-open
+  on #adminControls (via JS in adminPanel.js).
+  Uses max-height animation so height can transition from 0 → content size.
+*/
+.admin-maintenance-drawer {
+  width: 100%;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--drawer-transition);
+  /* small visual separation */
+  border-top: 0px solid transparent;
 }
 
-#fixVideoButton {
-  background: rgba(244,63,94,0.10) !important;
-  border-color: rgba(244,63,94,0.22) !important;
-  color: #e11d48 !important;
+/* Open state — triggered by JS adding class to #adminControls */
+.admin-maintenance-open .admin-maintenance-drawer {
+  max-height: 300px;   /* generous ceiling; actual height is ~160px */
+  opacity: 1;
+  visibility: visible;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 6px;
+  margin-top: 2px;
 }
 
-#adminClearButton {
-  background: rgba(251,191,36,0.12) !important;
-  border-color: rgba(245,158,11,0.26) !important;
-  color: #b45309 !important;
-}
-
-#hideAdminButton {
-  background: rgba(15,23,42,0.04) !important;
-  border-color: rgba(15,23,42,0.08) !important;
-  color: #334155 !important;
-}
-
-#adminCountdown {
-  margin: 0;
-  min-height: 16px;
-  font-size: 11px;
+/* Section label inside drawer */
+.admin-drawer-label {
+  margin: 0 0 5px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: #94a3b8;
   text-align: right;
 }
 
-/* ── Progress bar — height raised to 12px ── */
+/* Countdown — sits below the primary row */
+#adminCountdown {
+  margin: 0;
+  min-height: 14px;
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: right;
+}
+
+/* ── Actions grid (inside drawer) ────────────────────────────────────────── */
+.admin-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.admin-actions-grid button {
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  transition: var(--transition);
+}
+
+.admin-actions-grid button:active { transform: scale(0.98); }
+
+/* Per-button colour overrides — IDs unchanged from v6.0.0 */
+#syncButton          { background: rgba(16,185,129,0.10) !important; border-color: rgba(16,185,129,0.22) !important; color: #047857 !important; }
+#syncAnalyticsButton { background: rgba(59,130,246,0.10) !important; border-color: rgba(59,130,246,0.22) !important; color: #1d4ed8 !important; }
+#checkUpdateButton   { background: rgba(168,85,247,0.10) !important; border-color: rgba(168,85,247,0.22) !important; color: #7c3aed !important; }
+#fixVideoButton      { background: rgba(244,63,94,0.10)  !important; border-color: rgba(244,63,94,0.22)  !important; color: #e11d48 !important; }
+#adminClearButton    { background: rgba(251,191,36,0.12) !important; border-color: rgba(245,158,11,0.26) !important; color: #b45309 !important; }
+
+/*
+  #hideAdminButton — now styled via .admin-hide-btn (see above).
+  The old #hideAdminButton rule is removed; element still has id="hideAdminButton"
+  but the visual style comes from the class. No JS references this for styling.
+*/
+
+/* ── Progress bar ────────────────────────────────────────────────────────── */
 #progressBarContainer {
   grid-column: 1 / -1;
   grid-row: 2;
@@ -378,11 +577,10 @@ header {
 #progressBar {
   height: 100%;
   background: var(--orange);
-  transition: width 0.45s cubic-bezier(0.4,0,0.2,1);
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 0;
 }
 
-/* stepCounter — font raised to 1rem, top offset adjusted for 12px bar */
 #stepCounter {
   position: absolute;
   right: 20px;
@@ -395,18 +593,11 @@ header {
   pointer-events: none;
 }
 
-/* ── Question fade transitions ── */
-#questionContainer.question-fade-out {
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
+/* ── Question fade transitions ───────────────────────────────────────────── */
+#questionContainer.question-fade-out { opacity: 0; transition: opacity 0.12s ease; }
+#questionContainer.question-fade-in  { opacity: 1; transition: opacity 0.15s ease; }
 
-#questionContainer.question-fade-in {
-  opacity: 1;
-  transition: opacity 0.15s ease;
-}
-
-/* ── Survey content card — scroll fade hint ── */
+/* ── Survey content card ─────────────────────────────────────────────────── */
 #surveyContent {
   width: 100%;
   max-width: var(--col-max);
@@ -425,8 +616,10 @@ header {
   position: relative;
 }
 
-/* Fade gradient at bottom signals scrollable content to kiosk users */
+/* Scroll fade hint */
 #surveyContent::after {
+  z-index: -1;
+  pointer-events: none;
   content: '';
   position: sticky;
   bottom: 0;
@@ -439,7 +632,7 @@ header {
   flex-shrink: 0;
 }
 
-/* ── Question container — 2-tier gap system ── */
+/* ── Question container ──────────────────────────────────────────────────── */
 #questionContainer {
   width: 100%;
   flex: 1 1 auto;
@@ -452,7 +645,6 @@ header {
   background: transparent;
 }
 
-/* Question label — 22px, explicit bottom margin creates question→options gap */
 #questionContainer > label,
 #questionContainer label.block,
 .question-text,
@@ -466,87 +658,97 @@ label[id$="Label"] {
   width: 100%;
 }
 
-/* Hint text — 16px, readable in italic at kiosk distance */
 #questionContainer p.text-sm,
 #questionContainer p.italic {
   font-size: 1rem;
-  color: #374151;
+  color: var(--text-secondary);
   margin: -14px 0 var(--gap-question);
   font-style: italic;
 }
 
-/* ── Button container ── */
+/* ── Button container ────────────────────────────────────────────────────── */
 #buttonContainer {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding-top: 20px;
+  padding-bottom: 4px;
   margin-top: auto;
   flex-shrink: 0;
-  gap: 12px;
-  border-top: 1px solid #F0EEE8;
+  border-top: 1px solid var(--border-divider);
   position: sticky;
   bottom: 0;
   background: var(--card-bg);
-  padding-bottom: 4px;
 }
 
-/* Back button */
 #prevBtn {
   height: var(--min-tap);
+  min-width: 100px;
   padding: 0 1.5rem;
-  background: #FFFFFF;
+  background: var(--card-bg);
   color: var(--text-secondary);
-  border: 1.5px solid #D1D5DB;
+  border: var(--border-default);
   border-radius: var(--radius-sm);
   font-size: 1.125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: var(--transition);
-  min-width: 100px;
   flex-shrink: 0;
+  transition: var(--transition);
 }
 
-#prevBtn:hover  { background: #F9F8F6; border-color: #9CA3AF; }
+#prevBtn:hover  { background: var(--surface-hover); border-color: var(--border-hover); }
 #prevBtn:active { transform: scale(0.97); }
 
-/* Next button — boosted shadow + min-width for dominance */
 #nextBtn {
   height: var(--min-tap);
+  min-width: 200px;
   padding: 0 2.25rem;
   background: var(--orange-dark);
-  color: #FFFFFF;
+  color: #fff;
   border: none;
   border-radius: var(--radius-sm);
   font-size: 1.125rem;
   font-weight: 700;
   cursor: pointer;
-  transition: var(--transition);
-  min-width: 200px;
   flex-shrink: 0;
-  box-shadow: 0 4px 14px rgba(196,82,0,0.45);
+  box-shadow: var(--btn-shadow);
+  transition: var(--transition);
 }
 
-#nextBtn:hover  { background: #A34400; box-shadow: 0 6px 18px rgba(196,82,0,0.52); }
+#nextBtn:hover  { background: #A34400; box-shadow: var(--btn-shadow-hover); }
 #nextBtn:active { transform: scale(0.97); }
 
 #nextBtn:disabled,
-#prevBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+#prevBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
 
-/* ── Option tap states ── */
-.option-label { -webkit-tap-highlight-color: transparent; }
+/* ── Option label — base ─────────────────────────────────────────────────── */
+.option-label {
+  -webkit-tap-highlight-color: transparent;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: none;
+}
+
 .option-label:active {
   transform: scale(0.96) !important;
   transition: transform 0.05s ease-out !important;
 }
 
-/* ── Global selected state — 3px border, glow, scale, darker text ── */
-input.visually-hidden:checked + label {
+/* ── Global selected state ───────────────────────────────────────────────── */
+input.visually-hidden:checked + label,
+input.visually-hidden:checked + .option-label,
+input.visually-hidden:checked + .followup-option-label {
   background:   var(--orange-light) !important;
   border-color: var(--orange) !important;
   border-width: 3px !important;
   color:        var(--orange-darker) !important;
-  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
+  box-shadow:   var(--selected-glow) !important;
   transform:    scale(1.03) !important;
 }
 
@@ -555,12 +757,12 @@ input.visually-hidden:checked + label {
   width: 1px; height: 1px;
   padding: 0; margin: -1px;
   overflow: hidden;
-  clip: rect(0,0,0,0);
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
 }
 
-/* ── Emoji radio ── */
+/* ── Emoji radio ─────────────────────────────────────────────────────────── */
 .emoji-radio-group {
   display: grid !important;
   grid-template-columns: repeat(4, 1fr) !important;
@@ -574,16 +776,18 @@ input.visually-hidden:checked + label {
   align-items: center;
   justify-content: center;
   padding: 14px 16px 12px;
-  border: 1.5px solid #D1D5DB;
+  border: var(--border-default);
   border-radius: var(--radius-md);
-  background: #FAFAFA;
+  background: var(--surface-offset);
   cursor: pointer;
   min-height: var(--min-tap);
   gap: 6px;
   transition: var(--transition);
+  text-wrap: balance;
+  hyphens: none;
 }
 
-.emoji-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+.emoji-radio-group label:hover { background: var(--surface-hover); border-color: var(--border-hover); }
 
 .emoji-radio-group label > span:first-child {
   font-size: 2.2rem;
@@ -601,19 +805,11 @@ input.visually-hidden:checked + label {
   line-height: 1.2;
 }
 
-.emoji-radio-group input.visually-hidden:checked + label {
-  background:   var(--orange-light) !important;
-  border-color: var(--orange) !important;
-  border-width: 3px !important;
-  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
-  transform:    scale(1.03) !important;
-}
-
 .emoji-radio-group input.visually-hidden:checked + label > span:last-child {
   color: var(--orange-darker) !important;
 }
 
-/* ── Number scale ── */
+/* ── Number scale ────────────────────────────────────────────────────────── */
 .number-scale-group {
   display: flex !important;
   flex-wrap: nowrap !important;
@@ -623,10 +819,9 @@ input.visually-hidden:checked + label {
 }
 
 .number-scale-group label {
-  border: 1.5px solid #D1D5DB;
+  border: var(--border-default);
   border-radius: 50%;
-  background: #FAFAFA;
-  transition: var(--transition);
+  background: var(--surface-offset);
   cursor: pointer;
   flex: 1 1 0;
   min-width: 52px;
@@ -637,20 +832,12 @@ input.visually-hidden:checked + label {
   font-size: 1.125rem;
   font-weight: 700;
   color: var(--text-secondary);
+  transition: var(--transition);
 }
 
-.number-scale-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+.number-scale-group label:hover { background: var(--surface-hover); border-color: var(--border-hover); }
 
-.number-scale-group input.visually-hidden:checked + label {
-  background:   var(--orange-light) !important;
-  border-color: var(--orange) !important;
-  border-width: 3px !important;
-  color:        var(--orange-darker) !important;
-  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
-  transform:    scale(1.03) !important;
-}
-
-/* ── Star rating ── */
+/* ── Star rating ─────────────────────────────────────────────────────────── */
 .star-rating {
   display: flex;
   flex-direction: row-reverse;
@@ -659,37 +846,44 @@ input.visually-hidden:checked + label {
   margin-top: 8px;
 }
 
-/* ── Location / Age grids ── */
+/* ── Text radio groups (location, age, followup) ─────────────────────────── */
 .location-radio-group,
-.age-radio-group {
+.age-radio-group,
+.followup-radio-group {
   display: grid;
   gap: var(--gap-grid);
   width: 100%;
-  justify-items: stretch;
 }
 
 .location-radio-group label,
-.age-radio-group label {
+.age-radio-group label,
+.followup-radio-group label {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 14px 16px;
-  border: 1.5px solid #D1D5DB;
+  border: var(--border-default);
   border-radius: var(--radius-sm);
-  background: #FAFAFA;
+  background: var(--surface-offset);
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 1.125rem;
+  font-size: var(--font-option);
   font-weight: 600;
   line-height: 1.3;
   color: var(--text-secondary);
   transition: var(--transition);
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
 .location-radio-group label:hover,
-.age-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+.age-radio-group label:hover,
+.followup-radio-group label:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+}
 
 .location-radio-group label span,
 .age-radio-group label span {
@@ -698,33 +892,7 @@ input.visually-hidden:checked + label {
   width: 100%;
 }
 
-/* ── Followup radio ── */
-.followup-radio-group {
-  display: grid;
-  gap: var(--gap-grid);
-  width: 100%;
-}
-
-.followup-radio-group label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 14px 16px;
-  border: 1.5px solid #D1D5DB;
-  border-radius: var(--radius-sm);
-  background: #FAFAFA;
-  cursor: pointer;
-  min-height: var(--min-tap);
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  transition: var(--transition);
-}
-
-.followup-radio-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
-
-/* ── Followup drawer ── */
+/* ── Followup drawer ─────────────────────────────────────────────────────── */
 .followup-drawer {
   margin-top: 12px;
   padding: 14px 16px;
@@ -739,6 +907,8 @@ input.visually-hidden:checked + label {
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 10px;
+  text-wrap: balance;
+  hyphens: none;
 }
 
 .followup-sub-grid {
@@ -748,9 +918,7 @@ input.visually-hidden:checked + label {
   justify-content: flex-start;
 }
 
-.followup-sub-grid .checkbox-tab-wrapper {
-  flex: 0 0 auto;
-}
+.followup-sub-grid .checkbox-tab-wrapper { flex: 0 0 auto; }
 
 /* Followup option pill */
 .followup-option-label {
@@ -759,27 +927,20 @@ input.visually-hidden:checked + label {
   padding: 10px 18px;
   font-size: 1rem;
   font-weight: 600;
-  border: 1.5px solid #D1D5DB;
-  border-radius: 999px;
-  background: #FFFFFF;
+  border: var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
   cursor: pointer;
   color: var(--text-secondary);
   transition: var(--transition);
-  white-space: nowrap;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
-.followup-option-label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+.followup-option-label:hover { background: var(--surface-hover); border-color: var(--border-hover); }
 
-input.visually-hidden:checked + .followup-option-label {
-  background:   var(--orange-light) !important;
-  border-color: var(--orange) !important;
-  border-width: 3px !important;
-  color:        var(--orange-darker) !important;
-  box-shadow:   0 0 0 3px rgba(232,96,0,0.15) !important;
-  transform:    scale(1.03) !important;
-}
-
-/* ── Checkbox group ── */
+/* ── Checkbox group ──────────────────────────────────────────────────────── */
 .checkbox-group {
   display: grid;
   gap: var(--gap-grid);
@@ -789,20 +950,23 @@ input.visually-hidden:checked + .followup-option-label {
 .checkbox-group label {
   display: flex;
   align-items: flex-start;
+  gap: 10px;
   padding: 14px 16px;
-  border: 1.5px solid #D1D5DB;
+  border: var(--border-default);
   border-radius: var(--radius-sm);
-  background: #FAFAFA;
+  background: var(--surface-offset);
   cursor: pointer;
   min-height: var(--min-tap);
-  font-size: 1.125rem;
+  font-size: var(--font-option);
   font-weight: 600;
   color: var(--text-secondary);
   transition: var(--transition);
-  gap: 10px;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
-.checkbox-group label:hover { background: #F3F0EC; border-color: #9CA3AF; }
+.checkbox-group label:hover { background: var(--surface-hover); border-color: var(--border-hover); }
 
 .checkbox-indicator {
   width: 20px;
@@ -819,15 +983,15 @@ input.visually-hidden:checked + .followup-option-label {
   transition: var(--transition);
 }
 
-/* ── Text inputs ── */
+/* ── Text inputs ─────────────────────────────────────────────────────────── */
 .other-text-input {
   width: 100%;
-  border: 1.5px solid #D1D5DB;
+  border: var(--border-default);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   font-size: 1rem;
   color: var(--text-primary);
-  background: #FAFAFA;
+  background: var(--surface-offset);
   margin-top: 10px;
   transition: border-color 0.15s ease;
 }
@@ -835,18 +999,18 @@ input.visually-hidden:checked + .followup-option-label {
 .other-text-input:focus {
   outline: none;
   border-color: var(--orange);
-  background: #fff;
+  background: var(--card-bg);
 }
 
 textarea {
   resize: none;
   width: 100%;
-  border: 1.5px solid #D1D5DB;
+  border: var(--border-default);
   border-radius: var(--radius-sm);
   padding: 14px;
   font-size: 1rem;
   color: var(--text-primary);
-  background: #FAFAFA;
+  background: var(--surface-offset);
   line-height: 1.5;
   min-height: 120px;
   transition: border-color 0.15s ease;
@@ -857,10 +1021,43 @@ textarea {
 textarea:focus {
   outline: none;
   border-color: var(--orange);
-  background: #fff;
+  background: var(--card-bg);
 }
 
-/* ── Checkmark / Thank you screen ── */
+/* ── Selector textarea pills ─────────────────────────────────────────────── */
+.selector-textarea-pills {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.selector-textarea-pills .option-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 8px;
+  min-height: 80px;
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  cursor: pointer;
+  text-align: center;
+  transition: var(--transition);
+}
+
+.selector-textarea-pills .option-label:active {
+  background: var(--orange-light);
+  border-color: var(--orange);
+}
+
+@media (max-width: 480px) {
+  .selector-textarea-pills { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Checkmark / Thank-you screen ────────────────────────────────────────── */
 .checkmark-container {
   display: flex;
   flex-direction: column;
@@ -892,21 +1089,105 @@ textarea:focus {
   fill: none;
 }
 
-/* ── Error ── */
+/* ── Error messages ──────────────────────────────────────────────────────── */
 .error-message { display: none; }
 .error-message.visible { display: block; }
 
-/* ── Tablet portrait narrow fallback ── */
+/* ── Section header slide ────────────────────────────────────────────────── */
+.section-header-slide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  padding: 2rem 1.5rem;
+  background: var(--orange-light);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.section-header-text {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--orange-darker);
+  line-height: 1.4;
+  text-wrap: balance;
+  hyphens: none;
+}
+
+/* ── Dual star rating ────────────────────────────────────────────────────── */
+.dual-star-rating  { display: flex; flex-direction: column; gap: 1.25rem; }
+.dual-star-row     { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.dual-star-label   { font-size: 1rem; font-weight: 500; color: var(--text-primary); flex-shrink: 0; }
+.dual-star-stars   { display: flex; flex-direction: row-reverse; }
+
+/* ── Device setup overlay ────────────────────────────────────────────────── */
+#device-setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f6f2;
+}
+
+.setup-card {
+  text-align: center;
+  padding: 3rem 2rem;
+  max-width: 500px;
+  width: 90%;
+}
+
+.setup-logo h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.setup-logo p {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  margin-bottom: 2.5rem;
+}
+
+.setup-options {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.setup-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 2.5rem;
+  min-width: 160px;
+  border: 2px solid #dcd9d5;
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.setup-btn:hover {
+  border-color: var(--orange);
+  box-shadow: 0 4px 16px var(--orange-glow);
+}
+
+.setup-icon  { font-size: 2.5rem; }
+.setup-label { font-size: 1.1rem; font-weight: 600; }
+.setup-desc  { font-size: 0.875rem; color: var(--text-muted); }
+
+/* ── Tablet portrait fallback ────────────────────────────────────────────── */
 @media (max-width: 720px) {
   header {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 12px;
   }
 
-  #mainTitle {
-    grid-column: 1;
-    grid-row: 1;
-  }
+  #mainTitle    { grid-column: 1; grid-row: 1; }
 
   #adminControls {
     grid-column: 1;
@@ -914,119 +1195,120 @@ textarea:focus {
     align-items: flex-start;
   }
 
-  .admin-status-row {
-    justify-content: flex-start;
-  }
-
-  .admin-status-group {
-    align-items: flex-start;
-  }
-
+  .admin-status-row     { justify-content: flex-start; }
+  .admin-status-group   { align-items: flex-start; }
   .admin-status-text,
-  #adminCountdown {
-    text-align: left;
-  }
+  #adminCountdown       { text-align: left; }
 
-  .admin-actions-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  .admin-primary-actions { justify-content: flex-start; }
 
-  .survey-type-pills {
-    grid-template-columns: 1fr;
-  }
+  .admin-actions-grid   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .survey-type-pills    { grid-template-columns: 1fr; }
 
-  #progressBarContainer {
-    grid-row: 3;
-  }
-
-  #stepCounter {
-    right: 12px;
-  }
+  #progressBarContainer { grid-row: 3; }
+  #stepCounter          { right: 12px; }
 
   #surveyContent {
     max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 110px - var(--keyboard-height, 0px));
   }
 }
 
-/* ── iPad landscape kiosk — primary target ── */
+/* ── iPad landscape — primary kiosk target ───────────────────────────────── */
 @media (orientation: landscape) and (min-width: 900px) {
-
   :root {
-    --page-v-pad: 12px;
-    --page-h-pad: 24px;
-    --card-gap:   8px;
+    --page-v-pad: 8px;
+    --page-h-pad: 16px;
+    --card-gap:    6px;
   }
 
   header {
-    row-gap: 8px;
-    padding: 10px 20px 0;
+    row-gap: 4px;
+    padding: 8px 16px 0;
   }
 
   #mainTitle {
-    font-size: 1.05rem;
-    min-height: 32px;
+    font-size: 1rem;
+    min-height: 28px;
+  }
+
+  /* Primary action row — tighter on landscape */
+  .admin-primary-actions {
+    gap: 5px;
+  }
+
+  .admin-sync-all-btn,
+  .admin-hide-btn {
+    min-height: 36px;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .admin-settings-btn {
+    min-height: 36px;
+    min-width: 36px;
+    font-size: 15px;
+  }
+
+  /* Drawer grid — slightly tighter on landscape */
+  .admin-actions-grid {
+    gap: 4px;
+  }
+
+  .admin-actions-grid button {
+    min-height: 36px;
+    padding: 6px 8px;
+    font-size: 11px;
   }
 
   #surveyContent {
-    max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 72px - var(--keyboard-height, 0px));
+    flex: 1 1 auto;
+    padding: 12px 16px 10px !important;
+    max-height: calc(100vh - var(--page-v-pad) * 2 - var(--card-gap) - 60px - var(--keyboard-height, 0px));
+  }
+
+  #questionContainer {
+    flex: 1 1 auto;
+    padding-bottom: 4px;
+  }
+
+  #buttonContainer {
+    padding-top: 10px;
+    margin-top: 10px;
   }
 
   .emoji-radio-group {
     grid-template-columns: repeat(4, 1fr) !important;
-    gap: 12px;
+    gap: 8px;
   }
 
   .location-radio-group,
   .age-radio-group {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .number-scale-group label {
-    min-width: 56px;
-    min-height: 56px;
+    min-width: 48px;
+    min-height: 48px;
   }
 
-  #buttonContainer {
-    padding-top: 20px;
-  }
+  #nextBtn { min-width: 160px; }
 
-  #nextBtn {
-    min-width: 200px;
-  }
-}
-
-/* ── Selector Textarea — category pill grid ── */
-.selector-textarea-pills {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.selector-textarea-pills .option-label {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 8px;
-  min-height: 80px;
-  border: 1.5px solid var(--border-color, #e5e7eb);
-  border-radius: 10px;
-  cursor: pointer;
-  text-align: center;
-  background: var(--surface, #fff);
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.selector-textarea-pills .option-label:active {
-  background: var(--orange-light);
-  border-color: var(--orange);
-}
-
-/* Collapse to 2-col on narrow screens */
-@media (max-width: 480px) {
-  .selector-textarea-pills {
-    grid-template-columns: repeat(2, 1fr);
+  /* Visual feedback particles (v6.1.0) */
+  label:active::before,
+  .option-label:active::before,
+  [class*="radio-group"] label:active::before,
+  input + label:active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle closest-side at center,
+      rgba(232, 96, 0, 0.4) 0%,
+      rgba(232, 96, 0, 0.15) 40%,
+      transparent 70%);
+    animation: feedbackBurst 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+    z-index: 10;
   }
 }

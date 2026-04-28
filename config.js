@@ -1,30 +1,27 @@
 // FILE: config.js
 // PURPOSE: Central configuration for offline-first iPad kiosk PWA
-// VERSION: 3.1.0
-// FIXES:
-//   - deep-freezes nested configuration objects
-//   - adds safe localStorage availability checks and wrappers
-//   - centralizes survey type + queue key resolution helpers
-//   - preserves dual-queue support with one source of truth
-// LOADED: First (before all other scripts)
+// VERSION: 3.4.0
+// CHANGES FROM 3.3.0:
+//   - RENAME: Survey type labels changed to operational names staff can read.
+//     type1: 'Original Survey (V1)'  → 'Visitor Survey'
+//     type2: 'Visitor Feedback V2'   → 'Event / Weekend Survey'
+//     type3: 'Shayona Café'          → 'Café Feedback'
+//     These labels appear in the admin panel survey-type switcher pills.
+//     Developer version identifiers were meaningless to kiosk staff.
+//   - UNCHANGED: Everything else — all storage keys, all constants, all
+//     helper functions, KIOSK_CONFIG, CONSTANTS shape, boot log.
 
 (function () {
-  // ═══════════════════════════════════════════════════════════
-  // INTERNAL HELPERS
-  // ═══════════════════════════════════════════════════════════
-
   function deepFreeze(obj) {
     if (!obj || typeof obj !== 'object' || Object.isFrozen(obj)) {
       return obj;
     }
-
     Object.getOwnPropertyNames(obj).forEach((prop) => {
       const value = obj[prop];
       if (value && (typeof value === 'object' || typeof value === 'function')) {
         deepFreeze(value);
       }
     });
-
     return Object.freeze(obj);
   }
 
@@ -60,115 +57,103 @@
 
   const storageAvailable = isStorageAvailable();
 
-  // ═══════════════════════════════════════════════════════════
-  // STORAGE KEYS
-  // ═══════════════════════════════════════════════════════════
-  const STORAGE_KEY_QUEUE = 'submissionQueue';
-  const STORAGE_KEY_QUEUE_V2 = 'submissionQueueV2';
-  const STORAGE_KEY_ANALYTICS = 'analyticsQueue';
-  const STORAGE_KEY_STATE = 'kioskState';
-  const STORAGE_KEY_LAST_SYNC = 'lastDataSync';
-  const STORAGE_KEY_LAST_ANALYTICS_SYNC = 'lastAnalyticsSync';
-  const STORAGE_KEY_ACTIVE_SURVEY = 'activeSurveyType';
+  const STORAGE_KEY_QUEUE                = 'submissionQueue';
+  const STORAGE_KEY_QUEUE_V2             = 'submissionQueueV2';
+  const STORAGE_KEY_QUEUE_V3             = 'shayonaQueue';
+  const STORAGE_KEY_ANALYTICS            = 'surveyAnalytics';
+  const STORAGE_KEY_ANALYTICS_V3         = 'shayonaAnalytics';
+  const STORAGE_KEY_STATE                = 'kioskState';
+  const STORAGE_KEY_LAST_SYNC            = 'lastDataSync';
+  const STORAGE_KEY_LAST_ANALYTICS_SYNC  = 'lastAnalyticsSync';
+  const STORAGE_KEY_ACTIVE_SURVEY        = 'activeSurveyType';
 
-  // ═══════════════════════════════════════════════════════════
-  // SURVEY TYPE DEFINITIONS
-  // ═══════════════════════════════════════════════════════════
   const SURVEY_TYPES = {
     type1: {
-      label: 'Original Survey (V1)',
-      sheetName: 'Sheet1',
-      storageKey: STORAGE_KEY_QUEUE,
+      label:        'Visitor Survey',          // was: 'Original Survey (V1)'
+      sheetName:    'Sheet1',
+      storageKey:   STORAGE_KEY_QUEUE,
+      analyticsKey: STORAGE_KEY_ANALYTICS,
     },
     type2: {
-      label: 'Visitor Feedback V2',
-      sheetName: 'VisitorFeedbackV2',
-      storageKey: STORAGE_KEY_QUEUE_V2,
+      label:        'Event / Weekend Survey',  // was: 'Visitor Feedback V2'
+      sheetName:    'VisitorFeedbackV2',
+      storageKey:   STORAGE_KEY_QUEUE_V2,
+      analyticsKey: STORAGE_KEY_ANALYTICS,
+    },
+    type3: {
+      label:        'Café Feedback',           // was: 'Shayona Café'
+      sheetName:    'ShayonaCafe',
+      storageKey:   STORAGE_KEY_QUEUE_V3,
+      analyticsKey: STORAGE_KEY_ANALYTICS_V3,
     },
   };
 
-  const DEFAULT_SURVEY_TYPE = 'type1';
+  const FALLBACK_SURVEY_TYPE = 'type1';
 
-  // ═══════════════════════════════════════════════════════════
-  // QUEUE & SYNC LIMITS
-  // ═══════════════════════════════════════════════════════════
-  const MAX_QUEUE_SIZE = 250;
-  const QUEUE_WARNING_THRESHOLD = 200;
-  const MAX_ANALYTICS_SIZE = 500;
-  const AUTO_ADVANCE_DELAY_MS = 50;
-  const INACTIVITY_TIMEOUT_MS = 60000;
-  const SYNC_INTERVAL_MS = 300000;
-  const ANALYTICS_SYNC_INTERVAL_MS = 600000;
-
-  // Optional/common timing constants used by other modules
-  const ADMIN_PANEL_TIMEOUT_MS = 30000;
-  const RESET_DELAY_MS = 5000;
-  const TYPEWRITER_DURATION_MS = 2000;
-  const TEXT_ROTATION_INTERVAL_MS = 4000;
-  const VISIBILITY_CHANGE_DELAY_MS = 5000;
+  const MAX_QUEUE_SIZE               = 250;
+  const QUEUE_WARNING_THRESHOLD      = 200;
+  const MAX_ANALYTICS_SIZE           = 500;
+  const AUTO_ADVANCE_DELAY_MS        = 50;
+  const INACTIVITY_TIMEOUT_MS        = 60000;
+  const SYNC_INTERVAL_MS             = 300000;
+  const ANALYTICS_SYNC_INTERVAL_MS   = 600000;
+  const ADMIN_PANEL_TIMEOUT_MS       = 30000;
+  const RESET_DELAY_MS               = 5000;
+  const TYPEWRITER_DURATION_MS       = 2000;
+  const TEXT_ROTATION_INTERVAL_MS    = 4000;
+  const VISIBILITY_CHANGE_DELAY_MS   = 5000;
   const STATUS_MESSAGE_AUTO_CLEAR_MS = 4000;
-  const ERROR_MESSAGE_AUTO_CLEAR_MS = 10000;
+  const ERROR_MESSAGE_AUTO_CLEAR_MS  = 10000;
   const START_SCREEN_REMOVE_DELAY_MS = 400;
+  const MAX_RETRIES                  = 3;
+  const RETRY_DELAY_MS               = 2000;
 
-  // Retry / network helpers
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 2000;
+  const SYNC_ENDPOINT         = '/api/submit-survey';
+  const ANALYTICS_ENDPOINT    = '/api/sync-analytics';
+  const SURVEY_QUESTIONS_URL  = '/api/get_questions';
+  const ERROR_LOG_ENDPOINT    = '/api/log-error';
 
-  // ═══════════════════════════════════════════════════════════
-  // ENDPOINTS
-  // ═══════════════════════════════════════════════════════════
-  const SYNC_ENDPOINT = '/api/submit-survey';
-  const ANALYTICS_ENDPOINT = '/api/sync-analytics';
-  const SURVEY_QUESTIONS_URL = '/api/get_questions';
-  const ERROR_LOG_ENDPOINT = '/api/log-error';
-
-  // ═══════════════════════════════════════════════════════════
-  // FEATURE FLAGS
-  // ═══════════════════════════════════════════════════════════
   const FEATURES = {
     enableTypewriterEffect: true,
-    enableAnalytics: true,
-    enableOfflineQueue: true,
-    enableAdminPanel: true,
-    enableErrorLogging: true,
-    enableDebugCommands: false,
+    enableAnalytics:        true,
+    enableOfflineQueue:     true,
+    enableAdminPanel:       true,
+    enableErrorLogging:     true,
+    enableDebugCommands:    false,
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // SURVEY HELPERS
-  // ═══════════════════════════════════════════════════════════
   function isValidSurveyType(type) {
     return !!(type && SURVEY_TYPES[type]);
   }
 
+  function getDeviceDefaultSurveyType() {
+    const deviceDefault = window.DEVICECONFIG?.defaultSurveyType;
+    return isValidSurveyType(deviceDefault) ? deviceDefault : FALLBACK_SURVEY_TYPE;
+  }
+
   function getDefaultSurveyType() {
-    return DEFAULT_SURVEY_TYPE;
+    return getDeviceDefaultSurveyType();
   }
 
   function getActiveSurveyType() {
-    if (!storageAvailable) {
-      return DEFAULT_SURVEY_TYPE;
+    if (storageAvailable) {
+      const stored = safeStorageGet(STORAGE_KEY_ACTIVE_SURVEY);
+      if (stored && isValidSurveyType(stored)) return stored;
     }
-
-    const stored = safeStorageGet(STORAGE_KEY_ACTIVE_SURVEY);
-    if (stored && isValidSurveyType(stored)) {
-      return stored;
-    }
-
-    return DEFAULT_SURVEY_TYPE;
+    return getDeviceDefaultSurveyType();
   }
 
   function setActiveSurveyType(type) {
     if (!isValidSurveyType(type)) {
-      console.error(`[CONFIG] Unknown survey type: "${type}". Valid: ${Object.keys(SURVEY_TYPES).join(', ')}`);
+      console.error(
+        `[CONFIG] Unknown survey type: "${type}". Valid: ${Object.keys(SURVEY_TYPES).join(', ')}`
+      );
       return false;
     }
-
     if (!storageAvailable) {
       console.warn('[CONFIG] localStorage unavailable — active survey type cannot persist');
       return false;
     }
-
     const saved = safeStorageSet(STORAGE_KEY_ACTIVE_SURVEY, type);
     if (saved) {
       console.log(`[CONFIG] ✅ Active survey type set to: "${type}" (${SURVEY_TYPES[type].label})`);
@@ -177,7 +162,7 @@
   }
 
   function getSurveyConfig(type = getActiveSurveyType()) {
-    return SURVEY_TYPES[type] || SURVEY_TYPES[DEFAULT_SURVEY_TYPE];
+    return SURVEY_TYPES[type] || SURVEY_TYPES[getDeviceDefaultSurveyType()] || SURVEY_TYPES[FALLBACK_SURVEY_TYPE];
   }
 
   function getQueueKeyForSurveyType(type = getActiveSurveyType()) {
@@ -185,31 +170,27 @@
   }
 
   function getSheetNameForSurveyType(type = getActiveSurveyType()) {
-    return getSurveyConfig(type)?.sheetName || SURVEY_TYPES[DEFAULT_SURVEY_TYPE].sheetName;
+    return getSurveyConfig(type)?.sheetName || SURVEY_TYPES[getDeviceDefaultSurveyType()]?.sheetName || SURVEY_TYPES[FALLBACK_SURVEY_TYPE].sheetName;
   }
 
   function getAllSurveyTypes() {
     return Object.keys(SURVEY_TYPES);
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // EXPOSE AS window.CONSTANTS (read-only, deeply frozen)
-  // ═══════════════════════════════════════════════════════════
   const CONSTANTS = deepFreeze({
-    // Storage keys
     STORAGE_KEY_QUEUE,
     STORAGE_KEY_QUEUE_V2,
+    STORAGE_KEY_QUEUE_V3,
     STORAGE_KEY_ANALYTICS,
+    STORAGE_KEY_ANALYTICS_V3,
     STORAGE_KEY_STATE,
     STORAGE_KEY_LAST_SYNC,
     STORAGE_KEY_LAST_ANALYTICS_SYNC,
     STORAGE_KEY_ACTIVE_SURVEY,
 
-    // Survey type definitions
     SURVEY_TYPES,
-    DEFAULT_SURVEY_TYPE,
+    DEFAULT_SURVEY_TYPE: FALLBACK_SURVEY_TYPE,
 
-    // Limits
     MAX_QUEUE_SIZE,
     QUEUE_WARNING_THRESHOLD,
     MAX_ANALYTICS_SIZE,
@@ -228,21 +209,19 @@
     MAX_RETRIES,
     RETRY_DELAY_MS,
 
-    // Endpoints
     SYNC_ENDPOINT,
     ANALYTICS_ENDPOINT,
     SURVEY_QUESTIONS_URL,
     ERROR_LOG_ENDPOINT,
 
-    // Feature flags
     FEATURES,
   });
 
-  // ═══════════════════════════════════════════════════════════
-  // KIOSK CONFIGURATION
-  // ═══════════════════════════════════════════════════════════
   const KIOSK_CONFIG = {
-    KIOSK_ID: 'KIOSK-GWINNETT-001',
+    get KIOSK_ID() {
+      return window.DEVICECONFIG?.kioskId || 'KIOSK-GWINNETT-001';
+    },
+
     storageAvailable,
 
     getDefaultSurveyType,
@@ -255,23 +234,23 @@
     isValidSurveyType,
   };
 
-  window.CONSTANTS = CONSTANTS;
+  window.CONSTANTS    = CONSTANTS;
   window.KIOSK_CONFIG = KIOSK_CONFIG;
 
-  // ═══════════════════════════════════════════════════════════
-  // BOOT LOG
-  // ═══════════════════════════════════════════════════════════
-  const activeType = getActiveSurveyType();
+  const activeType   = getActiveSurveyType();
   const activeConfig = getSurveyConfig(activeType);
 
   console.log('═══════════════════════════════════════════════════════');
-  console.log('⚙️  CONFIG LOADED (v3.1.0)');
+  console.log('⚙️  CONFIG LOADED (v3.4.0)');
   console.log('═══════════════════════════════════════════════════════');
-  console.log(`  Kiosk ID      : ${window.KIOSK_CONFIG.KIOSK_ID}`);
+  console.log(`  Kiosk ID      : ${KIOSK_CONFIG.KIOSK_ID}`);
+  console.log(`  Device Mode   : ${window.DEVICECONFIG?.kioskMode || 'unknown'}`);
+  console.log(`  Device Default: ${getDeviceDefaultSurveyType()}`);
   console.log(`  Storage       : ${storageAvailable ? 'Available' : 'Unavailable'}`);
   console.log(`  Active Survey : ${activeType} (${activeConfig?.label})`);
   console.log(`  Queue (T1)    : ${STORAGE_KEY_QUEUE}`);
   console.log(`  Queue (T2)    : ${STORAGE_KEY_QUEUE_V2}`);
+  console.log(`  Queue (T3)    : ${STORAGE_KEY_QUEUE_V3}`);
   console.log(`  Sync Endpoint : ${SYNC_ENDPOINT}`);
   console.log('═══════════════════════════════════════════════════════');
 })();

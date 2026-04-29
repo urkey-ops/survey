@@ -1,15 +1,16 @@
 // FILE: main/adminSurveyControls.js
 // PURPOSE: Survey type switcher + sync + analytics sync button handlers
-// VERSION: 1.3.0
-// CHANGES FROM 1.2.1:
-//   - FIX 8: setActiveSurveyType now called via safeSetActiveSurveyType() from globals.js.
-//     Return value is checked — if write fails, switch is aborted entirely.
-//     Previously: direct call with no return-value check. UI updated + reload fired
-//     even if the type was never saved, sending all subsequent submissions to the
-//     wrong queue with no error.
-//   - FIX 2: Partial save on type switch now uses buildQueueRecord() + addToQueue()
-//     instead of raw object literal + direct localStorage.setItem().
-//     Previously writer 2 of 3 bypassed both queueManager and storageUtils entirely.
+// VERSION: 1.3.1
+// CHANGES FROM 1.3.0:
+//   - FIX BUG-19: showSyncBeforeSwitchModal() always resolved true — both
+//     the confirm/OK path and the SWITCH ANYWAY path called resolve(true),
+//     making the `if (!proceed) return;` guard at the call site permanently
+//     dead code. The modal's UX intent is a WARNING before switching, not a
+//     hard block — the user can always proceed. Renamed to
+//     showSyncWarningModal() to match actual intent, removed the dead
+//     `if (!proceed)` guard at the call site, and updated the internal
+//     comment to explain why the function always resolves (it's intentional:
+//     warn + optionally sync, then always allow the switch).
 // DEPENDENCIES: adminState.js, adminUtils.js, globals.js, contracts.js,
 //               window.globals, window.CONSTANTS, window.KIOSK_CONFIG, window.DEVICECONFIG
 
@@ -88,10 +89,19 @@ export function updateAnalyticsButtonState(isOnline) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SYNC BLOCKING MODAL
+// SYNC WARNING MODAL (warning-only, always allows switch)
 // ─────────────────────────────────────────────────────────────
 
-async function showSyncBeforeSwitchModal(unsyncedCount) {
+/**
+ * FIX BUG-19: Renamed from showSyncBeforeSwitchModal to showSyncWarningModal
+ * to match its actual UX intent. This is a WARNING dialog, not a hard block.
+ * Both branches — "SYNC NOW" and "SWITCH ANYWAY" — resolve to true because
+ * the user is always permitted to switch survey types. The modal's purpose is
+ * to prompt a sync attempt before the switch, not to prevent the switch.
+ * The call site no longer uses `if (!proceed) return;` since that guard was
+ * permanently dead code (the promise never resolved false).
+ */
+async function showSyncWarningModal(unsyncedCount) {
   return new Promise(resolve => {
     const isOffline = !navigator.onLine;
     const isSyncing = adminState.syncInProgress;
@@ -103,22 +113,23 @@ async function showSyncBeforeSwitchModal(unsyncedCount) {
     message += '[OK] = SYNC NOW (5s timeout)\n[CANCEL] = SWITCH ANYWAY (⚠️ risk data loss)';
 
     if (confirm(message)) {
-      console.log('[SWITCH BLOCK] SYNC NOW clicked — starting syncBothQueues...');
+      console.log('[SWITCH WARNING] SYNC NOW clicked — starting syncBothQueues...');
       const syncPromise    = window.dataHandlers?.syncData(true, { syncBothQueues: true });
       const timeoutPromise = new Promise(r => setTimeout(() => r(false), 5000));
 
       Promise.race([syncPromise, timeoutPromise]).then(success => {
         if (success) {
-          console.log('[SWITCH BLOCK] ✅ Sync completed — allowing switch');
-          resolve(true);
+          console.log('[SWITCH WARNING] ✅ Sync completed — proceeding with switch');
         } else {
-          console.log('[SWITCH BLOCK] ❌ 5s timeout — warn but allow');
+          console.log('[SWITCH WARNING] ❌ 5s timeout — warning shown, proceeding anyway');
           alert('⚠️ Sync timed out after 5s. Switching anyway (data risk).');
-          resolve(true);
         }
+        // Always allow the switch — this modal is warning-only
+        resolve(true);
       });
     } else {
-      console.log('[SWITCH BLOCK] SWITCH ANYWAY chosen — warning logged');
+      // User chose SWITCH ANYWAY — warn and allow
+      console.log('[SWITCH WARNING] SWITCH ANYWAY chosen — warning logged');
       trackAdminEvent('switch_force_without_sync', { unsyncedCount });
       resolve(true);
     }
@@ -194,22 +205,21 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         return;
       }
 
-      // FIX 5: Pass kioskMode so countUnsyncedRecords sums ALL queues for this device
       const kioskMode = window.DEVICECONFIG?.kioskMode;
       const unsynced  = window.dataHandlers?.countUnsyncedRecords?.(null, kioskMode) || 0;
       const isOffline = !navigator.onLine;
       const isSyncing = adminState.syncInProgress;
 
+      // FIX BUG-19: Removed `if (!proceed) return;` — the warning modal always
+      // resolves true (it's warning-only). The await is kept so we still give
+      // the sync attempt time to complete before proceeding.
       if (unsynced > 0 || isOffline || isSyncing) {
-        console.log('[SURVEY CONTROLS] 🚫 BLOCK: unsynced=', unsynced, 'offline=', isOffline, 'syncing=', isSyncing);
-        const proceed = await showSyncBeforeSwitchModal(unsynced);
-        if (!proceed) return;
+        console.log('[SURVEY CONTROLS] ⚠️ Warning: unsynced=', unsynced, 'offline=', isOffline, 'syncing=', isSyncing);
+        await showSyncWarningModal(unsynced);
+        // Always continues here — the modal never blocks the switch
       }
 
       // ── Partial save on type switch ───────────────────────────────────────
-      // FIX 2: Use buildQueueRecord() factory + addToQueue() instead of raw
-      // object literal + direct localStorage.setItem(). Previously this was
-      // writer 2 of 3 and bypassed both queueManager and storageUtils entirely.
       try {
         const currentSurveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
         const partialData       = window.appState?.formData;
@@ -226,7 +236,6 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
               sync_status:     'unsynced_partial',
             });
 
-            // addToQueue handles size limits, deduplication, and updateAdminCount
             if (window.dataHandlers?.addToQueue) {
               window.dataHandlers.addToQueue(record, queueKey);
               console.log(`[SURVEY CONTROLS] ✅ Partial data saved via addToQueue (queue: ${queueKey})`);
@@ -239,9 +248,7 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         console.warn('[SURVEY CONTROLS] Could not save partial data before type switch:', saveErr);
       }
 
-      // ── FIX 8: Safe survey type switch with return-value check ────────────
-      // Previously: direct call, no check, UI updated + reload fired even if
-      // the write failed — all subsequent submissions went to wrong queue.
+      // ── Safe survey type switch with return-value check ───────────────────
       const switched = safeSetActiveSurveyType(type);
       if (!switched) {
         const syncStatusMessage = window.globals?.syncStatusMessage;
@@ -256,7 +263,7 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
           }, 4000);
         }
         console.error('[SURVEY CONTROLS] ❌ Survey type switch aborted — write failed');
-        return; // Do NOT reload — the type was never actually saved
+        return;
       }
 
       // Reset app state to Q1 for the new survey type
@@ -300,7 +307,6 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
     return btn;
   }; // close makeBtn
 
-  // FIX 3: Filter by allowedSurveyTypes — only show pills for types this kiosk supports
   const kioskMode = window.DEVICECONFIG?.kioskMode;
   const allowed   = new Set(
     window.DEVICECONFIG?.CONFIGS?.[kioskMode]?.allowedSurveyTypes ||

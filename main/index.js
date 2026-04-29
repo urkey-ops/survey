@@ -1,20 +1,14 @@
 // FILE: main/index.js
 // PURPOSE: Main application entry point — orchestrates initialization
-// VERSION: 5.7.1
-// CHANGES FROM 5.6.0:
-//   - FIX: Start screen tap freeze on first launch.
-//     Root cause: on first launch, device-config.js calls
-//     window._initializeSurveyState() → showStartScreen() (tap listener #1).
-//     Then index.js Path 2 and/or Path 3 also fire, calling initialize() →
-//     initializeSurveyState() → showStartScreen() again (listener #2/#3
-//     replacing #1). First tap hits a dead element.
-//   - FIX: navigationSetup.js v3.2.0 sets window.__surveyStateInitialized = true
-//     on first successful run. index.js now checks this flag before calling
-//     initializeSurveyState() in the "device configured" branch.
-//   - REVERT: Object.defineProperty setter approach from v5.7.0 removed —
-//     navigationSetup.js assigns window._initializeSurveyState as a plain
-//     module-bottom assignment, always overwriting the setter silently.
-//   - All other logic unchanged from v5.6.0.
+// VERSION: 5.7.2
+// CHANGES FROM 5.7.1:
+//   - FIX BUG-17: initQueueManager() is now called immediately after
+//     initializeElements() (Step 1). initQueueManager() runs
+//     smokeCheckDeviceConfigShape() which logs loud console errors if
+//     DEVICECONFIG is missing kioskMode or allowedSurveyTypes. Previously
+//     these misconfigurations were silent — queue lookups returned empty
+//     arrays with no indication of why. The smoke check surfaces them at
+//     boot time when a developer or support engineer has the console open.
 
 import { initializeElements, validateElements, showCriticalError } from './uiElements.js';
 import { setupNavigation, setupActivityTracking, initializeSurveyState } from './navigationSetup.js';
@@ -24,6 +18,7 @@ import { setupVisibilityHandler } from './visibilityHandler.js';
 import { setupInactivityVisibilityHandler, startPeriodicSync } from '../timers/inactivityHandler.js';
 import { validateConfigVersion } from './contracts.js';
 import { validateAdminGlobals } from './globals.js';
+import { initQueueManager } from '../sync/queueManager.js';
 import '../sync/dataSync.js';
 import '../ui/navigation/index.js';
 
@@ -44,9 +39,6 @@ let pendingDataHandlersPoll  = null;
 //
 // On first launch all three paths may fire. initialize() is guarded by
 // initializationStarted/Completed so only one full init runs.
-// The remaining race — initializeSurveyState() being called by both
-// device-config.js AND initialize() — is handled by
-// window.__surveyStateInitialized in navigationSetup.js v3.2.0.
 
 function startApp() {
   if (document.readyState === 'loading') {
@@ -300,6 +292,18 @@ function initialize() {
     // Step 1: Initialize DOM element references
     initializeElements();
 
+    // FIX BUG-17: Step 1b — Run queue manager smoke check immediately after
+    // initializeElements() so DEVICECONFIG shape errors are caught at boot time.
+    // smokeCheckDeviceConfigShape() logs loud errors if kioskMode or
+    // allowedSurveyTypes are missing, surfacing misconfigurations that would
+    // otherwise silently produce empty queue lookups.
+    try {
+      initQueueManager();
+      console.log('[INIT] ✅ Queue manager initialized (DEVICECONFIG shape verified)');
+    } catch (qmErr) {
+      console.error('[INIT] Queue manager init failed (non-fatal):', qmErr);
+    }
+
     // Step 2: Storage quota check
     try {
       clearPendingDataHandlersPoll();
@@ -334,7 +338,7 @@ function initialize() {
     //
     // On first launch: device-config.js confirm handler already called
     // window._initializeSurveyState() after the user picked a mode.
-    // navigationSetup.js v3.2.0 sets window.__surveyStateInitialized = true
+    // navigationSetup.js sets window.__surveyStateInitialized = true
     // on that first successful call. We check that flag here — if already
     // done, skip entirely to preserve the tap listener on the live start screen.
     //

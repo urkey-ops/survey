@@ -1,8 +1,12 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.8.2
-// CHANGES FROM 3.8.1:
-//   - FIX: Reset completionInProgress on unexpected error so user can retry
+// VERSION: 3.8.3
+// CHANGES FROM 3.8.2:
+//   - FIX: _doReset uses window.navigationHandler.showStartScreen() directly
+//     (navigation was never in resolvedDeps so reset silently did nothing)
+//   - FIX: Live countdown ticker using setInterval + re-querying #resetCountdown
+//     (window.showCheckmark renders static text — ticker now drives it)
+//   - REMOVED: _renderCheckmarkAndCountdown (replaced by window.showCheckmark + ticker)
 // DEPENDENCIES: core.js, main/contracts.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -130,63 +134,11 @@ function normalizeSubmissionPayload(formData, questions) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CHECKMARK + COUNTDOWN UI
-// ─────────────────────────────────────────────────────────────
-
-function _renderCheckmarkAndCountdown({
-  questionContainer,
-  surveyType,
-  config,
-  onReset,
-}) {
-  if (!questionContainer) return;
-
-  const DISPLAY_SECONDS = 5;
-  let remaining = DISPLAY_SECONDS;
-
-  const wrapper = document.createElement('div');
-  wrapper.className = 'submission-success-wrapper';
-  wrapper.setAttribute('role', 'status');
-  wrapper.setAttribute('aria-live', 'polite');
-
-  const emoji = document.createElement('div');
-  emoji.className   = 'submission-checkmark';
-  emoji.textContent = '✅';
-  emoji.setAttribute('aria-hidden', 'true');
-
-  const heading = document.createElement('p');
-  heading.className   = 'submission-thank-you';
-  heading.textContent = config?.thankYouMessage || 'Thank you for your feedback!';
-
-  const countdownEl = document.createElement('p');
-  countdownEl.className   = 'submission-countdown';
-  countdownEl.textContent = `Returning in ${remaining}s…`;
-
-  wrapper.appendChild(emoji);
-  wrapper.appendChild(heading);
-  wrapper.appendChild(countdownEl);
-
-  questionContainer.innerHTML = '';
-  questionContainer.appendChild(wrapper);
-
-  const tick = setInterval(() => {
-    remaining--;
-    if (remaining > 0) {
-      countdownEl.textContent = `Returning in ${remaining}s…`;
-    } else {
-      clearInterval(tick);
-      countdownEl.textContent = '';
-      onReset();
-    }
-  }, 1000);
-}
-
-// ─────────────────────────────────────────────────────────────
 // RESET
 // ─────────────────────────────────────────────────────────────
 
 function _doReset(deps) {
-  const { appState, navigation } = deps;
+  const { appState } = deps;
 
   resetTriggered       = true;
   completionInProgress = false;
@@ -198,10 +150,13 @@ function _doReset(deps) {
     appState.surveyStartTime      = null;
   }
 
-  if (navigation?.showStartScreen) {
-    navigation.showStartScreen();
+  // ── FIX: navigation is never in resolvedDeps — use window.navigationHandler
+  if (typeof window.navigationHandler?.showStartScreen === 'function') {
+    window.navigationHandler.showStartScreen();
   } else if (typeof window.showStartScreen === 'function') {
     window.showStartScreen();
+  } else {
+    console.error('[SUBMIT] ❌ No showStartScreen found — cannot reset to start');
   }
 
   saveState(deps);
@@ -213,7 +168,6 @@ function _doReset(deps) {
 // ─────────────────────────────────────────────────────────────
 
 export async function handleSubmit(deps = null) {
-  // ── FIX: wrap entire handler so completionInProgress is always released ──
   try {
     const resolvedDeps = deps || getDependencies();
     const {
@@ -275,9 +229,9 @@ export async function handleSubmit(deps = null) {
       return;
     }
 
-    const surveyStartTime    = appState.surveyStartTime || Date.now();
-    const totalTimeSeconds   = Math.round((Date.now() - surveyStartTime) / 1000);
-    const questionTimeSpent  = { ...(appState.questionTimeSpent || {}) };
+    const surveyStartTime   = appState.surveyStartTime || Date.now();
+    const totalTimeSeconds  = Math.round((Date.now() - surveyStartTime) / 1000);
+    const questionTimeSpent = { ...(appState.questionTimeSpent || {}) };
 
     const record = buildQueueRecord(
       {
@@ -335,22 +289,41 @@ export async function handleSubmit(deps = null) {
       });
     }
 
-  // NEW:
-if (typeof window.showCheckmark === 'function') {
-  window.showCheckmark();
-} else if (questionContainer) {
-  questionContainer.innerHTML = '<div style="text-align:center;padding:2rem;"><p>✅ Thank you for your feedback!</p></div>';
-}
+    // ── Show success UI ───────────────────────────────────────────────────────
+    if (typeof window.showCheckmark === 'function') {
+      window.showCheckmark();
+    } else if (questionContainer) {
+      questionContainer.innerHTML = `
+        <div style="text-align:center;padding:2rem;">
+          <p style="font-size:3rem;">✅</p>
+          <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:0.5rem;">
+            Thank you for your feedback!
+          </h2>
+          <p id="resetCountdown" style="color:#6b7280;font-size:1rem;">
+            Kiosk resetting in 5 seconds...
+          </p>
+        </div>`;
+    }
 
-setTimeout(() => {
-  if (!resetTriggered) _doReset(resolvedDeps);
-}, 5000);
+    // ── FIX: live countdown ticker ────────────────────────────────────────────
+    let remaining = 5;
+    const tick = setInterval(() => {
+      remaining--;
+      const el = document.getElementById('resetCountdown');
+      if (el && remaining > 0) {
+        el.textContent = `Kiosk resetting in ${remaining} second${remaining !== 1 ? 's' : ''}...`;
+      }
+      if (remaining <= 0) {
+        clearInterval(tick);
+        if (!resetTriggered) _doReset(resolvedDeps);
+      }
+    }, 1000);
 
     saveState(resolvedDeps);
     console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);
 
   } catch (err) {
-    // ── FIX: always release the lock so the user can retry ──────────────────
+    // ── Always release the lock so the user can retry ─────────────────────────
     console.error('[SUBMIT] ❌ Unexpected error during submission:', err);
     completionInProgress = false;
     throw err;

@@ -68,12 +68,15 @@ if (window.DEVICECONFIG?.kioskMode) {
 
   // Path 3: Safety net — IIFE may have fired deviceConfigReady before this
   // module's listener was registered. Poll once after 500ms.
-  setTimeout(() => {
-    if (!started && window.DEVICECONFIG?.kioskMode) {
-      console.log('[INIT] deviceConfigReady was missed — starting via safety net');
-      onConfigReady();
-    }
-  }, 500);
+// Path 3: Safety net — DOM query + faster timeout
+setTimeout(() => {
+  if (!started && 
+      window.DEVICECONFIG?.kioskMode && 
+      document.getElementById('kioskStartScreen')) {
+    console.log('[INIT] Safety net: DOM+config ready → startApp()');
+    onConfigReady();
+  }
+}, 100);
 }
 
 // ── First-launch detection ────────────────────────────────────────────────────

@@ -1,16 +1,13 @@
 // FILE: main/adminPanel.js
 // PURPOSE: Admin panel shell — show/hide, unlock gesture, auto-hide, online indicator, orchestration
-// VERSION: 9.2.0
-// CHANGES FROM 9.1.0:
-//   - ADD: Persistent storage alert banner in showAdminPanel().
-//     Reads 'kioskStorageAlert' key written by storageUtils.js on QuotaExceededError.
-//     Shows a permanent red banner every time the admin panel opens until staff
-//     explicitly dismisses it. Replaces the silent 10-second toast that staff miss
-//     in Guided Access mode.
-//   - ADD: import checkStorageAlert, clearStorageAlert from globals.js
-//   - UNCHANGED: Everything else — unlock gesture, hide button, sync all button,
-//     settings/drawer toggle, survey controls, maintenance handlers, device reset
-//     button relocation, network listeners, countdown, all state management.
+// VERSION: 9.2.1
+// CHANGES FROM 9.2.0:
+//   - FIX BUG-18: _relocateDeviceResetButton() now guards against the double-call
+//     orphan problem. Previously: on second setupAdminPanel() call, resetBtn was
+//     already inside the drawer, so the previousElementSibling check found an <hr>
+//     that was already in the drawer and appended it again, leaving a dangling
+//     divider in adminControls. Fix: if resetBtn.closest('#admin-maintenance-drawer')
+//     is already true, the button is already in the right place — return early.
 // DEPENDENCIES: adminState.js, adminUtils.js, adminSurveyControls.js, adminMaintenance.js, globals.js
 
 import { adminState, resetAdminState } from './adminState.js';
@@ -40,7 +37,7 @@ import {
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
-const VERSION                   = 'v9.2.0';
+const VERSION                   = 'v9.2.1';
 const AUTO_HIDE_DELAY           = 20000;
 const COUNTDOWN_UPDATE_INTERVAL = 1000;
 const STUCK_FLAG_TIMEOUT_MS     = 60000;
@@ -162,7 +159,6 @@ function hideAdminPanel() {
 }
 
 function _showStorageAlertBanner(adminControls) {
-  // Remove any existing banner first (idempotent)
   const existing = document.getElementById('kioskStorageAlertBanner');
   if (existing) existing.remove();
 
@@ -212,7 +208,6 @@ function _showStorageAlertBanner(adminControls) {
   banner.appendChild(msg);
   banner.appendChild(dismissBtn);
 
-  // Insert at very top of adminControls so it is always visible
   adminControls.insertBefore(banner, adminControls.firstChild);
 
   console.warn('[ADMIN] 🚨 Storage alert banner shown — flagged at:', alertData.flaggedAt);
@@ -228,9 +223,6 @@ function showAdminPanel() {
   document.body.classList.add('admin-active');
   adminState.adminPanelVisible = true;
 
-  // Check and display persistent storage alert banner
-  // This runs every time the panel opens — if staff dismissed it and quota
-  // is hit again, the flag will be re-written and the banner re-appears.
   _showStorageAlertBanner(adminControls);
 
   if (window.dataHandlers?.updateAdminCount) {
@@ -341,7 +333,6 @@ function wireSyncAllButton() {
     console.log('[ADMIN] 🔄 Sync All triggered (data + analytics)');
     trackAdminEvent('sync_all_triggered');
 
-    // ── Phase 1: Sync data ─────────────────────────────────────────────────
     adminState.syncInProgress = true;
     adminState.syncStartedAt  = Date.now();
     _updateSyncAllButtonState(true);
@@ -365,7 +356,6 @@ function wireSyncAllButton() {
       updateSyncButtonState(navigator.onLine);
     }
 
-    // ── Phase 2: Sync analytics ────────────────────────────────────────────
     adminState.analyticsInProgress = true;
     adminState.analyticsStartedAt  = Date.now();
     _updateSyncAllButtonState(true);
@@ -452,6 +442,16 @@ function _relocateDeviceResetButton() {
 
   if (!drawer) {
     console.warn('[ADMIN] _relocateDeviceResetButton: #admin-maintenance-drawer not found');
+    return;
+  }
+
+  // FIX BUG-18: Guard against double-call orphan problem.
+  // On second setupAdminPanel() call, resetBtn may already be inside the drawer.
+  // If we proceed, previousElementSibling finds an <hr> already in the drawer
+  // and appends it again — leaving an orphaned divider in adminControls.
+  // If the button is already where it belongs, return early.
+  if (resetBtn.closest('#admin-maintenance-drawer')) {
+    console.log('[ADMIN] _relocateDeviceResetButton: button already in drawer — skipping');
     return;
   }
 

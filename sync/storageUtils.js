@@ -1,13 +1,20 @@
 // FILE: sync/storageUtils.js
 // PURPOSE: Local storage utilities with error handling
-// VERSION: 1.1.0
-// CHANGES FROM 1.0.1:
-//   - ADD: Persistent storage quota alert flag in safeSetLocalStorage.
-//     Previously QuotaExceededError only triggered a 10-second toast via
-//     showUserError() — disappears before staff see it in Guided Access mode.
-//     Now also writes 'kioskStorageAlert' key so adminPanel.js can show a
-//     permanent banner that persists until staff explicitly dismisses it.
-// DEPENDENCIES: window.CONSTANTS
+// VERSION: 1.1.1
+// CHANGES FROM 1.1.0:
+//   - FIX BUG-21: Replaced inline localStorage.setItem('kioskStorageAlert', ...)
+//     in safeSetLocalStorage's QuotaExceededError catch with a call to
+//     flagStorageAlert() imported from main/globals.js.
+//     Previously two independent writers existed — storageUtils wrote its own
+//     object shape, adminPanel imported checkStorageAlert from globals.js which
+//     read the same key but expected globals.js's shape. If the shape ever
+//     diverged, the admin banner would either throw or silently show wrong data.
+//     There is now exactly ONE writer (globals.flagStorageAlert) and ONE reader
+//     (globals.checkStorageAlert / globals.clearStorageAlert), making the alert
+//     lifecycle fully owned by globals.js.
+// DEPENDENCIES: window.CONSTANTS, main/globals.js
+
+import { flagStorageAlert } from '../main/globals.js';
 
 /**
  * Generates a unique UUID for each survey submission
@@ -47,8 +54,10 @@ export function showUserError(message) {
 
 /**
  * Safely write to localStorage with error handling.
- * On QuotaExceededError: shows 10-second toast AND writes a persistent
- * 'kioskStorageAlert' flag so adminPanel.js can display a permanent banner.
+ * On QuotaExceededError: shows 10-second toast AND delegates to
+ * flagStorageAlert() (globals.js) for the persistent 'kioskStorageAlert'
+ * flag. There is exactly ONE writer and ONE reader for that flag —
+ * both live in globals.js — preventing shape divergence.
  * @param {string} key - Storage key
  * @param {*} value - Value to store (will be JSON stringified)
  * @returns {boolean} Success status
@@ -64,25 +73,11 @@ export function safeSetLocalStorage(key, value) {
       // 1. Immediate visible feedback (10-second toast)
       showUserError('Storage limit reached. Please sync data or contact support.');
 
-      // 2. Persistent alert flag — admin panel reads this and shows a
-      //    permanent banner that staff cannot miss, even in Guided Access mode.
-      //    Uses a separate try/catch: if even this tiny write fails, storage
-      //    is completely full and we log critically but do not throw.
-      try {
-        localStorage.setItem('kioskStorageAlert', JSON.stringify({
-          flaggedAt: new Date().toISOString(),
-          context:   key,
-        }));
-        console.error(
-          `[STORAGE] 🚨 QuotaExceededError on key "${key}" — ` +
-          `persistent alert flag written. Admin panel will show permanent banner.`
-        );
-      } catch (_) {
-        console.error(
-          '[STORAGE] 🚨 CRITICAL: QuotaExceededError AND cannot write alert flag — ' +
-          'storage is completely full. Data loss is occurring.'
-        );
-      }
+      // FIX BUG-21: Delegate to flagStorageAlert() — the single canonical writer
+      // for 'kioskStorageAlert'. Previously storageUtils wrote its own
+      // localStorage.setItem() here in parallel with globals.js, creating two
+      // independent writers with the risk of shape divergence.
+      flagStorageAlert(key);
     }
 
     return false;

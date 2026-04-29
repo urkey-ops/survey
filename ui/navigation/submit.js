@@ -1,12 +1,19 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.8.3
-// CHANGES FROM 3.8.2:
-//   - FIX: _doReset uses window.navigationHandler.showStartScreen() directly
-//     (navigation was never in resolvedDeps so reset silently did nothing)
-//   - FIX: Live countdown ticker using setInterval + re-querying #resetCountdown
-//     (window.showCheckmark renders static text — ticker now drives it)
-//   - REMOVED: _renderCheckmarkAndCountdown (replaced by window.showCheckmark + ticker)
+// VERSION: 3.8.4
+// CHANGES FROM 3.8.3:
+//   - FIX BUG-13: _doReset() now sets window.__surveyStateInitialized = false
+//     at the very start. Without this, the idempotency guard in
+//     initializeSurveyState() (navigationSetup.js) blocks re-initialization
+//     after a normal survey completion — the start screen renders but the
+//     tap listener is never re-attached, so the next survey cannot begin.
+//   - FIX BUG-14: hasMeaningfulResponse() is now called with rawFormData
+//     (captured before normalizeSubmissionPayload()) instead of debugFormData
+//     which was the live appState.formData reference. normalizeSubmissionPayload()
+//     deletes keys (dual-star, selector-textarea) and adds flattened replacements.
+//     Calling hasMeaningfulResponse() on the post-normalisation object causes it
+//     to miss those original keys — a type3 survey with only a dual-star response
+//     would be incorrectly discarded as empty.
 // DEPENDENCIES: core.js, main/contracts.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
@@ -140,6 +147,14 @@ function normalizeSubmissionPayload(formData, questions) {
 function _doReset(deps) {
   const { appState } = deps;
 
+  // FIX BUG-13: Reset the idempotency guard FIRST so initializeSurveyState()
+  // can re-run and re-attach the start-screen tap listener. Without this,
+  // every normal submission completion leaves the kiosk frozen — the start
+  // screen renders but tapping it does nothing because the listener was
+  // never re-bound.
+  window.__surveyStateInitialized = false;
+  console.log('[SUBMIT] ✅ __surveyStateInitialized reset — initializeSurveyState can re-run');
+
   resetTriggered       = true;
   completionInProgress = false;
 
@@ -150,7 +165,6 @@ function _doReset(deps) {
     appState.surveyStartTime      = null;
   }
 
-  // ── FIX: navigation is never in resolvedDeps — use window.navigationHandler
   if (typeof window.navigationHandler?.showStartScreen === 'function') {
     window.navigationHandler.showStartScreen();
   } else if (typeof window.showStartScreen === 'function') {
@@ -198,21 +212,29 @@ export async function handleSubmit(deps = null) {
 
     console.log('[SUBMIT] 📋 Starting submission for surveyType:', SURVEY_TYPE);
 
-    const debugFormData = appState?.formData || {};
-    console.log('[DEBUG] formData @ guard entry:', JSON.parse(JSON.stringify(debugFormData)));
-
     stopQuestionTimer(resolvedDeps);
+
+    // FIX BUG-14: Capture a snapshot of formData BEFORE normalizeSubmissionPayload().
+    // normalizeSubmissionPayload() deletes keys like 'foodRating' (dual-star-rating)
+    // and 'final_thoughts' (selector-textarea), replacing them with flattened
+    // equivalents. hasMeaningfulResponse() checks for the original pre-norm keys.
+    // If called on the post-norm object, type3 surveys with only those response
+    // types would be incorrectly discarded as empty.
+    const rawFormData = { ...appState.formData };
+
+    console.log('[DEBUG] rawFormData (pre-norm) @ guard entry:', JSON.parse(JSON.stringify(rawFormData)));
 
     const normalizedFormData = normalizeSubmissionPayload(
       appState.formData || {},
       questions || []
     );
 
-    console.log('[DEBUG] normalizedFormData:', JSON.parse(JSON.stringify(normalizedFormData)));
+    console.log('[DEBUG] normalizedFormData (post-norm):', JSON.parse(JSON.stringify(normalizedFormData)));
 
     validateFormData(normalizedFormData, SURVEY_TYPE);
 
-    if (!hasMeaningfulResponse(debugFormData, SURVEY_TYPE)) {
+    // FIX BUG-14: Pass rawFormData (pre-norm snapshot) not the live appState ref.
+    if (!hasMeaningfulResponse(rawFormData, SURVEY_TYPE)) {
       console.warn('[SUBMIT] ⚠️ Empty formData — skipping submission');
       completionInProgress = false;
       _doReset(resolvedDeps);
@@ -305,7 +327,7 @@ export async function handleSubmit(deps = null) {
         </div>`;
     }
 
-    // ── FIX: live countdown ticker ────────────────────────────────────────────
+    // ── Live countdown ticker ─────────────────────────────────────────────────
     let remaining = 5;
     const tick = setInterval(() => {
       remaining--;
@@ -323,7 +345,7 @@ export async function handleSubmit(deps = null) {
     console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);
 
   } catch (err) {
-    // ── Always release the lock so the user can retry ─────────────────────────
+    // Always release the lock so the user can retry
     console.error('[SUBMIT] ❌ Unexpected error during submission:', err);
     completionInProgress = false;
     throw err;

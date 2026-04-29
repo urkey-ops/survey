@@ -480,7 +480,13 @@
   }
 
   // ─── Mount (position identical to v1.0.0) ────────────────────────────────────
-  function mount() {
+function mount() {
+    // ── FIX: prevent double-mount when script is loaded twice ──
+    if (document.getElementById('adminAnalyticsPanel')) {
+      console.log('[ANALYTICS] Panel already mounted — skipping duplicate');
+      return;
+    }
+
     injectStyles();
     panel = createPanel();
 

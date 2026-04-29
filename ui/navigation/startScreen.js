@@ -352,6 +352,7 @@ function _setupVideoAndAttract() {
  * Idempotent: safe on first boot, inactivity reset, manual reset, visibility resume.
  */
 export function showStartScreen() {
+  // DOM fallback + loud error/retry (FREEZE FIX)
   const kioskStartScreenEl = document.getElementById('kioskStartScreen');
   const kioskStartScreen = window.globals?.kioskStartScreen || kioskStartScreenEl;
   
@@ -361,10 +362,10 @@ export function showStartScreen() {
     return setTimeout(showStartScreen, 50);
   }
   
-  // Wire globals if missing
+  // Wire globals if missing (race condition fix)
   if (!window.globals.kioskStartScreen) {
     window.globals.kioskStartScreen = kioskStartScreen;
-    console.log('[START SCREEN] Wired missing globals.kioskStartScreen');
+    console.log('[START SCREEN] ✅ Wired missing globals.kioskStartScreen');
   }
 
   const { globals } = getDependencies();
@@ -391,7 +392,7 @@ export function showStartScreen() {
 
   _setupVideoAndAttract();
 
-  // FIX B6-01: Remove both listeners immediately on first fire...
+  // FIX B6-01: Remove both listeners immediately on first fire
   window.boundStartSurvey = (e) => {
     kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
@@ -402,7 +403,6 @@ export function showStartScreen() {
   kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { passive: false });
 
   console.log('[START SCREEN] ✅ Listeners attached (battery optimized)');
-}
 }
 
 export {

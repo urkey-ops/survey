@@ -18,6 +18,7 @@
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
 import { buildQueueRecord, validateFormData, buildAnalyticsEvent } from '../../main/contracts.js';
+import { resetInactivityTimer, addInactivityListeners } from '../../timers/inactivityHandler.js';
 
 let completionInProgress = false;
 let resetTriggered       = false;
@@ -172,6 +173,16 @@ function _doReset(deps) {
   } else {
     console.error('[SUBMIT] ❌ No showStartScreen found — cannot reset to start');
   }
+
+  // Restart inactivity timer and listeners after reset.
+  // _doReset() shows the start screen but does not call initializeSurveyState(),
+  // so the timer from the completed survey is never restarted. Without these
+  // calls, the kiosk sits on the start screen with no active timer after every
+  // normal submission — a user who walks away is never detected and the kiosk
+  // stays frozen on the start screen instead of resetting via inactivity.
+  resetInactivityTimer();
+  addInactivityListeners();
+  console.log('[SUBMIT] ✅ Inactivity timer restarted and listeners armed after reset');
 
   saveState(deps);
   console.log('[SUBMIT] ✅ Survey reset — back to start screen');

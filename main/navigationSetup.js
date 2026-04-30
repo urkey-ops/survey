@@ -2,8 +2,27 @@
 // PURPOSE: Setup navigation buttons and activity tracking
 // DEPENDENCIES: ui/navigation/core.js, ui/navigation/startScreen.js,
 //               window.uiHandlers (inactivity only), window.globals
-// VERSION: 3.2.1
-// CHANGES FROM 3.2.0:
+// VERSION: 3.2.2
+// CHANGES FROM 3.2.1:
+//   - FIX (inactivity timer not restarted after reset — fresh-start path):
+//     initializeSurveyState() fresh-start path now calls resetInactivityTimer()
+//     and addInactivityListeners() after showStartScreen(), mirroring what the
+//     resume path already does correctly.
+//
+//     Root cause: on first boot, setupActivityTracking() starts the timer and
+//     attaches interaction listeners (mousemove/click/touch/keydown). After any
+//     kiosk reset (performKioskReset or submit _doReset), those are cleaned up.
+//     Our BUG-6/13 fixes correctly clear __surveyStateInitialized so
+//     initializeSurveyState() can re-run — but the fresh-start path returned
+//     without restarting the timer. The kiosk would show the start screen with
+//     no active timer and no interaction listeners, making it impossible to
+//     detect the next abandonment. The screen would stay frozen forever after
+//     the first reset.
+//
+//     The resume path (currentQuestionIndex > 0) already called both correctly.
+//     The fresh-start path now does the same.
+//
+// CHANGES FROM 3.2.0 (preserved):
 //   - FIX B7-01: stepCounter used appState.totalQuestions which does not
 //     exist on appState. Replaced with getQuestions().length as correct
 //     source. Added getQuestions to import list (was missing). Both resume
@@ -91,6 +110,13 @@ export function setupActivityTracking() {
  *
  * FIRST-LAUNCH OVERLAY GUARD (v3.1.0) preserved:
  * If #device-setup-overlay is still visible, return early.
+ *
+ * INACTIVITY TIMER ON FRESH-START (v3.2.2):
+ * Fresh-start path now calls resetInactivityTimer() + addInactivityListeners()
+ * after showStartScreen(). On first boot this is a no-op (setupActivityTracking
+ * already started them). After any reset it is essential — without it the kiosk
+ * shows the start screen with no active timer and can never detect the next
+ * abandonment.
  */
 export function initializeSurveyState() {
   // ── Idempotency guard ─────────────────────────────────────────────────────
@@ -157,6 +183,23 @@ export function initializeSurveyState() {
   if (stepCounter) {
     const total = window.uiHandlers?.getTotalQuestions?.() ?? getQuestions().length;
     stepCounter.textContent = `Quick start! (1/${total})`;
+  }
+
+  // FIX (v3.2.2): Start the inactivity timer and attach interaction listeners
+  // on the fresh-start path. On first boot, setupActivityTracking() has already
+  // done this — calling them again is safe (addInactivityListeners removes old
+  // listeners before re-adding, resetInactivityTimer clears before restarting).
+  // After any reset this is essential: performKioskReset() cleans up all timers
+  // and listeners, so without these calls the kiosk would sit on the start
+  // screen with no active timer and never detect the next abandonment.
+  if (typeof resetInactivityTimer === 'function') {
+    resetInactivityTimer();
+    console.log('[NAVIGATION] ✅ Inactivity timer started on fresh-start');
+  }
+
+  if (typeof addInactivityListeners === 'function') {
+    addInactivityListeners();
+    console.log('[NAVIGATION] ✅ Inactivity listeners armed on fresh-start');
   }
 
   return true;

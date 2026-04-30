@@ -121,18 +121,13 @@
           document.documentElement.style.visibility = '';
 
           console.log(
-  `[DEVICE CONFIG] ✅ Mode "${config.kioskMode}" (from kioskId: ${config.kioskId}) saved — triggering index.js boot`
-);
+            `[DEVICE CONFIG] ✅ Mode "${config.kioskMode}" (from kioskId: ${config.kioskId}) saved — triggering index.js boot`
+          );
 
-// Guard: Ensure DOM wired before event
-if (!document.getElementById('kioskStartScreen')) {
-  console.warn('[DEVICE CONFIG] Start screen DOM missing — deferring event 50ms');
-  setTimeout(() => window.dispatchEvent(new CustomEvent('deviceConfigReady')), 50);
-  return;
-}
+          // Trigger index.js Path 2 boot → initializeElements()
+          // dispatchEvent() is synchronous — all listeners run before the next line.
+          window.dispatchEvent(new CustomEvent('deviceConfigReady'));
 
-// Trigger index.js Path 2 boot → initializeElements()
-window.dispatchEvent(new CustomEvent('deviceConfigReady'));
           // FIX BUG-2: Removed 150ms setTimeout — it was a timing hack that
           // created a race on slow devices. dispatchEvent() above is synchronous;
           // index.js's onConfigReady → startApp → initialize() completes before

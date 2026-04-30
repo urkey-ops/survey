@@ -1,35 +1,35 @@
 // FILE: main/navigationSetup.js
 // PURPOSE: Setup navigation buttons and activity tracking
 // DEPENDENCIES: ui/navigation/core.js, ui/navigation/startScreen.js,
-//               window.uiHandlers (inactivity only), window.globals
-// VERSION: 3.2.2
-// CHANGES FROM 3.2.1:
-//   - FIX (inactivity timer not restarted after reset — fresh-start path):
-//     initializeSurveyState() fresh-start path now calls resetInactivityTimer()
-//     and addInactivityListeners() after showStartScreen(), mirroring what the
-//     resume path already does correctly.
+//               timers/inactivityHandler.js (direct import — no window.uiHandlers race)
+// VERSION: 3.2.3
+// CHANGES FROM 3.2.2:
+//   - FIX (inactivity timer race — window.uiHandlers not yet assigned):
+//     resetInactivityTimer and addInactivityListeners are now imported DIRECTLY
+//     from timers/inactivityHandler.js instead of being read from window.uiHandlers
+//     at call time. On first launch, device-config.js fires dispatchEvent()
+//     synchronously, which runs initialize() before uiHandlers.js (a separate
+//     <script type="module"> tag) has had a chance to assign window.uiHandlers.
+//     This caused setupActivityTracking() to always see window.uiHandlers as
+//     undefined and log "Inactivity listeners not available", meaning the timer
+//     was never started. Direct ES module imports resolve at parse time and have
+//     no race condition.
 //
-//     Root cause: on first boot, setupActivityTracking() starts the timer and
-//     attaches interaction listeners (mousemove/click/touch/keydown). After any
-//     kiosk reset (performKioskReset or submit _doReset), those are cleaned up.
-//     Our BUG-6/13 fixes correctly clear __surveyStateInitialized so
-//     initializeSurveyState() can re-run — but the fresh-start path returned
-//     without restarting the timer. The kiosk would show the start screen with
-//     no active timer and no interaction listeners, making it impossible to
-//     detect the next abandonment. The screen would stay frozen forever after
-//     the first reset.
+//     setupActivityTracking() now calls addInactivityListeners() directly with
+//     no typeof guard needed (import always succeeds or the module fails to load).
+//     Both paths in initializeSurveyState() also use direct imports.
 //
-//     The resume path (currentQuestionIndex > 0) already called both correctly.
-//     The fresh-start path now does the same.
-//
-// CHANGES FROM 3.2.0 (preserved):
-//   - FIX B7-01: stepCounter used appState.totalQuestions which does not
-//     exist on appState. Replaced with getQuestions().length as correct
-//     source. Added getQuestions to import list (was missing). Both resume
-//     and fresh-start stepCounter blocks corrected.
+// CHANGES FROM 3.2.1 (preserved):
+//   - FIX (v3.2.2): fresh-start path now calls resetInactivityTimer() +
+//     addInactivityListeners() so the timer restarts after every kiosk reset.
+//   - FIX B7-01: stepCounter uses getQuestions().length not appState.totalQuestions.
 
 import { goNext, goPrev, showQuestion, getQuestions } from '../ui/navigation/core.js';
 import { showStartScreen }                            from '../ui/navigation/startScreen.js';
+import {
+  resetInactivityTimer,
+  addInactivityListeners,
+} from '../timers/inactivityHandler.js';
 
 let navigationBound    = false;
 let boundNextHandler   = null;
@@ -84,13 +84,10 @@ export function setupNavigation() {
 }
 
 export function setupActivityTracking() {
-  const { addInactivityListeners } = window.uiHandlers || {};
-
-  if (typeof addInactivityListeners !== 'function') {
-    console.error('[NAVIGATION] Inactivity listeners not available');
-    return false;
-  }
-
+  // FIX v3.2.3: Direct import — no window.uiHandlers race.
+  // addInactivityListeners is resolved at module parse time from
+  // inactivityHandler.js. It is always a function by the time this
+  // module executes, regardless of when uiHandlers.js runs.
   addInactivityListeners();
   console.log('[NAVIGATION] ✅ Inactivity listeners attached');
   return true;
@@ -99,24 +96,18 @@ export function setupActivityTracking() {
 /**
  * Initialize survey state — resume in-progress or start fresh.
  *
- * IDEMPOTENCY GUARD (v3.2.0):
- * window.__surveyStateInitialized is set to true on the first successful run.
- * All subsequent calls return early. Reset to false before calling again
- * to intentionally re-run (e.g. after kiosk reset).
+ * IDEMPOTENCY GUARD: window.__surveyStateInitialized blocks re-entry.
+ * Reset to false before calling again (performKioskReset and _doReset do this).
  *
- * BUG #21 FIX preserved:
- * Resume path explicitly calls addInactivityListeners() after
- * resetInactivityTimer() so listeners are never lost on resume.
+ * FIRST-LAUNCH OVERLAY GUARD: returns early if #device-setup-overlay visible.
  *
- * FIRST-LAUNCH OVERLAY GUARD (v3.1.0) preserved:
- * If #device-setup-overlay is still visible, return early.
- *
- * INACTIVITY TIMER ON FRESH-START (v3.2.2):
- * Fresh-start path now calls resetInactivityTimer() + addInactivityListeners()
- * after showStartScreen(). On first boot this is a no-op (setupActivityTracking
- * already started them). After any reset it is essential — without it the kiosk
- * shows the start screen with no active timer and can never detect the next
- * abandonment.
+ * INACTIVITY TIMER: Both paths call resetInactivityTimer() +
+ * addInactivityListeners() via direct imports (no window.uiHandlers race).
+ * On first boot this is safe — addInactivityListeners() removes any existing
+ * listeners before re-adding, resetInactivityTimer() clears before restarting.
+ * After any reset it is essential — performKioskReset() clears all timers and
+ * listeners, so without these calls the kiosk sits on the start screen with no
+ * active timer and can never detect the next abandonment.
  */
 export function initializeSurveyState() {
   // ── Idempotency guard ─────────────────────────────────────────────────────
@@ -137,7 +128,6 @@ export function initializeSurveyState() {
   const appState         = window.appState;
   const kioskStartScreen = window.globals?.kioskStartScreen;
   const kioskVideo       = window.globals?.kioskVideo;
-  const { resetInactivityTimer, addInactivityListeners } = window.uiHandlers || {};
 
   if (!appState) {
     console.error('[NAVIGATION] appState not available');
@@ -157,19 +147,17 @@ export function initializeSurveyState() {
     // FIX B7-01: Use getQuestions().length — appState.totalQuestions does not exist
     const stepCounter = document.getElementById('stepCounter');
     if (stepCounter) {
-      const total = window.uiHandlers?.getTotalQuestions?.() ?? getQuestions().length;
+      const total = getQuestions().length;
       const index = appState.currentQuestionIndex;
       const phases = { 0: 'Quick start!', 2: 'Nice progress!', 4: 'Halfway!', 6: 'Almost done!' };
       const phase = phases[Math.floor(index / 2)] || 'Great job!';
       stepCounter.textContent = `${phase} (${index + 1}/${total})`;
     }
 
-    if (typeof resetInactivityTimer === 'function') resetInactivityTimer();
-
-    if (typeof addInactivityListeners === 'function') {
-      addInactivityListeners();
-      console.log('[NAVIGATION] ✅ Inactivity listeners armed on resume');
-    }
+    // FIX v3.2.3: Direct imports — guaranteed available, no window.uiHandlers race
+    resetInactivityTimer();
+    addInactivityListeners();
+    console.log('[NAVIGATION] ✅ Inactivity timer started and listeners armed on resume');
 
     return true;
   }
@@ -181,26 +169,17 @@ export function initializeSurveyState() {
   // FIX B7-01: Use getQuestions().length — appState.totalQuestions does not exist
   const stepCounter = document.getElementById('stepCounter');
   if (stepCounter) {
-    const total = window.uiHandlers?.getTotalQuestions?.() ?? getQuestions().length;
+    const total = getQuestions().length;
     stepCounter.textContent = `Quick start! (1/${total})`;
   }
 
-  // FIX (v3.2.2): Start the inactivity timer and attach interaction listeners
-  // on the fresh-start path. On first boot, setupActivityTracking() has already
-  // done this — calling them again is safe (addInactivityListeners removes old
-  // listeners before re-adding, resetInactivityTimer clears before restarting).
-  // After any reset this is essential: performKioskReset() cleans up all timers
-  // and listeners, so without these calls the kiosk would sit on the start
-  // screen with no active timer and never detect the next abandonment.
-  if (typeof resetInactivityTimer === 'function') {
-    resetInactivityTimer();
-    console.log('[NAVIGATION] ✅ Inactivity timer started on fresh-start');
-  }
-
-  if (typeof addInactivityListeners === 'function') {
-    addInactivityListeners();
-    console.log('[NAVIGATION] ✅ Inactivity listeners armed on fresh-start');
-  }
+  // FIX v3.2.2 + v3.2.3: Restart timer on fresh-start using direct imports.
+  // On first boot, setupActivityTracking() has already started the timer.
+  // After any reset, performKioskReset() cleans everything up — these calls
+  // are what restart the timer so the next abandonment can be detected.
+  resetInactivityTimer();
+  addInactivityListeners();
+  console.log('[NAVIGATION] ✅ Inactivity timer started and listeners armed on fresh-start');
 
   return true;
 }

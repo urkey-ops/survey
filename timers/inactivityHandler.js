@@ -440,6 +440,16 @@ export function performKioskReset() {
 
     setupInactivityVisibilityHandler();
     console.log('[INACTIVITY] ✅ Visibility handlers re-bound after reset');
+
+    // Gap 1 fix: Re-arm inactivity listeners and restart the timer after every reset.
+    // cleanupInactivityVisibilityHandler() above cleared the timer and removed
+    // all interaction listeners (mousemove, click, touchstart, keydown).
+    // Without re-arming them here, the kiosk sits on the start screen with no
+    // active timer — it can never detect the next abandonment and will never
+    // reset again. This mirrors exactly what setupActivityTracking() does at boot.
+    addInactivityListeners();
+    resetInactivityTimer();
+    console.log('[INACTIVITY] ✅ Inactivity listeners re-armed and timer restarted after reset');
   }, 150);
 }
 

@@ -268,9 +268,18 @@ function startSurvey(e) {
 
     pauseVideo();
 
-    if (!appState.formData.id) {
-      appState.formData.id = dataHandlers.generateUUID();
-    }
+ if (!appState.formData.id) {
+  // generateUUID has no dependencies — call directly rather than
+  // routing through dataHandlers which may not be assembled yet
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    appState.formData.id = crypto.randomUUID();
+  } else {
+    appState.formData.id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+}
 
     if (!appState.formData.timestamp) {
       appState.formData.timestamp = new Date().toISOString();
@@ -343,8 +352,23 @@ function _setupVideoAndAttract() {
  * Idempotent: safe on first boot, inactivity reset, manual reset, visibility resume.
  */
 export function showStartScreen() {
+  // DOM fallback + loud error/retry (FREEZE FIX)
+  const kioskStartScreenEl = document.getElementById('kioskStartScreen');
+  const kioskStartScreen = window.globals?.kioskStartScreen || kioskStartScreenEl;
+  
+  if (!kioskStartScreen) {
+    console.error('[START SCREEN FREEZE] ❌ kioskStartScreen missing — retrying');
+    console.trace('Stack trace for debug:');
+    return setTimeout(showStartScreen, 50);
+  }
+  
+  // Wire globals if missing (race condition fix)
+  if (!window.globals.kioskStartScreen) {
+    window.globals.kioskStartScreen = kioskStartScreen;
+    console.log('[START SCREEN] ✅ Wired missing globals.kioskStartScreen');
+  }
+
   const { globals } = getDependencies();
-  const kioskStartScreen = globals?.kioskStartScreen;
   const questionContainer = globals?.questionContainer;
   const nextBtn = globals?.nextBtn;
   const prevBtn = globals?.prevBtn;
@@ -362,29 +386,23 @@ export function showStartScreen() {
   if (prevBtn) prevBtn.disabled = true;
   if (progressBar) progressBar.style.width = '0%';
 
-  console.log('[START SCREEN] Showing with iOS-safe video...');
+  console.log('[START SCREEN] ✅ Showing with iOS-safe video...');
 
-  if (kioskStartScreen) {
-    kioskStartScreen.classList.remove('hidden', 'start-screen-fade-out');
+  kioskStartScreen.classList.remove('hidden', 'start-screen-fade-out');
 
-    _setupVideoAndAttract();
+  _setupVideoAndAttract();
 
-    // FIX B6-01: Remove both listeners immediately on first fire.
-    // { once: true } was causing iOS tap cascade — touchstart fired
-    // startSurvey() and auto-removed itself, then click fired 300ms later
-    // and called startSurvey() again from the still-active click listener.
-    // Manual removal inside the handler is the correct iOS-safe pattern.
-    window.boundStartSurvey = (e) => {
-      kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
-      kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
-      startSurvey(e);
-    };
+  // FIX B6-01: Remove both listeners immediately on first fire
+  window.boundStartSurvey = (e) => {
+    kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
+    kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
+    startSurvey(e);
+  };
 
-    kioskStartScreen.addEventListener('click',      window.boundStartSurvey);
-    kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { passive: false });
+  kioskStartScreen.addEventListener('click',      window.boundStartSurvey);
+  kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { passive: false });
 
-    console.log('[START SCREEN] Listeners attached (battery optimized)');
-  }
+  console.log('[START SCREEN] ✅ Listeners attached (battery optimized)');
 }
 
 export {

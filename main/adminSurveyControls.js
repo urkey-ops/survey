@@ -1,10 +1,23 @@
 // FILE: main/adminSurveyControls.js
 // PURPOSE: Survey type switcher + sync + analytics sync button handlers
-// VERSION: 1.2.0 - FULL SYNC BLOCKING IMPLEMENTED (prevents data loss on switch)
-// DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS, window.KIOSK_CONFIG
+// VERSION: 1.3.1
+// CHANGES FROM 1.3.0:
+//   - FIX BUG-19: showSyncBeforeSwitchModal() always resolved true — both
+//     the confirm/OK path and the SWITCH ANYWAY path called resolve(true),
+//     making the `if (!proceed) return;` guard at the call site permanently
+//     dead code. The modal's UX intent is a WARNING before switching, not a
+//     hard block — the user can always proceed. Renamed to
+//     showSyncWarningModal() to match actual intent, removed the dead
+//     `if (!proceed)` guard at the call site, and updated the internal
+//     comment to explain why the function always resolves (it's intentional:
+//     warn + optionally sync, then always allow the switch).
+// DEPENDENCIES: adminState.js, adminUtils.js, globals.js, contracts.js,
+//               window.globals, window.CONSTANTS, window.KIOSK_CONFIG, window.DEVICECONFIG
 
 import { adminState } from './adminState.js';
 import { trackAdminEvent } from './adminUtils.js';
+import { safeSetActiveSurveyType } from './globals.js';
+import { buildQueueRecord } from './contracts.js';
 
 let syncButtonHandler = null;
 let syncAnalyticsButtonHandler = null;
@@ -76,14 +89,23 @@ export function updateAnalyticsButtonState(isOnline) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// IDEAL SYNC BLOCKING MODAL
+// SYNC WARNING MODAL (warning-only, always allows switch)
 // ─────────────────────────────────────────────────────────────
 
-async function showSyncBeforeSwitchModal(unsyncedCount) {
+/**
+ * FIX BUG-19: Renamed from showSyncBeforeSwitchModal to showSyncWarningModal
+ * to match its actual UX intent. This is a WARNING dialog, not a hard block.
+ * Both branches — "SYNC NOW" and "SWITCH ANYWAY" — resolve to true because
+ * the user is always permitted to switch survey types. The modal's purpose is
+ * to prompt a sync attempt before the switch, not to prevent the switch.
+ * The call site no longer uses `if (!proceed) return;` since that guard was
+ * permanently dead code (the promise never resolved false).
+ */
+async function showSyncWarningModal(unsyncedCount) {
   return new Promise(resolve => {
     const isOffline = !navigator.onLine;
     const isSyncing = adminState.syncInProgress;
-    
+
     let message = `${unsyncedCount} unsynced record(s) across all queues.\n\n`;
     if (isOffline) message += '❌ Device is OFFLINE.\n';
     if (isSyncing) message += '⏳ Sync already in progress.\n';
@@ -91,23 +113,23 @@ async function showSyncBeforeSwitchModal(unsyncedCount) {
     message += '[OK] = SYNC NOW (5s timeout)\n[CANCEL] = SWITCH ANYWAY (⚠️ risk data loss)';
 
     if (confirm(message)) {
-      // SYNC NOW → 5s timeout
-      console.log('[SWITCH BLOCK] SYNC NOW clicked — starting syncBothQueues...');
-      const syncPromise = window.dataHandlers?.syncData(true, { syncBothQueues: true });
+      console.log('[SWITCH WARNING] SYNC NOW clicked — starting syncBothQueues...');
+      const syncPromise    = window.dataHandlers?.syncData(true, { syncBothQueues: true });
       const timeoutPromise = new Promise(r => setTimeout(() => r(false), 5000));
-      
+
       Promise.race([syncPromise, timeoutPromise]).then(success => {
         if (success) {
-          console.log('[SWITCH BLOCK] ✅ Sync completed — allowing switch');
-          resolve(true);
+          console.log('[SWITCH WARNING] ✅ Sync completed — proceeding with switch');
         } else {
-          console.log('[SWITCH BLOCK] ❌ 5s timeout — warn but allow');
+          console.log('[SWITCH WARNING] ❌ 5s timeout — warning shown, proceeding anyway');
           alert('⚠️ Sync timed out after 5s. Switching anyway (data risk).');
-          resolve(true);
         }
+        // Always allow the switch — this modal is warning-only
+        resolve(true);
       });
     } else {
-      console.log('[SWITCH BLOCK] SWITCH ANYWAY chosen — warning logged');
+      // User chose SWITCH ANYWAY — warn and allow
+      console.log('[SWITCH WARNING] SWITCH ANYWAY chosen — warning logged');
       trackAdminEvent('switch_force_without_sync', { unsyncedCount });
       resolve(true);
     }
@@ -115,12 +137,12 @@ async function showSyncBeforeSwitchModal(unsyncedCount) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SURVEY TYPE SWITCHER (FULLY PROTECTED)
+// SURVEY TYPE SWITCHER
 // ─────────────────────────────────────────────────────────────
 
 export function updateSurveyTypeSwitcher() {
-  const currentType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
-  const btnGroup = document.getElementById('surveyTypeBtnGroup');
+  const currentType  = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+  const btnGroup     = document.getElementById('surveyTypeBtnGroup');
   const currentLabel = document.getElementById('surveyTypeCurrentLabel');
 
   if (!btnGroup) return;
@@ -141,7 +163,6 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
 
   const surveyTypes = window.CONSTANTS?.SURVEY_TYPES || {};
 
-  // Guard: if config not loaded yet or empty, bail with a clear warning
   if (!Object.keys(surveyTypes).length) {
     console.error('[SURVEY CONTROLS] ❌ SURVEY_TYPES is empty or not loaded — switcher not built');
     return;
@@ -150,26 +171,26 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
   const currentType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
 
   const switcherRow = document.createElement('div');
-  switcherRow.id = 'surveyTypeSwitcher';
+  switcherRow.id        = 'surveyTypeSwitcher';
   switcherRow.className = 'survey-type-switcher';
 
   const label = document.createElement('p');
-  label.className = 'survey-type-label';
+  label.className   = 'survey-type-label';
   label.textContent = 'Active Survey';
 
   const currentLabel = document.createElement('p');
-  currentLabel.id = 'surveyTypeCurrentLabel';
+  currentLabel.id        = 'surveyTypeCurrentLabel';
   currentLabel.className = 'survey-type-current';
   currentLabel.textContent = `Current: ${surveyTypes[currentType]?.label || currentType} · Sheet: ${surveyTypes[currentType]?.sheetName || ''}`;
 
   const btnGroup = document.createElement('div');
-  btnGroup.id = 'surveyTypeBtnGroup';
+  btnGroup.id        = 'surveyTypeBtnGroup';
   btnGroup.className = 'survey-type-pills';
 
   const makeBtn = (type, btnLabel) => {
     const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = btnLabel;
+    btn.type              = 'button';
+    btn.textContent       = btnLabel;
     btn.dataset.surveyType = type;
     btn.setAttribute('aria-pressed', currentType === type ? 'true' : 'false');
 
@@ -184,46 +205,42 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         return;
       }
 
-      // 🔥 IDEAL SYNC BLOCKING LOGIC:
-      const unsynced = window.dataHandlers?.countUnsyncedRecords?.() || 0;
+      const kioskMode = window.DEVICECONFIG?.kioskMode;
+      const unsynced  = window.dataHandlers?.countUnsyncedRecords?.(null, kioskMode) || 0;
       const isOffline = !navigator.onLine;
       const isSyncing = adminState.syncInProgress;
-      
+
+      // FIX BUG-19: Removed `if (!proceed) return;` — the warning modal always
+      // resolves true (it's warning-only). The await is kept so we still give
+      // the sync attempt time to complete before proceeding.
       if (unsynced > 0 || isOffline || isSyncing) {
-        console.log('[SURVEY CONTROLS] 🚫 BLOCK: unsynced=', unsynced, 'offline=', isOffline, 'syncing=', isSyncing);
-        const proceed = await showSyncBeforeSwitchModal(unsynced);
-        if (!proceed) return;
+        console.log('[SURVEY CONTROLS] ⚠️ Warning: unsynced=', unsynced, 'offline=', isOffline, 'syncing=', isSyncing);
+        await showSyncWarningModal(unsynced);
+        // Always continues here — the modal never blocks the switch
       }
 
-      // Save partial data (existing logic)
+      // ── Partial save on type switch ───────────────────────────────────────
       try {
         const currentSurveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
-        const partialData = window.appState?.formData;
-        const hasPartialData = partialData && Object.keys(partialData).length > 1;
+        const partialData       = window.appState?.formData;
+        const hasPartialData    = partialData && Object.keys(partialData).length > 1;
 
         if (hasPartialData) {
           const queueKey = window.CONSTANTS?.SURVEY_TYPES?.[currentSurveyType]?.storageKey;
-          if (queueKey) {
-            const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE ?? 250;
-            let existingQueue = [];
-            try {
-              existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-            } catch (_) {
-              existingQueue = [];
-            }
 
-            if (existingQueue.length < MAX_QUEUE_SIZE) {
-              existingQueue.push({
-                ...partialData,
-                surveyType: currentSurveyType,
-                abandonedAt: new Date().toISOString(),
-                abandonedReason: 'survey_type_switch',
-                sync_status: 'unsynced_partial',
-              });
-              localStorage.setItem(queueKey, JSON.stringify(existingQueue));
-              console.log(`[SURVEY CONTROLS] ✅ Partial data saved before type switch (queue: ${queueKey})`);
+          if (queueKey) {
+            const record = buildQueueRecord(partialData, {
+              surveyType:      currentSurveyType,
+              abandonedAt:     new Date().toISOString(),
+              abandonedReason: 'survey_type_switch',
+              sync_status:     'unsynced_partial',
+            });
+
+            if (window.dataHandlers?.addToQueue) {
+              window.dataHandlers.addToQueue(record, queueKey);
+              console.log(`[SURVEY CONTROLS] ✅ Partial data saved via addToQueue (queue: ${queueKey})`);
             } else {
-              console.warn('[SURVEY CONTROLS] Queue full — partial data not saved before type switch');
+              console.warn('[SURVEY CONTROLS] ⚠️ addToQueue not available — partial data not saved');
             }
           }
         }
@@ -231,23 +248,38 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
         console.warn('[SURVEY CONTROLS] Could not save partial data before type switch:', saveErr);
       }
 
-      // Switch + reload (existing logic)
-      if (window.KIOSK_CONFIG?.setActiveSurveyType) {
-        window.KIOSK_CONFIG.setActiveSurveyType(type);
+      // ── Safe survey type switch with return-value check ───────────────────
+      const switched = safeSetActiveSurveyType(type);
+      if (!switched) {
+        const syncStatusMessage = window.globals?.syncStatusMessage;
+        if (syncStatusMessage) {
+          syncStatusMessage.textContent = '❌ Could not switch survey type — storage unavailable';
+          syncStatusMessage.style.color = '#dc2626';
+          syncStatusMessage.style.fontWeight = 'bold';
+          setTimeout(() => {
+            syncStatusMessage.textContent = '';
+            syncStatusMessage.style.color = '';
+            syncStatusMessage.style.fontWeight = '';
+          }, 4000);
+        }
+        console.error('[SURVEY CONTROLS] ❌ Survey type switch aborted — write failed');
+        return;
       }
 
+      // Reset app state to Q1 for the new survey type
       if (window.appState) {
         window.appState.currentQuestionIndex = 0;
-        window.appState.formData = {};
-        window.appState.questionTimeSpent = {};
+        window.appState.formData             = {};
+        window.appState.questionTimeSpent    = {};
         console.log('[SURVEY CONTROLS] ✅ Survey state reset to Q1');
       }
 
+      // Update pill UI
       btnGroup.querySelectorAll('button').forEach((b) => {
         b.setAttribute('aria-pressed', b.dataset.surveyType === type ? 'true' : 'false');
       });
 
-      const lbl = document.getElementById('surveyTypeCurrentLabel');
+      const lbl    = document.getElementById('surveyTypeCurrentLabel');
       const config = window.CONSTANTS?.SURVEY_TYPES?.[type];
       if (lbl) {
         lbl.textContent = `Current: ${config?.label || type} · Sheet: ${config?.sheetName || ''}`;
@@ -262,24 +294,31 @@ export function buildSurveyTypeSwitcher(adminControls, resetTimer) {
 
       trackAdminEvent('survey_type_switched', { surveyType: type });
 
-  // ✅ ADD HERE (correct place)
-  localStorage.removeItem('kioskState');
-  console.log('[SURVEY CONTROLS] kioskState cleared before reload — fresh start screen');
+      localStorage.removeItem('kioskState');
+      console.log('[SURVEY CONTROLS] kioskState cleared before reload — fresh start screen');
 
-  setTimeout(() => {
-    if (syncStatusMessage) syncStatusMessage.textContent = '';
-    location.reload();
-  }, 1500);
+      setTimeout(() => {
+        if (syncStatusMessage) syncStatusMessage.textContent = '';
+        location.reload();
+      }, 1500);
 
-}); // ✅ CLOSE EVENT LISTENER
+    }); // close event listener
 
-return btn; // ✅ OUTSIDE listener
- }; // ✅ close makeBtn function
+    return btn;
+  }; // close makeBtn
 
-  // Plug-and-play: reads all types from CONSTANTS, no hardcoding
-  Object.entries(surveyTypes).forEach(([type, cfg]) => {
-    btnGroup.appendChild(makeBtn(type, cfg.label || type));
-  });
+  const kioskMode = window.DEVICECONFIG?.kioskMode;
+  const allowed   = new Set(
+    window.DEVICECONFIG?.CONFIGS?.[kioskMode]?.allowedSurveyTypes ||
+    window.DEVICECONFIG?.allowedSurveyTypes ||
+    Object.keys(surveyTypes)
+  );
+
+  Object.entries(surveyTypes)
+    .filter(([type]) => allowed.has(type))
+    .forEach(([type, cfg]) => {
+      btnGroup.appendChild(makeBtn(type, cfg.label || type));
+    });
 
   switcherRow.appendChild(label);
   switcherRow.appendChild(currentLabel);
@@ -292,11 +331,11 @@ return btn; // ✅ OUTSIDE listener
     adminControls.appendChild(switcherRow);
   }
 
-  console.log('[SURVEY CONTROLS] ✅ Survey type switcher built (FULL SYNC PROTECTION)');
+  console.log('[SURVEY CONTROLS] ✅ Survey type switcher built (sync protected, safe write)');
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUTTON HANDLERS (unchanged)
+// BUTTON HANDLERS
 // ─────────────────────────────────────────────────────────────
 
 export function setupSurveyControls(syncButton, syncAnalyticsButton, resetAutoHideTimer) {
@@ -323,7 +362,7 @@ export function setupSurveyControls(syncButton, syncAnalyticsButton, resetAutoHi
 
       console.log('[SURVEY CONTROLS] ✅ Starting manual sync (all queues)...');
       adminState.syncInProgress = true;
-      adminState.syncStartedAt = Date.now();
+      adminState.syncStartedAt  = Date.now();
       updateSyncButtonState(true);
       trackAdminEvent('manual_sync_triggered');
 
@@ -340,7 +379,7 @@ export function setupSurveyControls(syncButton, syncAnalyticsButton, resetAutoHi
         alert('❌ Sync failed. Check console for details.');
       } finally {
         adminState.syncInProgress = false;
-        adminState.syncStartedAt = null;
+        adminState.syncStartedAt  = null;
         updateSyncButtonState(navigator.onLine);
       }
     };
@@ -373,7 +412,7 @@ export function setupSurveyControls(syncButton, syncAnalyticsButton, resetAutoHi
 
       console.log('[SURVEY CONTROLS] ✅ Starting analytics sync...');
       adminState.analyticsInProgress = true;
-      adminState.analyticsStartedAt = Date.now();
+      adminState.analyticsStartedAt  = Date.now();
       updateAnalyticsButtonState(true);
       trackAdminEvent('manual_analytics_sync_triggered');
 
@@ -390,7 +429,7 @@ export function setupSurveyControls(syncButton, syncAnalyticsButton, resetAutoHi
         alert('❌ Analytics sync failed. Check console for details.');
       } finally {
         adminState.analyticsInProgress = false;
-        adminState.analyticsStartedAt = null;
+        adminState.analyticsStartedAt  = null;
         updateAnalyticsButtonState(navigator.onLine);
       }
     };
@@ -411,8 +450,8 @@ export function cleanupSurveyControls() {
     boundSyncAnalyticsButton.removeEventListener('click', syncAnalyticsButtonHandler);
   }
 
-  syncButtonHandler = null;
+  syncButtonHandler          = null;
   syncAnalyticsButtonHandler = null;
-  boundSyncButton = null;
-  boundSyncAnalyticsButton = null;
+  boundSyncButton            = null;
+  boundSyncAnalyticsButton   = null;
 }

@@ -1,12 +1,20 @@
 // FILE: sync/storageUtils.js
 // PURPOSE: Local storage utilities with error handling
-// VERSION: 1.0.1
-// CHANGES FROM 1.0.0:
-//   - FIX B5-01: checkStorageQuota() was declared AFTER export default {}
-//     which excluded it from window.dataHandlers (called via default export).
-//     Moved above export default and added to default export object.
-//     Named import in dataSync.js was unaffected — default consumers were broken.
-// DEPENDENCIES: window.CONSTANTS
+// VERSION: 1.1.1
+// CHANGES FROM 1.1.0:
+//   - FIX BUG-21: Replaced inline localStorage.setItem('kioskStorageAlert', ...)
+//     in safeSetLocalStorage's QuotaExceededError catch with a call to
+//     flagStorageAlert() imported from main/globals.js.
+//     Previously two independent writers existed — storageUtils wrote its own
+//     object shape, adminPanel imported checkStorageAlert from globals.js which
+//     read the same key but expected globals.js's shape. If the shape ever
+//     diverged, the admin banner would either throw or silently show wrong data.
+//     There is now exactly ONE writer (globals.flagStorageAlert) and ONE reader
+//     (globals.checkStorageAlert / globals.clearStorageAlert), making the alert
+//     lifecycle fully owned by globals.js.
+// DEPENDENCIES: window.CONSTANTS, main/globals.js
+
+import { flagStorageAlert } from '../main/globals.js';
 
 /**
  * Generates a unique UUID for each survey submission
@@ -25,7 +33,7 @@ export function generateUUID() {
 }
 
 /**
- * Display error message to user (non-intrusive)
+ * Display error message to user (non-intrusive 10-second toast)
  * @param {string} message - Error message to display
  */
 export function showUserError(message) {
@@ -45,7 +53,11 @@ export function showUserError(message) {
 }
 
 /**
- * Safely write to localStorage with error handling
+ * Safely write to localStorage with error handling.
+ * On QuotaExceededError: shows 10-second toast AND delegates to
+ * flagStorageAlert() (globals.js) for the persistent 'kioskStorageAlert'
+ * flag. There is exactly ONE writer and ONE reader for that flag —
+ * both live in globals.js — preventing shape divergence.
  * @param {string} key - Storage key
  * @param {*} value - Value to store (will be JSON stringified)
  * @returns {boolean} Success status
@@ -58,8 +70,16 @@ export function safeSetLocalStorage(key, value) {
     console.error(`[STORAGE] Failed to write key '${key}':`, e.message);
 
     if (e.name === 'QuotaExceededError') {
+      // 1. Immediate visible feedback (10-second toast)
       showUserError('Storage limit reached. Please sync data or contact support.');
+
+      // FIX BUG-21: Delegate to flagStorageAlert() — the single canonical writer
+      // for 'kioskStorageAlert'. Previously storageUtils wrote its own
+      // localStorage.setItem() here in parallel with globals.js, creating two
+      // independent writers with the risk of shape divergence.
+      flagStorageAlert(key);
     }
+
     return false;
   }
 }
@@ -92,8 +112,8 @@ export function updateSyncStatus(message) {
 }
 
 /**
- * Check localStorage quota usage
- * Warns if approaching iOS Safari limit (~5-10 MB)
+ * Check localStorage quota usage.
+ * Warns if approaching iOS Safari limit (~5-10 MB).
  * @returns {{ status: string, usedMB: string, percentUsed: string, quotaMB: number }}
  */
 export function checkStorageQuota() {
@@ -128,13 +148,11 @@ export function checkStorageQuota() {
   }
 }
 
-// FIX B5-01: checkStorageQuota must be declared above this line
-// so it can be included in the default export object.
 export default {
   generateUUID,
   safeSetLocalStorage,
   safeGetLocalStorage,
   showUserError,
   updateSyncStatus,
-  checkStorageQuota,  // ← ADDED — was missing, broke window.dataHandlers.checkStorageQuota
+  checkStorageQuota,
 };

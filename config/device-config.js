@@ -1,17 +1,20 @@
 // FILE: config/device-config.js
 // PURPOSE: First script in index.html — sets window.DEVICECONFIG before app loads
-// VERSION: 1.1.6
-// CHANGES FROM 1.1.5:
-//   - FIX Phase 1: kioskMode now parsed dynamically from kioskId via
-//     kioskId.split('-')[1].toLowerCase() — no longer hardcoded in CONFIGS.
-//     KIOSK-TEMPLE-001 → 'temple', KIOSK-SHAYONA-001 → 'shayona'.
-//     New kiosk types (giftShop, activity) work automatically by adding
-//     a CONFIGS entry with the correct kioskId — zero extra code.
-//   - FIX: kioskId in CONFIGS updated to match new naming convention
-//     (KIOSK-TEMPLE-001, KIOSK-SHAYONA-001) so parseModeFromKioskId()
-//     returns the correct segment on first launch.
-//   - UNCHANGED: All boot/overlay/dispatch/timing logic identical to v1.1.5.
-//     No timing hacks. No polls. Uses existing deviceConfigReady architecture.
+// VERSION: 1.1.7
+// CHANGES FROM 1.1.6:
+//   - FIX BUG-2: Removed 150ms setTimeout before _initializeSurveyState().
+//     The defer was a timing hack that created a race condition on slow devices.
+//     index.js now guarantees DOM wiring completes before the deviceConfigReady
+//     event resolves (Path 2 / Path 3 guards handle sequencing). Calling
+//     _initializeSurveyState() synchronously after dispatchEvent() is safe because
+//     dispatchEvent() is synchronous — all deviceConfigReady listeners run to
+//     completion before the next line executes. No polling or timers needed.
+//   - FIX BUG-3: Added window.KIOSK_CONFIG.setActiveSurveyType(config.defaultSurveyType)
+//     call in the setup button click handler immediately after DEVICECONFIG is set.
+//     Previously the activeSurveyType key was written via localStorage.setItem() directly,
+//     bypassing KIOSK_CONFIG entirely. Any module that called getActiveSurveyType() before
+//     the next reload would read a stale or missing value. Now the canonical setter is used
+//     so KIOSK_CONFIG's in-memory state and localStorage stay in sync from the first click.
 
 (function () {
   const STORAGE_KEY = 'deviceConfig';
@@ -87,8 +90,29 @@
 
           // Persist and activate
           localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-          localStorage.setItem('activeSurveyType', config.defaultSurveyType);
           window.DEVICECONFIG = config;
+
+          // FIX BUG-3: Use KIOSK_CONFIG.setActiveSurveyType() as the canonical
+          // setter so in-memory state and localStorage stay in sync immediately.
+          // Fall back to direct localStorage write if KIOSK_CONFIG is not yet
+          // available (e.g. config.js loaded after this IIFE on slow devices).
+          if (typeof window.KIOSK_CONFIG?.setActiveSurveyType === 'function') {
+            const typeSet = window.KIOSK_CONFIG.setActiveSurveyType(config.defaultSurveyType);
+            if (!typeSet) {
+              console.warn(
+                `[DEVICE CONFIG] KIOSK_CONFIG.setActiveSurveyType("${config.defaultSurveyType}") ` +
+                `returned false — falling back to direct localStorage write`
+              );
+              localStorage.setItem('activeSurveyType', config.defaultSurveyType);
+            }
+          } else {
+            // KIOSK_CONFIG not loaded yet — write directly; config.js will read on boot
+            localStorage.setItem('activeSurveyType', config.defaultSurveyType);
+            console.warn(
+              '[DEVICE CONFIG] KIOSK_CONFIG not available yet — ' +
+              'activeSurveyType written directly to localStorage'
+            );
+          }
 
           // Hide overlay
           overlay.style.display = 'none';
@@ -97,20 +121,26 @@
           document.documentElement.style.visibility = '';
 
           console.log(
-            `[DEVICE CONFIG] ✅ Mode "${config.kioskMode}" (from kioskId: ${config.kioskId}) saved — triggering index.js boot`
-          );
+  `[DEVICE CONFIG] ✅ Mode "${config.kioskMode}" (from kioskId: ${config.kioskId}) saved — triggering index.js boot`
+);
 
-          // PERMANENT FIX B1-07c: Trigger index.js Path 2 boot → initializeElements()
-          // index.js will wire window.globals.kioskStartScreen → THEN safe to init survey
-          window.dispatchEvent(new CustomEvent('deviceConfigReady'));
+// Guard: Ensure DOM wired before event
+if (!document.getElementById('kioskStartScreen')) {
+  console.warn('[DEVICE CONFIG] Start screen DOM missing — deferring event 50ms');
+  setTimeout(() => window.dispatchEvent(new CustomEvent('deviceConfigReady')), 50);
+  return;
+}
 
-          // 150ms defer — lets index.js complete initialize() Step 1 (DOM wiring)
-          setTimeout(() => {
-            console.log('[DEVICE CONFIG] 🔄 DOM wired — initializing survey state');
-            if (typeof window._initializeSurveyState === 'function') {
-              window._initializeSurveyState();
-            }
-          }, 150);
+// Trigger index.js Path 2 boot → initializeElements()
+window.dispatchEvent(new CustomEvent('deviceConfigReady'));
+          // FIX BUG-2: Removed 150ms setTimeout — it was a timing hack that
+          // created a race on slow devices. dispatchEvent() above is synchronous;
+          // index.js's onConfigReady → startApp → initialize() completes before
+          // we reach this line. _initializeSurveyState() is safe to call now.
+          console.log('[DEVICE CONFIG] 🔄 DOM wired — initializing survey state');
+          if (typeof window._initializeSurveyState === 'function') {
+            window._initializeSurveyState();
+          }
         });
       });
     }

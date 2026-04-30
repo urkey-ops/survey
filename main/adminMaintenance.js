@@ -1,23 +1,11 @@
 // FILE: main/adminMaintenance.js
 // PURPOSE: Destructive/maintenance button handlers — clear local, check update, fix video + kiosk identity badge
-// VERSION: 2.0.0
-// CHANGES FROM 1.2.1:
-//   - REMOVE: setupKioskSelector() — dropdown was a phantom control that changed nothing
-//     about actual device operation. Device identity is fixed at first-launch setup
-//     via device-config.js and must not be changeable at runtime via a dropdown.
-//   - REMOVE: setupKioskSyncButton() — per-kiosk sync button only existed to serve
-//     the now-removed selector. #syncAllButton in the main panel handles all syncing.
-//   - REMOVE: loadKioskQueues() — only fed the dropdown label and kiosk sync button.
-//   - REMOVE: getCurrentKioskMode() — only served the above.
-//   - REMOVE: window.loadKioskQueues exposure — no longer needed.
-//   - REMOVE: KIOSK_MODES array and currentKioskMode module state — not needed.
-//   - ADD: buildKioskIdentityBadge() — injects one static read-only row showing
-//     the device's kioskMode and kioskId from window.DEVICECONFIG. No events,
-//     no interaction, no dropdown. Replaces the misleading selector entirely.
-//   - UNCHANGED: All password/lockout logic, all existing button handlers,
-//     updateClearButtonState, updateCheckUpdateButtonState, updateFixVideoButtonState,
-//     restoreLockoutState, cleanupMaintenanceHandlers. All exports that adminPanel.js
-//     imports are identical except the four removed functions.
+// VERSION: 2.0.1
+// CHANGES FROM 2.0.0:
+//   - FIX 9: iconMap inside buildKioskIdentityBadge now sourced from
+//            window.CONSTANTS.KIOSK_MODE_ICONS so new modes added to device-config.js
+//            and config.js automatically get the correct badge icon without touching
+//            this file. Hardcoded map retained as inline fallback.
 // DEPENDENCIES: adminState.js, adminUtils.js, window.globals, window.CONSTANTS, window.DEVICECONFIG
 
 import { adminState } from './adminState.js';
@@ -159,20 +147,16 @@ export function buildKioskIdentityBadge(containerId = 'adminControls') {
     return;
   }
 
-  const cfg      = window.DEVICECONFIG || {};
-  const mode     = cfg.kioskMode || 'unknown';
-  const kioskId  = cfg.kioskId   || '—';
+  const cfg     = window.DEVICECONFIG || {};
+  const mode    = cfg.kioskMode || 'unknown';
+  const kioskId = cfg.kioskId   || '—';
 
-  // Icon map — extend when new kiosk types are added to device-config.js
-  const iconMap = {
-    temple:   '🛕',
-    shayona:  '☕',
-    giftshop: '🛍️',
-    activity: '🎉',
-  };
+  // FIX 9: iconMap sourced from CONSTANTS so new modes added to device-config.js
+  // and config.js automatically get the correct badge icon.
+  const iconMap = window.CONSTANTS?.KIOSK_MODE_ICONS || { temple: '🛕', shayona: '☕', giftshop: '🛍️', activity: '🎉' };
+  const icon    = iconMap[mode] || '📍';
 
-  const icon        = iconMap[mode] || '📍';
-  const modeLabel   = mode.charAt(0).toUpperCase() + mode.slice(1);
+  const modeLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
 
   const badge = document.createElement('div');
   badge.id        = 'kioskIdentityBadge';

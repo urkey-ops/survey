@@ -1,12 +1,24 @@
 // FILE: timers/inactivityHandler.js
 // PURPOSE: Handle user inactivity detection and auto-reset
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 3.4.2
-// CHANGES FROM 3.4.1:
-//   - FIX B2-01: INACTIVITY_TIMEOUT_MS fallback corrected from 30000 to 60000 (matches config.js)
-//   - FIX B2-02: SYNC_INTERVAL_MS fallback corrected from 900000 to 300000 (matches config.js)
-//   - FIX B2-04: Partial abandonment now uses dataHandlers.addToQueue() instead of manual
-//     localStorage push — ensures deduplication, health checks, and admin count update
+// VERSION: 3.4.3
+// CHANGES FROM 3.4.2:
+//   - FIX BUG-6: performKioskReset() now resets window.__surveyStateInitialized = false
+//     at the very start, before any cleanup. Without this, the idempotency guard in
+//     navigationSetup.js initializeSurveyState() blocks every call after the first
+//     reset, freezing the kiosk at the start screen with no survey loaded.
+//   - FIX BUG-7: getQuestions() is now mode-aware. Mirrors the same resolver pattern
+//     as core.js — reads window.DEVICECONFIG.kioskMode and prefers shayonaDataUtils
+//     on Shayona iPads. Previously always fell back to dataUtils.surveyQuestions,
+//     loading temple questions on a café kiosk and causing inactivity resets to
+//     log wrong question IDs into analytics and partial records.
+//   - FIX BUG-9: handleInactivityTimeout() now uses buildQueueRecord() from
+//     contracts.js with sync_status: 'unsynced_partial' instead of a raw object
+//     literal with 'unsynced_inactivity'. Raw objects bypass queueManager's
+//     deduplication and schema checks, and 'unsynced_inactivity' is not a valid
+//     sync_status value per contracts.js schema.
+
+import { buildQueueRecord } from '../main/contracts.js';
 
 let boundResetInactivityTimer = null;
 let throttleTimeout = null;
@@ -35,7 +47,7 @@ function _getStorageKey() {
   return (
     window.CONSTANTS?.STORAGE_KEY_STATE ||
     window.appState?.storageKey ||
-    'kioskState'  // ⚠️ SIDE NOTE B2-03: should be 'kioskState' — fix together with B1-10
+    'kioskState'
   );
 }
 
@@ -48,16 +60,30 @@ function _safeRemoveStorageKey() {
 }
 
 // ── Active survey question helper ─────────────────────────────────────────────
+// FIX BUG-7: Mode-aware — mirrors the resolver in ui/navigation/core.js.
+// Shayona iPads use shayonaDataUtils; temple iPads use dataUtils.
+// This ensures inactivity resets log the correct question IDs and that
+// partial records reference the right survey's question set.
+
+function _isShayona() {
+  return window.DEVICECONFIG?.kioskMode === 'shayona';
+}
+
+function _getUtils() {
+  return _isShayona() && window.shayonaDataUtils
+    ? window.shayonaDataUtils
+    : window.dataUtils;
+}
 
 function getQuestions() {
-  const { dataUtils } = getDependencies();
+  const utils = _getUtils();
 
-  if (typeof dataUtils?.getSurveyQuestions === 'function') {
-    return dataUtils.getSurveyQuestions();
+  if (typeof utils?.getSurveyQuestions === 'function') {
+    return utils.getSurveyQuestions();
   }
 
-  if (Array.isArray(dataUtils?.surveyQuestions)) {
-    return dataUtils.surveyQuestions;
+  if (Array.isArray(utils?.surveyQuestions)) {
+    return utils.surveyQuestions;
   }
 
   return [];
@@ -140,7 +166,7 @@ export function resetInactivityTimer() {
 
 function handleInactivityTimeout(dataUtils, appState) {
   const idx             = appState.currentQuestionIndex;
-  const questions       = getQuestions();
+  const questions       = getQuestions(); // FIX BUG-7: mode-aware
   const currentQuestion = questions[idx];
 
   console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion?.id})`);
@@ -148,8 +174,7 @@ function handleInactivityTimeout(dataUtils, appState) {
   // INTENTIONAL PRODUCT RULE:
   // If the user never progresses beyond Question 1, treat this as a bounce
   // rather than a meaningful partial survey. Record analytics, but do NOT
-  // save a partial queue record. This is deliberate to keep one-question
-  // abandons out of the dataset.
+  // save a partial queue record.
   if (idx === 0) {
     console.log('[INACTIVITY] Q1 abandonment — recording analytics');
     try {
@@ -184,21 +209,32 @@ function handleInactivityTimeout(dataUtils, appState) {
   const { dataHandlers } = getDependencies();
 
   const timestamp   = new Date().toISOString();
-  const partialData = {
+
+  // FIX BUG-9: Use buildQueueRecord() factory instead of a raw object literal.
+  // This ensures:
+  //   1. sync_status is 'unsynced_partial' (valid per contracts.js schema)
+  //      not 'unsynced_inactivity' (invalid, causes sync filter to skip it)
+  //   2. abandonedAt is written via the meta path, not spread into root
+  //   3. All required identity fields (kioskId, submittedAt) are always present
+  //   4. Record passes queueManager's validateQueue() identity + timestamp checks
+  const partialFormData = {
     ...appState.formData,
     id:                       appState.formData?.id || dataHandlers.generateUUID(),
-    surveyType,
     completionTimeSeconds:    totalTimeSeconds,
     questionTimeSpent:        { ...appState.questionTimeSpent },
-    abandonedAt:              timestamp,
     abandonedAtQuestion:      currentQuestion?.id,
     abandonedAtQuestionIndex: idx,
-    sync_status:              'unsynced_inactivity',
   };
 
-  // FIX B2-04: Use addToQueue() instead of manual push so deduplication,
-  // health checks, and admin count update all run correctly.
-  dataHandlers.addToQueue(partialData, queueKey);
+  const record = buildQueueRecord(partialFormData, {
+    surveyType,
+    sync_status:     'unsynced_partial',
+    abandonedAt:     timestamp,
+    abandonedReason: 'inactivity',
+  });
+
+  // addToQueue handles deduplication, health checks, and admin count update
+  dataHandlers.addToQueue(record, queueKey);
 
   console.log(`[INACTIVITY] Partial abandonment saved to queue "${queueKey}" (${surveyType})`);
 
@@ -339,6 +375,15 @@ export function cleanupInactivityVisibilityHandler() {
 
 export function performKioskReset() {
   console.log('[INACTIVITY] 🔄 Performing kiosk reset...');
+
+  // FIX BUG-6: Reset __surveyStateInitialized FIRST, before any other cleanup.
+  // The idempotency guard in navigationSetup.js initializeSurveyState() returns
+  // early if this flag is true. Without resetting it here, every reset after the
+  // first launch leaves the kiosk frozen — showStartScreen() runs but
+  // initializeSurveyState() is blocked, so the start-screen tap listener is
+  // never re-attached and the survey cannot begin again.
+  window.__surveyStateInitialized = false;
+  console.log('[INACTIVITY] ✅ __surveyStateInitialized reset — initializeSurveyState can re-run');
 
   const { appState, dataHandlers } = getDependencies();
 

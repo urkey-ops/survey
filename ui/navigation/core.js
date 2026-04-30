@@ -40,6 +40,11 @@ export function getDependencies() {
     timerManager: window.timerManager,
     validateQuestion: window.validateQuestion,
     clearErrors: window.clearErrors,
+questionContainer: window.globals?.questionContainer ?? null,  // ← ADD THIS
+    questions: _getUtils()?.getSurveyQuestions?.() ?? [],          // ← ADD THIS
+    surveyType: window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? null, // ← ADD THIS
+
+    
   };
 }
 

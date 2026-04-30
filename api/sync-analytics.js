@@ -33,13 +33,12 @@ export default async function handler(request, response) {
         return response.status(405).json({ message: 'Method Not Allowed' });
     }
 
-    // --- Configuration from Environment Variables ---
     const { 
         SPREADSHEET_ID, 
         GOOGLE_SERVICE_ACCOUNT_EMAIL, 
         GOOGLE_PRIVATE_KEY,
-        ANALYTICS_SHEET_NAME = 'a', // Sheet "a" for summary
-        ANALYTICS_DETAIL_SHEET_NAME = 'Analytics_Detail' // Optional detail sheet
+        ANALYTICS_SHEET_NAME = 'a',
+        ANALYTICS_DETAIL_SHEET_NAME = 'Analytics_Detail'
     } = process.env;
 
     if (!SPREADSHEET_ID || !GOOGLE_SERVICE_ACCOUNT_EMAIL || !GOOGLE_PRIVATE_KEY) {
@@ -47,7 +46,6 @@ export default async function handler(request, response) {
         return response.status(500).json({ success: false, message: 'Server configuration error.' });
     }
 
-    // --- Google Sheets Authentication ---
     const auth = new google.auth.GoogleAuth({
         credentials: {
             client_email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -61,85 +59,106 @@ export default async function handler(request, response) {
     try {
         const analyticsData = request.body;
 
-        // FIXED: Accept 'summary' type to match client-side dataSync.js
-        if (!analyticsData || analyticsData.analyticsType !== 'summary') {
+        // ── FIX: Accept client payload shape (kioskId + eventCount + events)
+        //    Old guard required analyticsType:'summary' which client never sends.
+        if (!analyticsData || typeof analyticsData !== 'object') {
             return response.status(400).json({ 
                 success: false, 
-                message: 'Invalid analytics payload or type. Expected analyticsType: "summary"' 
+                message: 'Invalid or missing analytics payload'
             });
         }
 
-        // FIXED: Extract kioskId from window.dataUtils.kioskId or rawEvents
-        const kioskId = analyticsData.kioskId 
-            || analyticsData.rawEvents?.[0]?.kioskId 
-            || 'UNKNOWN_KIOSK';
+        // Support both payload shapes:
+        //   Client shape: { kioskId, eventCount, completions, abandonments, avgCompletionTime, events, syncedAt }
+        //   Legacy shape: { analyticsType:'summary', kioskId, totalCompletions, rawEvents, ... }
+        const isClientShape  = Array.isArray(analyticsData.events);
+        const isLegacyShape  = analyticsData.analyticsType === 'summary';
 
-        console.log(`Processing analytics sync for Kiosk ${kioskId}: ${analyticsData.rawEvents?.length || 0} events`);
+        if (!isClientShape && !isLegacyShape) {
+            return response.status(400).json({ 
+                success: false, 
+                message: 'Unrecognized analytics payload shape — expected events[] or analyticsType:summary'
+            });
+        }
 
-        // --- 1. PREPARE SUMMARY DATA ---
+        // Normalize to a common internal shape
+        const kioskId          = analyticsData.kioskId || 'UNKNOWN_KIOSK';
+        const rawEvents        = isClientShape
+            ? analyticsData.events
+            : (analyticsData.rawEvents || []);
+        const totalCompletions = isClientShape
+            ? (analyticsData.completions  || 0)
+            : (analyticsData.totalCompletions  || 0);
+        const totalAbandonments = isClientShape
+            ? (analyticsData.abandonments || 0)
+            : (analyticsData.totalAbandonments || 0);
+        const total            = totalCompletions + totalAbandonments;
+        const completionRate   = total > 0
+            ? ((totalCompletions / total) * 100).toFixed(1)
+            : '0';
+        const avgCompletionTimeSeconds = isClientShape
+            ? (analyticsData.avgCompletionTime || 0)
+            : (analyticsData.avgCompletionTimeSeconds || 0);
+        const dropoffByQuestion = isClientShape
+            ? (analyticsData.dropoffByQuestion || {})
+            : (analyticsData.dropoffByQuestion || {});
+
+        console.log(`Processing analytics sync for Kiosk ${kioskId}: ${rawEvents.length} events`);
+
+        // ── Summary row ───────────────────────────────────────────────────────
         const summaryRow = [
-            analyticsData.timestamp || new Date().toISOString(),
+            analyticsData.syncedAt || new Date().toISOString(),
             kioskId,
-            analyticsData.totalCompletions || 0,
-            analyticsData.totalAbandonments || 0,
-            analyticsData.completionRate ? `${analyticsData.completionRate}%` : '0%',
-            analyticsData.avgCompletionTimeSeconds || '0',
-            JSON.stringify(analyticsData.dropoffByQuestion || {}) 
+            totalCompletions,
+            totalAbandonments,
+            `${completionRate}%`,
+            avgCompletionTimeSeconds,
+            JSON.stringify(dropoffByQuestion)
         ];
 
-        // --- 2. APPEND SUMMARY TO SHEET "a" ---
         await sheets.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_ID,
-            range: `${ANALYTICS_SHEET_NAME}!A:G`, 
+            range: `${ANALYTICS_SHEET_NAME}!A:G`,
             valueInputOption: 'USER_ENTERED',
-            resource: {
-                values: [summaryRow]
-            }
+            resource: { values: [summaryRow] }
         });
 
         console.log(`Analytics summary for Kiosk ${kioskId} written to sheet "${ANALYTICS_SHEET_NAME}"`);
 
-        // --- 3. OPTIONAL: APPEND DETAILED EVENTS ---
-        if (analyticsData.rawEvents && analyticsData.rawEvents.length > 0) {
-           const detailRows = analyticsData.rawEvents.map(event => [
-  event.timestamp                                          || '',
-  event.kioskId                                            || kioskId,
-  event.sessionId || event.surveyId                        || '',
-  event.eventType                                          || '',
-  event.surveyId                                           || '',
-  event.questionId                                         || '',
-  event.questionIndex !== undefined ? event.questionIndex  : '',
-  event.totalTimeSeconds                                   || '',
-  event.reason                                             || '',
-  event.surveyType                                         || '',
-  event.questionTimeSpent
-    ? JSON.stringify(event.questionTimeSpent)
-    : ''
-]);
+        // ── Detail rows ───────────────────────────────────────────────────────
+        if (rawEvents.length > 0) {
+            const detailRows = rawEvents.map(event => [
+                event.timestamp                                         || '',
+                event.kioskId                                           || kioskId,
+                event.sessionId || event.surveyId                       || '',
+                event.eventType                                         || '',
+                event.surveyId                                          || '',
+                event.questionId                                        || '',
+                event.questionIndex !== undefined ? event.questionIndex : '',
+                event.totalTimeSeconds                                  || '',
+                event.reason                                            || '',
+                event.surveyType                                        || '',
+                event.questionTimeSpent ? JSON.stringify(event.questionTimeSpent) : ''
+            ]);
 
             try {
                 await sheets.spreadsheets.values.append({
                     spreadsheetId: SPREADSHEET_ID,
                     range: `${ANALYTICS_DETAIL_SHEET_NAME}!A:K`,
                     valueInputOption: 'USER_ENTERED',
-                    resource: {
-                        values: detailRows
-                    }
+                    resource: { values: detailRows }
                 });
                 console.log(`${detailRows.length} detailed events written to ${ANALYTICS_DETAIL_SHEET_NAME}`);
             } catch (detailError) {
-  console.error(`[ANALYTICS] ❌ Detail sheet write failed (${ANALYTICS_DETAIL_SHEET_NAME}):`, detailError.message);
-  // Non-fatal — summary already written — but log clearly so missing rows are visible
-  // Check that the "${ANALYTICS_DETAIL_SHEET_NAME}" tab exists in your spreadsheet
-}
+                console.error(`[ANALYTICS] ❌ Detail sheet write failed (${ANALYTICS_DETAIL_SHEET_NAME}):`, detailError.message);
+            }
         }
 
-        // --- SUCCESS RESPONSE ---
         return response.status(200).json({ 
             success: true,
             message: 'Analytics synced successfully',
             summaryRecords: 1,
-            detailRecords: analyticsData.rawEvents?.length || 0
+            detailRecords: rawEvents.length
         });
 
     } catch (error) {
@@ -147,7 +166,6 @@ export default async function handler(request, response) {
         if (error.response) {
             console.error('API Response Data:', error.response.data);
         }
-        
         return response.status(500).json({ 
             success: false,
             message: 'Analytics sync failed. Data retained locally.',

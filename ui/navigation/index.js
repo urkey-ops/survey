@@ -1,7 +1,7 @@
 // FILE: ui/navigation/index.js
 // PURPOSE: Main entry point that combines all navigation modules
+// VERSION: updated — fix getDependencies window reference bug
 // DEPENDENCIES: All navigation sub-modules
-
 import {
   showQuestion,
   goNext,
@@ -18,11 +18,10 @@ import {
   updateData,
   startQuestionTimer,
   stopQuestionTimer,
-  setupInputFocusScroll
+  setupInputFocusScroll,
+  getDependencies,                          // ← FIX: import directly from core
 } from './core.js';
-
-import { submitSurvey } from './submit.js';
-
+import { handleSubmit } from './submit.js';
 import {
   showStartScreen,
   cleanupStartScreenListeners
@@ -40,18 +39,12 @@ const navigationModule = {
   isFirstQuestion,
   isLastQuestion,
   jumpToQuestion,
-  
   // Start screen
   showStartScreen,
   cleanupStartScreenListeners,
-  
-  // Submission
-  submitSurvey,
-  
   // Cleanup functions
   cleanupInputFocusScroll,
   cleanupIntervals,
-  
   // Internal helpers
   _internal: {
     saveState,
@@ -67,10 +60,18 @@ const navigationModule = {
 // Expose to window for backward compatibility
 window.navigationHandler = navigationModule;
 
-// Store submitSurvey for goNext to access
-window.navigationHandler.submitSurvey = submitSurvey;
+// ─── ALWAYS PASS SURVEYTYPE FROM KIOSK_CONFIG ────────────────────────────────
+// This is the ONLY place that calls `handleSubmit` with explicit `surveyType`.
+window.navigationHandler.submitSurvey = function () {
+  const deps = getDependencies();           // ← FIX: use imported fn, not window.getDependencies
+  const surveyType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+  handleSubmit({ ...deps, surveyType });
+};
 
-// Export all functions
+// ✅ Only ONE export of `submitSurvey`:
+export const submitSurvey = handleSubmit;
+
+// Export all other functions
 export {
   showQuestion,
   goNext,
@@ -82,7 +83,6 @@ export {
   isFirstQuestion,
   isLastQuestion,
   jumpToQuestion,
-  submitSurvey,
   cleanupStartScreenListeners,
   cleanupInputFocusScroll,
   cleanupIntervals

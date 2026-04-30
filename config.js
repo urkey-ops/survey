@@ -215,6 +215,14 @@
     ERROR_LOG_ENDPOINT,
 
     FEATURES,
+
+ KIOSK_MODE_ICONS: {
+      temple:   '🛕',
+      shayona:  '☕',
+      giftshop: '🛍️',
+      activity: '🎉',
+    },
+    
   });
 
   const KIOSK_CONFIG = {

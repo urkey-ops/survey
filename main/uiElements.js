@@ -1,6 +1,13 @@
 // FILE: main/uiElements.js
 // PURPOSE: DOM element initialization and validation
-// DEPENDENCIES: window.globals
+// VERSION: 1.1.0
+// CHANGES FROM 1.0.0:
+//   - ADD: Admin element validation inside initializeElements()
+//     Previously only validateElements() checked 6 survey-critical elements.
+//     Admin elements (syncButton, adminClearButton, etc.) were populated but
+//     never validated — a renamed ID silently nulled them with no console error.
+//   - UNCHANGED: validateElements(), showCriticalError() — no behaviour change.
+// DEPENDENCIES: window.globals (declared in appState.js, populated here)
 
 /**
  * Initialize all DOM element references
@@ -8,11 +15,13 @@
 export function initializeElements() {
   console.log('[UI] Initializing DOM references...');
 
-  // Guard: ensure window.globals exists
+  // Guard: ensure window.globals exists (declared in appState.js)
   if (!window.globals) {
     window.globals = {};
   }
 
+  // ── Survey-critical elements ──────────────────────────────────────────────
+  // These are validated by validateElements() and will halt boot if missing.
   window.globals.questionContainer    = document.getElementById('questionContainer');
   window.globals.nextBtn              = document.getElementById('nextBtn');
   window.globals.prevBtn              = document.getElementById('prevBtn');
@@ -20,6 +29,12 @@ export function initializeElements() {
   window.globals.progressBar          = document.getElementById('progressBar');
   window.globals.kioskStartScreen     = document.getElementById('kioskStartScreen');
   window.globals.kioskVideo           = document.getElementById('kioskVideo');
+
+  // ── Admin panel elements ──────────────────────────────────────────────────
+  // These are NOT in validateElements() (boot must not halt if admin panel
+  // has a missing element — the survey must still work).
+  // Validated here with console.error so a renamed ID surfaces immediately
+  // at boot rather than silently failing when staff tap the admin panel.
   window.globals.adminControls        = document.getElementById('adminControls');
   window.globals.syncButton           = document.getElementById('syncButton');
   window.globals.adminClearButton     = document.getElementById('adminClearButton');
@@ -30,18 +45,50 @@ export function initializeElements() {
   window.globals.checkUpdateButton    = document.getElementById('checkUpdateButton');
   window.globals.fixVideoButton       = document.getElementById('fixVideoButton');
 
-  // Optional elements — null is acceptable, never include in requiredElements
-  window.globals.kioskSurvey          = document.getElementById('kioskSurvey')    ?? null;
-  window.globals.adminQueueCount      = document.getElementById('adminQueueCount') ?? null;
-  window.globals.progressText         = document.getElementById('progressText')    ?? null;
+  // ── Optional elements — null is acceptable ────────────────────────────────
+  // Never include these in requiredElements or admin validation.
+  window.globals.kioskSurvey     = document.getElementById('kioskSurvey')    ?? null;
+  window.globals.adminQueueCount = document.getElementById('adminQueueCount') ?? null;
+  window.globals.progressText    = document.getElementById('progressText')    ?? null;
+
+  // ── Admin element validation ──────────────────────────────────────────────
+  // Logs console.error for each missing admin element immediately at boot.
+  // Does NOT halt initialization — survey functionality is unaffected.
+  // If any of these are null, adminPanel.js will silently skip them, but
+  // the error here tells the developer exactly which ID to fix in index.html.
+  const REQUIRED_ADMIN_ELEMENTS = [
+    'adminControls',
+    'syncButton',
+    'adminClearButton',
+    'hideAdminButton',
+    'unsyncedCountDisplay',
+    'syncStatusMessage',
+    'syncAnalyticsButton',
+    'checkUpdateButton',
+    'fixVideoButton',
+  ];
+
+  const missingAdmin = REQUIRED_ADMIN_ELEMENTS.filter(key => !window.globals[key]);
+
+  if (missingAdmin.length) {
+    missingAdmin.forEach(key =>
+      console.error(
+        `[UI] ❌ window.globals.${key} is null — element ID not found in index.html. ` +
+        `Admin panel "${key}" button will not function.`
+      )
+    );
+  } else {
+    console.log('[UI] ✅ All admin elements found and assigned');
+  }
 
   console.log('[UI] ✅ DOM elements initialized');
 }
 
 /**
- * Validate that all CRITICAL DOM elements exist
- * IMPORTANT: Only include elements that are guaranteed to exist in index.html.
- * Never add optional/deprecated element IDs here — a null value = critical failure.
+ * Validate that all CRITICAL DOM elements exist.
+ * IMPORTANT: Only include elements guaranteed to exist in index.html.
+ * Never add optional or admin-only element IDs here — a null value here
+ * triggers showCriticalError() and halts the entire application.
  * @returns {{ valid: boolean, missingElements: string[] }}
  */
 export function validateElements() {
@@ -54,8 +101,8 @@ export function validateElements() {
     mainTitle:         window.globals.mainTitle,
     kioskStartScreen:  window.globals.kioskStartScreen,
     kioskVideo:        window.globals.kioskVideo,
-    // ✋ DO NOT ADD kioskSurvey, adminQueueCount, progressText here —
-    //    they are optional and do not exist in index.html
+    // ✋ DO NOT ADD admin elements here — they are validated in initializeElements()
+    // ✋ DO NOT ADD kioskSurvey, adminQueueCount, progressText — optional elements
   };
 
   Object.entries(requiredElements).forEach(([name, element]) => {
@@ -74,7 +121,7 @@ export function validateElements() {
 }
 
 /**
- * Display critical error screen when elements are missing
+ * Display critical error screen when required survey elements are missing.
  * @param {string[]} missingElements
  */
 export function showCriticalError(missingElements) {

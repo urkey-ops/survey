@@ -1,12 +1,16 @@
 // FILE: sync/dataSync.js
 // PURPOSE: Core data synchronization - offline-first, queue-based, retry-safe
-// VERSION: 3.5.1
-// CHANGES FROM 3.5.0:
-//   - FIX B2-05: Removed redundant second hasMeaningfulResponse() filter pass in
-//     syncSingleQueue(). Records already cleaned by removeMeaninglessRecords() were
-//     being filtered again after validateQueue(), producing dead analytics events
-//     ('blank_records_filtered_second_pass') that could never fire in practice.
-//     filteredValidSubmissions now uses validSubmissions from validateQueue() directly.
+// VERSION: 3.5.2
+// CHANGES FROM 3.5.1:
+//   - FIX BUG-10: getSurveyTypeConfigsByMode() no longer reads
+//     window.DEVICECONFIG.CONFIGS[mode].allowedSurveyTypes. That path
+//     does not exist — DEVICECONFIG is a flat object with kioskMode,
+//     kioskId, defaultSurveyType, and allowedSurveyTypes at root level.
+//     CONFIGS is an internal constant inside device-config.js's IIFE and
+//     is never exposed on window.DEVICECONFIG. The fix reads
+//     window.DEVICECONFIG.allowedSurveyTypes directly (the flat, canonical
+//     property) so mode-specific queue filtering works correctly without
+//     any dead-path fallback logic.
 // DEPENDENCIES: storageUtils.js, queueManager.js, analyticsManager.js, networkHandler.js
 
 import {
@@ -29,8 +33,6 @@ import {
 
 import {
   recordAnalytics,
-  shouldSyncAnalytics,
-  checkAndSyncAnalytics,
   syncAnalytics
 } from './analyticsManager.js';
 
@@ -108,24 +110,31 @@ function getAllQueueConfigsWithData() {
 }
 
 /**
- * Filter all configs by kiosk mode (temple, shayona, giftShop, activity).
- * Falls back to all queues if mode is unknown.
+ * Filter configs by kiosk mode using DEVICECONFIG.allowedSurveyTypes as authority.
+ *
+ * FIX BUG-10: Reads window.DEVICECONFIG.allowedSurveyTypes directly (flat shape).
+ * Previously read window.DEVICECONFIG.CONFIGS[mode].allowedSurveyTypes — that
+ * path does not exist on the runtime DEVICECONFIG object. CONFIGS is a local
+ * constant inside device-config.js's IIFE and is never exposed on window.
+ * Falls back to all queues if mode is 'all', unknown, or DEVICECONFIG is unset.
  */
 function getSurveyTypeConfigsByMode(mode = 'all') {
   const all = getSurveyTypeConfigs();
   if (mode === 'all' || !mode) return all;
 
-  const prefixMap = {
-    temple:     'type',
-    shayona:    'shayona',
-    giftShop:   'gift',
-    activity:   'activity'
-  };
+  // FIX BUG-10: Use flat DEVICECONFIG.allowedSurveyTypes — not CONFIGS[mode]
+  const allowedTypes = window.DEVICECONFIG?.allowedSurveyTypes || [];
+  const allowed      = new Set(allowedTypes);
 
-  const prefix = prefixMap[mode];
-  if (!prefix) return all;
+  if (allowed.size === 0) {
+    console.warn(
+      `[DATA SYNC] No allowedSurveyTypes on DEVICECONFIG for mode "${mode}" — ` +
+      `falling back to all queues`
+    );
+    return all;
+  }
 
-  return all.filter(cfg => cfg.surveyType.startsWith(prefix));
+  return all.filter(cfg => allowed.has(cfg.surveyType));
 }
 
 function normalizeSyncTargets(syncBothQueues = true) {
@@ -426,10 +435,6 @@ async function syncSingleQueue(target, isManual = false) {
 
   const { valid: validSubmissions, invalid: invalidSubmissions } = validateQueue(queueKey);
 
-  // FIX B2-05: Removed redundant second hasMeaningfulResponse() filter pass.
-  // cleanedQueue already guarantees all records are meaningful after
-  // removeMeaninglessRecords(). validateQueue() splits valid/invalid by
-  // identity + timestamp — no second content filter needed.
   if (!Array.isArray(validSubmissions) || validSubmissions.length === 0) {
     console.error(`[DATA SYNC] No valid submissions found for ${surveyType}`);
     if (invalidSubmissions?.length > 0) {
@@ -478,7 +483,7 @@ async function syncSingleQueue(target, isManual = false) {
     console.log(`[DATA SYNC] ✅ ${surveyType} → ${sheetName}: synced ${successfulIds.length}, remaining ${remainingCount}`);
 
     return { ok: true, surveyType, queueKey, successfulCount: successfulIds.length, remainingCount };
-      } catch (error) {
+  } catch (error) {
     console.error(`[DATA SYNC] ❌ Queue sync failed for ${surveyType}: ${error.message}`);
     return {
       ok: false, surveyType, queueKey,
@@ -489,18 +494,10 @@ async function syncSingleQueue(target, isManual = false) {
   }
 }
 
-
-
-
 // ═══════════════════════════════════════════════════════════
 // SURVEY DATA SYNC (continued)
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Sync only queues that match a given kiosk mode (temple, shayona, giftShop, activity, or 'all').
- * Called from admin panel mode‑specific sync button.
- * Falls back to global sync if mode is unknown.
- */
 export async function syncKioskQueues(mode = 'all') {
   if (!isOnline()) {
     console.warn(`[DATA SYNC] ❌ Offline; cannot sync ${mode} queues`);
@@ -548,7 +545,7 @@ export async function syncKioskQueues(mode = 'all') {
 export function autoSync() {
   console.log('[AUTO SYNC] Periodic sync triggered');
   syncData(false, { syncBothQueues: true });
-  checkAndSyncAnalytics();
+  syncAnalytics();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -573,7 +570,7 @@ export function startPeriodicSync() {
   periodicAnalyticsTimer = window.setInterval(() => {
     if (isOnline()) {
       console.log('[PERIODIC ANALYTICS] Interval fired — syncing analytics...');
-      checkAndSyncAnalytics();
+      syncAnalytics();
     }
   }, ANALYTICS_INTERVAL);
 
@@ -676,8 +673,6 @@ window.dataHandlers = {
 
   recordAnalytics,
   syncAnalytics,
-  checkAndSyncAnalytics,
-  shouldSyncAnalytics,
 
   syncData,
   autoSync,
@@ -714,7 +709,7 @@ const _bootType   = getActiveSurveyType();
 const _bootConfig = getQueueConfigByType(_bootType);
 
 console.log('═══════════════════════════════════════════════════════');
-console.log('🔄 DATA SYNC MODULE LOADED (v3.5.1)');
+console.log('🔄 DATA SYNC MODULE LOADED (v3.5.2)');
 console.log('═══════════════════════════════════════════════════════');
 console.log(`  Active Survey : ${_bootType}`);
 console.log(`  Queue Key     : ${_bootConfig.queueKey}`);

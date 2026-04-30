@@ -1,72 +1,120 @@
 // FILE: ui/navigation/submit.js
 // PURPOSE: Survey submission and completion logic
-// VERSION: 3.7.0
-// CHANGES FROM 3.6.0:
-//   - ADD: normalizeSubmissionPayload handles dual-star-rating { taste, value }
-//     Flattens to individual flat fields for sheet compatibility:
-//       e.g. foodRating_taste: 4, foodRating_value: 3
-//     Original nested key removed after flattening.
-//   - ADD: hasMeaningfulResponse handles dual-star-rating shape
-// DEPENDENCIES: core.js
+// VERSION: 3.8.4
+// CHANGES FROM 3.8.3:
+//   - FIX BUG-13: _doReset() now sets window.__surveyStateInitialized = false
+//     at the very start. Without this, the idempotency guard in
+//     initializeSurveyState() (navigationSetup.js) blocks re-initialization
+//     after a normal survey completion — the start screen renders but the
+//     tap listener is never re-attached, so the next survey cannot begin.
+//   - FIX BUG-14: hasMeaningfulResponse() is now called with rawFormData
+//     (captured before normalizeSubmissionPayload()) instead of debugFormData
+//     which was the live appState.formData reference. normalizeSubmissionPayload()
+//     deletes keys (dual-star, selector-textarea) and adds flattened replacements.
+//     Calling hasMeaningfulResponse() on the post-normalisation object causes it
+//     to miss those original keys — a type3 survey with only a dual-star response
+//     would be incorrectly discarded as empty.
+// DEPENDENCIES: core.js, main/contracts.js
 
 import { getDependencies, stopQuestionTimer, saveState } from './core.js';
+import { buildQueueRecord, validateFormData, buildAnalyticsEvent } from '../../main/contracts.js';
 
 let completionInProgress = false;
-let resetTriggered = false;
+let resetTriggered       = false;
 
-/**
- * Convert UI-captured values into a stable queue/API-safe payload.
- *
- * dual-star-rating flattening:
- *   IN:  { foodRating: { taste: 4, value: 3 } }
- *   OUT: { foodRating_taste: 4, foodRating_value: 3 }
- *        (original foodRating key removed)
- *
- * selector-textarea flattening (unchanged from 3.6.0):
- *   IN:  { finalThoughts: { category: 'shoutout', text: 'Great!' } }
- *   OUT: { finalThoughts_category: 'shoutout', finalThoughts_text: 'Great!' }
- */
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+
+function hasMeaningfulResponse(formData, surveyType) {
+  if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
+    return false;
+  }
+
+  const REQUIRED_KEYS = [
+    'cafeExperience',
+    'visitPurpose',
+    'waitTime',
+    'waitAcceptable',
+    'flowExperience',
+    'foodPriority',
+    'foodRating',
+    'final_thoughts'
+  ];
+
+  if (surveyType !== 'type3') {
+    return Object.entries(formData).some(([key, val]) => {
+      if (key === 'id') return false;
+      if (Array.isArray(val))  return val.length > 0;
+      if (typeof val === 'object' && val !== null) {
+        return Object.values(val).some(v => v !== null && v !== undefined && v !== '');
+      }
+      return val !== null && val !== undefined && val !== '';
+    });
+  }
+
+  for (const key of REQUIRED_KEYS) {
+    const val = formData[key];
+
+    if (val === null || val === undefined || val === '') continue;
+
+    if (Array.isArray(val)) {
+      if (val.some(v => v !== null && v !== undefined && v !== '')) return true;
+      continue;
+    }
+
+    if (typeof val === 'object' && val !== null) {
+      for (const v of Object.values(val)) {
+        if (v !== null && v !== undefined && v !== '') return true;
+      }
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────
+// NORMALISE PAYLOAD
+// ─────────────────────────────────────────────────────────────
+
 function normalizeSubmissionPayload(formData, questions) {
   const normalized = { ...formData };
 
   questions.forEach((q) => {
     const rawValue = normalized[q.name];
 
-    // ── section-header ─────────────────────────────────────────────────────
-    // No data to normalize — skip silently.
     if (q.type === 'section-header') {
-      delete normalized[q.name]; // remove any accidental key (name === id for headers)
-      return;
-    }
-
-    // ── dual-star-rating ───────────────────────────────────────────────────
-    // Flatten { key1: number, key2: number } → individual flat fields.
-    // Each subRating key becomes: q.name_subKey
-    if (q.type === 'dual-star-rating') {
-      const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
-        ? rawValue
-        : {};
-
-      q.subRatings?.forEach(sub => {
-        const val = valueObj[sub.key];
-        normalized[`${q.name}_${sub.key}`] = (val !== null && val !== undefined)
-          ? Number(val)
-          : '';
-      });
-
-      // Remove the nested object — sheet should never receive it as JSON
       delete normalized[q.name];
       return;
     }
 
-    // ── selector-textarea ──────────────────────────────────────────────────
+    if (q.type === 'dual-star-rating') {
+      const valueObj =
+        rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
+          ? rawValue
+          : {};
+
+      q.subRatings?.forEach(sub => {
+        const val = valueObj[sub.key];
+        normalized[`${q.name}_${sub.key}`] =
+          val !== null && val !== undefined ? Number(val) : '';
+      });
+
+      delete normalized[q.name];
+      return;
+    }
+
     if (q.type === 'selector-textarea') {
-      const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
-        ? rawValue
-        : { category: null, text: typeof rawValue === 'string' ? rawValue : '' };
+      const valueObj =
+        rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
+          ? rawValue
+          : { category: null, text: typeof rawValue === 'string' ? rawValue : '' };
 
       const category = valueObj.category ? String(valueObj.category).trim() : '';
-      const text     = typeof valueObj.text === 'string' ? valueObj.text.trim() : '';
+      const text     = valueObj.text     ? String(valueObj.text).trim()     : '';
 
       normalized[`${q.name}_category`] = category;
       normalized[`${q.name}_text`]     = text;
@@ -74,361 +122,234 @@ function normalizeSubmissionPayload(formData, questions) {
       return;
     }
 
-    // ── number-scale ───────────────────────────────────────────────────────
-    if (q.type === 'number-scale') {
+    if (q.type === 'number-scale' || q.type === 'star-rating') {
       if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
-        const parsed = Number(rawValue);
-        normalized[q.name] = Number.isNaN(parsed) ? rawValue : parsed;
+        normalized[q.name] = Number(rawValue);
       }
       return;
     }
 
-    // ── radio-with-other ───────────────────────────────────────────────────
-    if (q.type === 'radio-with-other') {
-      const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
-        ? rawValue
-        : { main: rawValue || '', other: normalized[`other_${q.name}`] || '' };
-
-      const main  = valueObj.main || '';
-      const other = main === 'Other' ? (valueObj.other || '') : '';
-
-      normalized[q.name]            = { main, other };
-      normalized[`other_${q.name}`] = other;
-      normalized['other' + q.id]    = other;
-      return;
-    }
-
-    // ── radio-with-followup ────────────────────────────────────────────────
-    if (q.type === 'radio-with-followup') {
-      const valueObj = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)
-        ? rawValue
-        : { main: rawValue || '', followup: [] };
-
-      normalized[q.name] = {
-        main:     valueObj.main || '',
-        followup: Array.isArray(valueObj.followup) ? [...valueObj.followup] : []
-      };
-      return;
-    }
-
-    // ── checkbox-with-other ────────────────────────────────────────────────
     if (q.type === 'checkbox-with-other') {
-      const selected   = Array.isArray(rawValue) ? [...rawValue] : [];
-      const otherValue = normalized[`other_${q.name}`] || normalized['other' + q.id] || '';
-
-      normalized[q.name]            = selected;
-      normalized[`other_${q.name}`] = selected.includes('Other') ? otherValue : '';
-      normalized['other' + q.id]    = normalized[`other_${q.name}`];
+      if (!Array.isArray(normalized[q.name])) {
+        normalized[q.name] = normalized[q.name] ? [normalized[q.name]] : [];
+      }
       return;
-    }
-
-    // ── checkbox ───────────────────────────────────────────────────────────
-    if (q.type === 'checkbox') {
-      normalized[q.name] = Array.isArray(rawValue) ? [...rawValue] : [];
-      return;
-    }
-
-    // ── textarea ───────────────────────────────────────────────────────────
-    if (q.type === 'textarea') {
-      normalized[q.name] = typeof rawValue === 'string' ? rawValue.trim() : (rawValue || '');
-      return;
-    }
-
-    // ── radio / emoji-radio / star-rating ──────────────────────────────────
-    if (q.type === 'radio' || q.type === 'emoji-radio' || q.type === 'star-rating') {
-      normalized[q.name] = rawValue ?? '';
     }
   });
 
   return normalized;
 }
 
-/**
- * Returns true only if payload contains at least one real survey answer.
- */
-function hasMeaningfulResponse(formData = {}) {
-  if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
-    return false;
+// ─────────────────────────────────────────────────────────────
+// RESET
+// ─────────────────────────────────────────────────────────────
+
+function _doReset(deps) {
+  const { appState } = deps;
+
+  // FIX BUG-13: Reset the idempotency guard FIRST so initializeSurveyState()
+  // can re-run and re-attach the start-screen tap listener. Without this,
+  // every normal submission completion leaves the kiosk frozen — the start
+  // screen renders but tapping it does nothing because the listener was
+  // never re-bound.
+  window.__surveyStateInitialized = false;
+  console.log('[SUBMIT] ✅ __surveyStateInitialized reset — initializeSurveyState can re-run');
+
+  resetTriggered       = true;
+  completionInProgress = false;
+
+  if (appState) {
+    appState.currentQuestionIndex = 0;
+    appState.formData             = {};
+    appState.questionTimeSpent    = {};
+    appState.surveyStartTime      = null;
   }
 
-  const technicalKeys = new Set([
-    'id', 'submissionId', 'sessionId', 'timestamp', 'completedAt',
-    'submittedAt', 'abandonedAt', 'abandonedReason', 'surveyStartTime',
-    'surveyType', 'kioskId', 'sync_status', 'syncStatus',
-    'questionTimeSpent', 'questionStartTimes', 'completionTimeSeconds',
-    'currentQuestionIndex',
-  ]);
+  if (typeof window.navigationHandler?.showStartScreen === 'function') {
+    window.navigationHandler.showStartScreen();
+  } else if (typeof window.showStartScreen === 'function') {
+    window.showStartScreen();
+  } else {
+    console.error('[SUBMIT] ❌ No showStartScreen found — cannot reset to start');
+  }
 
-  return Object.entries(formData).some(([key, value]) => {
-    if (technicalKeys.has(key)) return false;
-    if (value == null)           return false;
-
-    if (typeof value === 'string')  return value.trim() !== '';
-    if (typeof value === 'number')  return true; // 0 is a valid rating
-
-    if (Array.isArray(value)) return value.length > 0;
-
-    if (typeof value === 'object') {
-      // dual-star-rating raw shape (pre-normalization defensive guard)
-      // { taste: 4, value: 3 } — any non-null sub-key is meaningful
-      if (Object.values(value).some(v => typeof v === 'number')) {
-        return true;
-      }
-
-      // selector-textarea raw shape
-      if ('category' in value || 'text' in value) {
-        const hasCategory = value.category != null && String(value.category).trim() !== '';
-        const hasText     = typeof value.text === 'string' && value.text.trim() !== '';
-        return hasCategory || hasText;
-      }
-
-      // radio-with-other / radio-with-followup
-      if ('main' in value || 'other' in value || 'followup' in value) {
-        const main     = typeof value.main    === 'string' ? value.main.trim()    : value.main;
-        const other    = typeof value.other   === 'string' ? value.other.trim()   : value.other;
-        const followup = Array.isArray(value.followup)     ? value.followup       : [];
-        return Boolean(main) || Boolean(other) || followup.length > 0;
-      }
-
-      return Object.keys(value).length > 0;
-    }
-
-    return true;
-  });
+  saveState(deps);
+  console.log('[SUBMIT] ✅ Survey reset — back to start screen');
 }
 
-/**
- * Submit the completed survey.
- */
-export function submitSurvey() {
-  if (completionInProgress) {
-    console.warn('[SUBMIT] Submission already in progress — ignoring duplicate call');
-    return;
-  }
+// ─────────────────────────────────────────────────────────────
+// MAIN SUBMIT HANDLER
+// ─────────────────────────────────────────────────────────────
 
-  completionInProgress = true;
-  resetTriggered = false;
-
+export async function handleSubmit(deps = null) {
   try {
-    const { globals, appState, dataUtils, dataHandlers } = getDependencies();
-
-    const questionContainer = globals?.questionContainer;
-    const prevBtn           = globals?.prevBtn;
-    const nextBtn           = globals?.nextBtn;
-    const progressBar       = globals?.progressBar;
-
-    if (window.uiHandlers?.clearAllTimers) {
-      window.uiHandlers.clearAllTimers();
-    }
-
-    if (typeof dataUtils?.clearAutoAdvance === 'function') {
-      dataUtils.clearAutoAdvance();
-    }
-
-    const questions    = dataUtils.getSurveyQuestions
-      ? dataUtils.getSurveyQuestions()
-      : dataUtils.surveyQuestions;
-
-    const lastQuestion = questions[appState.currentQuestionIndex];
-    if (lastQuestion) stopQuestionTimer(lastQuestion.id);
-
-    const totalTimeSeconds = window.uiHandlers?.getTotalSurveyTime
-      ? window.uiHandlers.getTotalSurveyTime()
-      : 0;
-
-    const surveyType   = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
-    const surveyConfig = window.CONSTANTS?.SURVEY_TYPES?.[surveyType];
-    const queueKey     = surveyConfig?.storageKey ||
-      (surveyType === 'type2'
-        ? window.CONSTANTS?.STORAGE_KEY_QUEUE_V2
-        : window.CONSTANTS?.STORAGE_KEY_QUEUE) ||
-      'submissionQueue';
-
-    console.log(`[SUBMIT] Survey type : ${surveyType}`);
-    console.log(`[SUBMIT] Queue key   : "${queueKey}"`);
-    console.log(`[SUBMIT] Submission  : ${appState.formData.id || '(no id yet)'}`);
-
-    const normalizedFormData = normalizeSubmissionPayload(appState.formData, questions);
-    const hasAnswers         = hasMeaningfulResponse(normalizedFormData);
-
-    if (!hasAnswers) {
-      console.warn('[SUBMIT] No meaningful responses found — skipping queue write');
-      try {
-        dataHandlers.recordAnalytics('survey_submit_skipped_blank', {
-          surveyType,
-          questionIndex:    appState.currentQuestionIndex,
-          totalTimeSeconds,
-          reason:           'no_meaningful_answers',
-        });
-      } catch (analyticsErr) {
-        console.warn('[ANALYTICS] Failed to record blank-submit skip:', analyticsErr);
-      }
-
-      if (progressBar) progressBar.style.width = '100%';
-      _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
-      return;
-    }
-
-    const submissionData = {
-      ...normalizedFormData,
-      id:                    normalizedFormData.id || dataHandlers.generateUUID(),
+    const resolvedDeps = deps || getDependencies();
+    const {
+      appState,
+      dataHandlers,
+      questions,
       surveyType,
-      questionTimeSpent:     { ...appState.questionTimeSpent },
-      completionTimeSeconds: totalTimeSeconds,
-      completedAt:           new Date().toISOString(),
-      sync_status:           'unsynced',
-    };
+      questionContainer,
+    } = resolvedDeps;
 
-    const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
-    let submissionQueue  = dataHandlers.getSubmissionQueue(queueKey);
+    let SURVEY_TYPE = surveyType;
 
-    if (!Array.isArray(submissionQueue)) {
-      submissionQueue = [];
+    if (!SURVEY_TYPE || typeof SURVEY_TYPE !== 'string') {
+      const explicit = window.KIOSK_CONFIG?.getActiveSurveyType?.();
+      SURVEY_TYPE = explicit || 'type1';
+      console.error(
+        `[SUBMIT] ⚠️ surveyType missing or invalid: "${surveyType}"` +
+        ` — falling back to "${SURVEY_TYPE}"`
+      );
     }
 
-    if (submissionQueue.length >= MAX_QUEUE_SIZE) {
-      console.warn(`[QUEUE] Full (${MAX_QUEUE_SIZE}) — trimming oldest`);
-      submissionQueue = submissionQueue.slice(-MAX_QUEUE_SIZE + 1);
+    if (completionInProgress) {
+      console.warn('[SUBMIT] Already in progress — ignoring duplicate call');
+      return;
+    }
+    completionInProgress = true;
+    resetTriggered       = false;
+
+    console.log('[SUBMIT] 📋 Starting submission for surveyType:', SURVEY_TYPE);
+
+    stopQuestionTimer(resolvedDeps);
+
+    // FIX BUG-14: Capture a snapshot of formData BEFORE normalizeSubmissionPayload().
+    // normalizeSubmissionPayload() deletes keys like 'foodRating' (dual-star-rating)
+    // and 'final_thoughts' (selector-textarea), replacing them with flattened
+    // equivalents. hasMeaningfulResponse() checks for the original pre-norm keys.
+    // If called on the post-norm object, type3 surveys with only those response
+    // types would be incorrectly discarded as empty.
+    const rawFormData = { ...appState.formData };
+
+    console.log('[DEBUG] rawFormData (pre-norm) @ guard entry:', JSON.parse(JSON.stringify(rawFormData)));
+
+    const normalizedFormData = normalizeSubmissionPayload(
+      appState.formData || {},
+      questions || []
+    );
+
+    console.log('[DEBUG] normalizedFormData (post-norm):', JSON.parse(JSON.stringify(normalizedFormData)));
+
+    validateFormData(normalizedFormData, SURVEY_TYPE);
+
+    // FIX BUG-14: Pass rawFormData (pre-norm snapshot) not the live appState ref.
+    if (!hasMeaningfulResponse(rawFormData, SURVEY_TYPE)) {
+      console.warn('[SUBMIT] ⚠️ Empty formData — skipping submission');
+      completionInProgress = false;
+      _doReset(resolvedDeps);
+      return;
     }
 
-    submissionQueue.push(submissionData);
-    dataHandlers.safeSetLocalStorage(queueKey, submissionQueue);
-    console.log(`[QUEUE] Added to "${queueKey}" (${submissionQueue.length}/${MAX_QUEUE_SIZE})`);
+    const queueConfig = window.CONSTANTS?.SURVEY_TYPES?.[SURVEY_TYPE];
+    const queueKey    = queueConfig?.storageKey;
 
-    // Log flattened dual-star fields if present (type3 café)
-    if (submissionData.foodRating_taste !== undefined || submissionData.foodRating_value !== undefined) {
-      console.log(`[SUBMIT] foodRating_taste  : ${submissionData.foodRating_taste ?? ''}`);
-      console.log(`[SUBMIT] foodRating_value  : ${submissionData.foodRating_value ?? ''}`);
+    if (!queueKey) {
+      console.error(`[SUBMIT] ❌ No storageKey found for surveyType "${SURVEY_TYPE}" — cannot save`);
+      completionInProgress = false;
+      _doReset(resolvedDeps);
+      return;
     }
 
-    // Log flattened final_thoughts fields if present (type2 / type3)
-    if (submissionData.finalThoughts_category !== undefined || submissionData.finalThoughts_text !== undefined) {
-      console.log(`[SUBMIT] finalThoughts_category : "${submissionData.finalThoughts_category || ''}"`);
-      console.log(`[SUBMIT] finalThoughts_text     : "${submissionData.finalThoughts_text     || ''}"`);
+    const surveyStartTime   = appState.surveyStartTime || Date.now();
+    const totalTimeSeconds  = Math.round((Date.now() - surveyStartTime) / 1000);
+    const questionTimeSpent = { ...(appState.questionTimeSpent || {}) };
+
+    const record = buildQueueRecord(
+      {
+        ...normalizedFormData,
+        questionTimeSpent,
+        completionTimeSeconds: totalTimeSeconds,
+      },
+      {
+        surveyType: SURVEY_TYPE,
+        sync_status: 'unsynced',
+      }
+    );
+
+    let saved = false;
+    if (dataHandlers?.addToQueue) {
+      saved = dataHandlers.addToQueue(record, queueKey);
+    } else {
+      console.warn('[SUBMIT] ⚠️ addToQueue not available — falling back to safeSetLocalStorage');
+      try {
+        const existing = JSON.parse(localStorage.getItem(queueKey) || '[]');
+        existing.push(record);
+        saved = dataHandlers?.safeSetLocalStorage
+          ? dataHandlers.safeSetLocalStorage(queueKey, existing)
+          : (localStorage.setItem(queueKey, JSON.stringify(existing)), true);
+      } catch (e) {
+        console.error('[SUBMIT] ❌ Fallback write failed:', e);
+      }
     }
 
-    appState.formData = { ...submissionData };
-    if (typeof saveState === 'function') saveState();
+    if (!saved) {
+      console.error('[SUBMIT] ❌ Failed to save record — storage may be full');
+    } else {
+      console.log(`[SUBMIT] ✅ Record saved to "${queueKey}" (id: ${record.id})`);
+    }
 
-    try {
-      dataHandlers.recordAnalytics('survey_completed', {
-        surveyId:              submissionData.id,
-        surveyType,
-        questionIndex:         appState.currentQuestionIndex,
-        totalTimeSeconds,
-        completedAllQuestions: true,
+    if (dataHandlers?.recordAnalytics) {
+      dataHandlers.recordAnalytics(
+        'survey_completed',
+        buildAnalyticsEvent('survey_completed', {
+          surveyId:              record.id,
+          surveyType:            SURVEY_TYPE,
+          totalTimeSeconds,
+          completedAllQuestions: true,
+        })
+      );
+    }
+
+    if (dataHandlers?.updateAdminCount) {
+      dataHandlers.updateAdminCount();
+    }
+
+    if (navigator.onLine && dataHandlers?.syncData) {
+      dataHandlers.syncData(false, { surveyType: SURVEY_TYPE }).catch(err => {
+        console.warn('[SUBMIT] Background sync failed (will retry later):', err.message);
       });
-    } catch (analyticsErr) {
-      console.warn('[ANALYTICS] Failed to record completion:', analyticsErr);
     }
 
-    if (progressBar) progressBar.style.width = '100%';
-
-    console.log('[SUBMIT] About to display checkmark...');
-    _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState);
-    console.log('[SUBMIT] Survey submission complete');
-
-  } catch (error) {
-    console.error('[SUBMIT] Submission failed unexpectedly:', error);
-    completionInProgress = false;
-    resetTriggered = false;
-    _doReset();
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// PRIVATE: render checkmark screen + countdown + auto-reset
-// ─────────────────────────────────────────────────────────────
-function _renderCheckmarkAndCountdown(questionContainer, prevBtn, nextBtn, appState) {
-  if (!questionContainer) {
-    console.error('[SUBMIT] questionContainer not found — cannot show checkmark');
-    _doReset();
-    return;
-  }
-
-  questionContainer.innerHTML = `
-    <div class="checkmark-container flex flex-col items-center justify-center min-h-[400px] p-8">
-      <div class="checkmark-circle w-32 h-32 bg-emerald-100 border-8 border-emerald-400 rounded-full flex items-center justify-center mb-8 shadow-xl">
-        <svg class="checkmark-icon w-20 h-20 text-emerald-600" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15 30 L25 40 L45 20" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <div class="text-center">
-        <h2 class="text-3xl font-bold text-gray-800 mb-4">Thank you for your feedback!</h2>
-        <p id="resetCountdown" class="text-xl text-gray-600 font-semibold bg-white px-6 py-3 rounded-full shadow-lg">
-          Kiosk resetting in 5 seconds...
-        </p>
-      </div>
-    </div>`;
-
-  if (prevBtn) prevBtn.disabled = true;
-  if (nextBtn) nextBtn.disabled = true;
-
-  const RESET_DELAY_MS = window.CONSTANTS?.RESET_DELAY_MS || 5000;
-  let timeLeft = Math.max(1, Math.ceil(RESET_DELAY_MS / 1000));
-
-  if (appState.countdownInterval) {
-    clearInterval(appState.countdownInterval);
-    appState.countdownInterval = null;
-  }
-
-  const countdownEl = document.getElementById('resetCountdown');
-  if (countdownEl) {
-    countdownEl.textContent = `Kiosk resetting in ${timeLeft} second${timeLeft !== 1 ? 's' : ''}...`;
-  }
-
-  appState.countdownInterval = setInterval(() => {
-    timeLeft--;
-
-    const el = document.getElementById('resetCountdown');
-    if (el) {
-      el.textContent = timeLeft > 0
-        ? `Kiosk resetting in ${timeLeft} second${timeLeft !== 1 ? 's' : ''}...`
-        : 'Resetting now...';
+    // ── Show success UI ───────────────────────────────────────────────────────
+    if (typeof window.showCheckmark === 'function') {
+      window.showCheckmark();
+    } else if (questionContainer) {
+      questionContainer.innerHTML = `
+        <div style="text-align:center;padding:2rem;">
+          <p style="font-size:3rem;">✅</p>
+          <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:0.5rem;">
+            Thank you for your feedback!
+          </h2>
+          <p id="resetCountdown" style="color:#6b7280;font-size:1rem;">
+            Kiosk resetting in 5 seconds...
+          </p>
+        </div>`;
     }
 
-    if (timeLeft <= 0) {
-      clearInterval(appState.countdownInterval);
-      appState.countdownInterval = null;
-      _doReset();
-    }
-  }, 1000);
-}
+    // ── Live countdown ticker ─────────────────────────────────────────────────
+    let remaining = 5;
+    const tick = setInterval(() => {
+      remaining--;
+      const el = document.getElementById('resetCountdown');
+      if (el && remaining > 0) {
+        el.textContent = `Kiosk resetting in ${remaining} second${remaining !== 1 ? 's' : ''}...`;
+      }
+      if (remaining <= 0) {
+        clearInterval(tick);
+        if (!resetTriggered) _doReset(resolvedDeps);
+      }
+    }, 1000);
 
-// ─────────────────────────────────────────────────────────────
-// PRIVATE: perform reset
-// ─────────────────────────────────────────────────────────────
-function _doReset() {
-  if (resetTriggered) return;
+    saveState(resolvedDeps);
+    console.log(`[SUBMIT] ✅ Submission complete — surveyType: ${SURVEY_TYPE}, time: ${totalTimeSeconds}s`);
 
-  resetTriggered = true;
-  console.log('[RESET] Performing kiosk reset...');
-
-  try {
-    if (typeof window.uiHandlers?.performKioskReset === 'function') {
-      console.log('[RESET] Using uiHandlers.performKioskReset');
-      window.uiHandlers.performKioskReset();
-      return;
-    }
-
-    if (typeof window.showStartScreen === 'function') {
-      console.log('[RESET] Using window.showStartScreen');
-      window.showStartScreen();
-      return;
-    }
-
-    if (typeof window.navigationHandler?.resetSurvey === 'function') {
-      console.log('[RESET] Using navigationHandler.resetSurvey');
-      window.navigationHandler.resetSurvey();
-      return;
-    }
-
-    console.warn('[RESET] No reset handler found — falling back to location.reload()');
-    location.reload();
   } catch (err) {
-    console.error('[RESET] Reset handler threw — forcing reload:', err);
-    location.reload();
-  } finally {
+    // Always release the lock so the user can retry
+    console.error('[SUBMIT] ❌ Unexpected error during submission:', err);
     completionInProgress = false;
+    throw err;
   }
 }
+
+export default { handleSubmit };

@@ -7,6 +7,7 @@
 //     DOM/Timer operations during rapid user input bursts.
 
 import { buildQueueRecord } from '../main/contracts.js';
+import { showStartScreen } from '../ui/navigation/startScreen.js';  // ← ADD THIS
 
 let boundResetInactivityTimer = null;
 let throttleTimeout = null;
@@ -407,9 +408,15 @@ export function performKioskReset() {
 
   console.log('[INACTIVITY] New session ID:', appState.formData.id);
 
-  if (window.uiHandlers?.showStartScreen) {
-    window.uiHandlers.showStartScreen();
-  }
+
+if (typeof window.uiHandlers?.showStartScreen === 'function') {
+  window.uiHandlers.showStartScreen();
+} else {
+  showStartScreen();  // ← DIRECT CALL
+}
+
+
+  
 
   const nextBtn = window.globals?.nextBtn;
   const prevBtn = window.globals?.prevBtn;

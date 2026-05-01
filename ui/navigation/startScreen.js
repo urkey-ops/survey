@@ -1,15 +1,15 @@
 // FILE: ui/navigation/startScreen.js
 // PURPOSE: Start screen orchestration (refactored into modules)
 // DEPENDENCIES: core.js, videoLoopManager.js
-// VERSION: 4.2.1
-// CHANGES FROM 4.2.0:
-//   - FIX B6-01: iOS tap cascade — touchstart fires startSurvey(), then
-//     click fires 300ms later and calls startSurvey() a second time.
-//     startTransitionInProgress guard blocked the double-launch but was
-//     fragile. Fix: boundStartSurvey now explicitly removes BOTH listeners
-//     on first fire before calling startSurvey(). { once: true } removed
-//     from both — manual removal is the correct, iOS-safe pattern.
-//     e.preventDefault() in touchstart handler also suppresses ghost click.
+// VERSION: 4.2.2
+// CHANGES FROM 4.2.1:
+//   - FIX L3: Added startTransitionInProgress = false as the first statement
+//     in showStartScreen(). cleanupStartScreenListeners() already resets the
+//     flag on the normal path, but if startSurvey()'s 250ms setTimeout fires,
+//     then the device is locked/unlocked mid-transition and showStartScreen()
+//     is NOT called again, the flag stays true and all subsequent taps are
+//     silently blocked. Resetting unconditionally at the top of showStartScreen()
+//     ensures every fresh show starts clean regardless of prior state.
 
 import { getDependencies, saveState, showQuestion, cleanupInputFocusScroll } from './core.js';
 import {
@@ -268,18 +268,18 @@ function startSurvey(e) {
 
     pauseVideo();
 
- if (!appState.formData.id) {
-  // generateUUID has no dependencies — call directly rather than
-  // routing through dataHandlers which may not be assembled yet
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    appState.formData.id = crypto.randomUUID();
-  } else {
-    appState.formData.id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0;
-      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
-  }
-}
+    if (!appState.formData.id) {
+      // generateUUID has no dependencies — call directly rather than
+      // routing through dataHandlers which may not be assembled yet
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        appState.formData.id = crypto.randomUUID();
+      } else {
+        appState.formData.id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+          const r = Math.random() * 16 | 0;
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+      }
+    }
 
     if (!appState.formData.timestamp) {
       appState.formData.timestamp = new Date().toISOString();
@@ -352,16 +352,24 @@ function _setupVideoAndAttract() {
  * Idempotent: safe on first boot, inactivity reset, manual reset, visibility resume.
  */
 export function showStartScreen() {
+  // FIX L3: Always reset startTransitionInProgress unconditionally before
+  // anything else. cleanupStartScreenListeners() also resets it on the normal
+  // path, but if startSurvey()'s 250ms setTimeout fires and the device is then
+  // locked/unlocked mid-transition without showStartScreen() being called again,
+  // the flag stays true and every subsequent tap is silently blocked. Resetting
+  // here ensures every fresh show starts from a known clean state.
+  startTransitionInProgress = false;
+
   // DOM fallback + loud error/retry (FREEZE FIX)
   const kioskStartScreenEl = document.getElementById('kioskStartScreen');
   const kioskStartScreen = window.globals?.kioskStartScreen || kioskStartScreenEl;
-  
+
   if (!kioskStartScreen) {
     console.error('[START SCREEN FREEZE] ❌ kioskStartScreen missing — retrying');
     console.trace('Stack trace for debug:');
     return setTimeout(showStartScreen, 50);
   }
-  
+
   // Wire globals if missing (race condition fix)
   if (!window.globals.kioskStartScreen) {
     window.globals.kioskStartScreen = kioskStartScreen;

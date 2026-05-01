@@ -1,28 +1,22 @@
 // FILE: timers/inactivityHandler.js
 // PURPOSE: Handle user inactivity detection and auto-reset
 // DEPENDENCIES: window.CONSTANTS, window.appState, window.dataHandlers, timerManager.js
-// VERSION: 3.4.3
-// CHANGES FROM 3.4.2:
-//   - FIX BUG-6: performKioskReset() now resets window.__surveyStateInitialized = false
-//     at the very start, before any cleanup. Without this, the idempotency guard in
-//     navigationSetup.js initializeSurveyState() blocks every call after the first
-//     reset, freezing the kiosk at the start screen with no survey loaded.
-//   - FIX BUG-7: getQuestions() is now mode-aware. Mirrors the same resolver pattern
-//     as core.js — reads window.DEVICECONFIG.kioskMode and prefers shayonaDataUtils
-//     on Shayona iPads. Previously always fell back to dataUtils.surveyQuestions,
-//     loading temple questions on a café kiosk and causing inactivity resets to
-//     log wrong question IDs into analytics and partial records.
-//   - FIX BUG-9: handleInactivityTimeout() now uses buildQueueRecord() from
-//     contracts.js with sync_status: 'unsynced_partial' instead of a raw object
-//     literal with 'unsynced_inactivity'. Raw objects bypass queueManager's
-//     deduplication and schema checks, and 'unsynced_inactivity' is not a valid
-//     sync_status value per contracts.js schema.
+// VERSION: 3.4.4
+// CHANGES FROM 3.4.3:
+//   - ADDED: Debounce logic to resetInactivityTimer to prevent excessive 
+//     DOM/Timer operations during rapid user input bursts.
 
 import { buildQueueRecord } from '../main/contracts.js';
+import { showStartScreen } from '../ui/navigation/startScreen.js';  // ← ADD THIS
 
 let boundResetInactivityTimer = null;
 let throttleTimeout = null;
 const THROTTLE_DELAY = 2000;
+
+// ADDED: Debounce configuration
+const DEBOUNCE_DELAY = 2000;
+let lastResetTime = 0;
+let debounceTimer = null;
 
 let visibilityHandlerBound = false;
 let focusHandlerBound = false;
@@ -31,8 +25,8 @@ let focusHandlerBound = false;
 
 function getDependencies() {
   return {
-    INACTIVITY_TIMEOUT_MS: window.CONSTANTS?.INACTIVITY_TIMEOUT_MS ?? 60000,  // FIX B2-01: was 30000
-    SYNC_INTERVAL_MS:      window.CONSTANTS?.SYNC_INTERVAL_MS      ?? 300000, // FIX B2-02: was 900000
+    INACTIVITY_TIMEOUT_MS: window.CONSTANTS?.INACTIVITY_TIMEOUT_MS ?? 60000,
+    SYNC_INTERVAL_MS:      window.CONSTANTS?.SYNC_INTERVAL_MS      ?? 300000,
     MAX_QUEUE_SIZE:        window.CONSTANTS?.MAX_QUEUE_SIZE         ?? 250,
     appState:     window.appState,
     dataHandlers: window.dataHandlers,
@@ -60,10 +54,6 @@ function _safeRemoveStorageKey() {
 }
 
 // ── Active survey question helper ─────────────────────────────────────────────
-// FIX BUG-7: Mode-aware — mirrors the resolver in ui/navigation/core.js.
-// Shayona iPads use shayonaDataUtils; temple iPads use dataUtils.
-// This ensures inactivity resets log the correct question IDs and that
-// partial records reference the right survey's question set.
 
 function _isShayona() {
   return window.DEVICECONFIG?.kioskMode === 'shayona';
@@ -89,7 +79,35 @@ function getQuestions() {
   return [];
 }
 
-// ── Throttled interaction handler ─────────────────────────────────────────────
+// ── Internal Reset Logic ──────────────────────────────────────────────────────
+
+function _doResetInactivityTimer() {
+  const { INACTIVITY_TIMEOUT_MS, appState, dataUtils, timerManager } = getDependencies();
+
+  if (timerManager) {
+    timerManager.clearInactivity();
+  } else {
+    if (appState.inactivityTimer) {
+      clearTimeout(appState.inactivityTimer);
+      appState.inactivityTimer = null;
+    }
+  }
+
+  if (document.hidden) {
+    console.log('[INACTIVITY] Page hidden — timer not started');
+    return;
+  }
+
+  const timeoutCallback = () => handleInactivityTimeout(dataUtils, appState);
+
+  if (timerManager) {
+    timerManager.setInactivity(timeoutCallback, INACTIVITY_TIMEOUT_MS);
+  } else {
+    appState.inactivityTimer = setTimeout(timeoutCallback, INACTIVITY_TIMEOUT_MS);
+  }
+}
+
+// ── Throttled/Debounced interaction handler ───────────────────────────────────
 
 function throttledResetInactivityTimer() {
   if (throttleTimeout) return;
@@ -137,44 +155,33 @@ export function stopPeriodicSync() {
 // ── Inactivity timer ──────────────────────────────────────────────────────────
 
 export function resetInactivityTimer() {
-  const { INACTIVITY_TIMEOUT_MS, appState, dataUtils, timerManager } = getDependencies();
-
-  if (timerManager) {
-    timerManager.clearInactivity();
-  } else {
-    if (appState.inactivityTimer) {
-      clearTimeout(appState.inactivityTimer);
-      appState.inactivityTimer = null;
-    }
-  }
-
-  if (document.hidden) {
-    console.log('[INACTIVITY] Page hidden — timer not started');
+  const now = Date.now();
+  if (now - lastResetTime < DEBOUNCE_DELAY) {
+    console.log('[INACTIVITY] Debounced reset (within 2s)');
     return;
   }
-
-  const timeoutCallback = () => handleInactivityTimeout(dataUtils, appState);
-
-  if (timerManager) {
-    timerManager.setInactivity(timeoutCallback, INACTIVITY_TIMEOUT_MS);
-  } else {
-    appState.inactivityTimer = setTimeout(timeoutCallback, INACTIVITY_TIMEOUT_MS);
+  
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
   }
+  
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    _doResetInactivityTimer();
+    lastResetTime = Date.now();
+    console.log('[INACTIVITY] Timer restarted (debounced)');
+  }, 50);
 }
 
 // ── Inactivity timeout handler ────────────────────────────────────────────────
 
 function handleInactivityTimeout(dataUtils, appState) {
   const idx             = appState.currentQuestionIndex;
-  const questions       = getQuestions(); // FIX BUG-7: mode-aware
+  const questions       = getQuestions();
   const currentQuestion = questions[idx];
 
   console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion?.id})`);
 
-  // INTENTIONAL PRODUCT RULE:
-  // If the user never progresses beyond Question 1, treat this as a bounce
-  // rather than a meaningful partial survey. Record analytics, but do NOT
-  // save a partial queue record.
   if (idx === 0) {
     console.log('[INACTIVITY] Q1 abandonment — recording analytics');
     try {
@@ -207,16 +214,8 @@ function handleInactivityTimeout(dataUtils, appState) {
     'submissionQueue';
 
   const { dataHandlers } = getDependencies();
-
   const timestamp   = new Date().toISOString();
 
-  // FIX BUG-9: Use buildQueueRecord() factory instead of a raw object literal.
-  // This ensures:
-  //   1. sync_status is 'unsynced_partial' (valid per contracts.js schema)
-  //      not 'unsynced_inactivity' (invalid, causes sync filter to skip it)
-  //   2. abandonedAt is written via the meta path, not spread into root
-  //   3. All required identity fields (kioskId, submittedAt) are always present
-  //   4. Record passes queueManager's validateQueue() identity + timestamp checks
   const partialFormData = {
     ...appState.formData,
     id:                       appState.formData?.id || dataHandlers.generateUUID(),
@@ -233,9 +232,7 @@ function handleInactivityTimeout(dataUtils, appState) {
     abandonedReason: 'inactivity',
   });
 
-  // addToQueue handles deduplication, health checks, and admin count update
   dataHandlers.addToQueue(record, queueKey);
-
   console.log(`[INACTIVITY] Partial abandonment saved to queue "${queueKey}" (${surveyType})`);
 
   try {
@@ -332,8 +329,6 @@ function handleInactivityVisibilityChange() {
   }
 }
 
-// Some iPad PWA resumptions do not reliably fire visibilitychange.
-// window.focus provides a secondary coverage path for these cases.
 function handleWindowFocus() {
   if (!document.hidden) {
     console.log('[INACTIVITY] window.focus — restoring listeners and restarting timer');
@@ -376,12 +371,6 @@ export function cleanupInactivityVisibilityHandler() {
 export function performKioskReset() {
   console.log('[INACTIVITY] 🔄 Performing kiosk reset...');
 
-  // FIX BUG-6: Reset __surveyStateInitialized FIRST, before any other cleanup.
-  // The idempotency guard in navigationSetup.js initializeSurveyState() returns
-  // early if this flag is true. Without resetting it here, every reset after the
-  // first launch leaves the kiosk frozen — showStartScreen() runs but
-  // initializeSurveyState() is blocked, so the start-screen tap listener is
-  // never re-attached and the survey cannot begin again.
   window.__surveyStateInitialized = false;
   console.log('[INACTIVITY] ✅ __surveyStateInitialized reset — initializeSurveyState can re-run');
 
@@ -419,9 +408,15 @@ export function performKioskReset() {
 
   console.log('[INACTIVITY] New session ID:', appState.formData.id);
 
-  if (window.uiHandlers?.showStartScreen) {
-    window.uiHandlers.showStartScreen();
-  }
+
+if (typeof window.uiHandlers?.showStartScreen === 'function') {
+  window.uiHandlers.showStartScreen();
+} else {
+  showStartScreen();  // ← DIRECT CALL
+}
+
+
+  
 
   const nextBtn = window.globals?.nextBtn;
   const prevBtn = window.globals?.prevBtn;
@@ -440,6 +435,10 @@ export function performKioskReset() {
 
     setupInactivityVisibilityHandler();
     console.log('[INACTIVITY] ✅ Visibility handlers re-bound after reset');
+
+    addInactivityListeners();
+    resetInactivityTimer();
+    console.log('[INACTIVITY] ✅ Inactivity listeners re-armed and timer restarted after reset');
   }, 150);
 }
 

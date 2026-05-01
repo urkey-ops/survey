@@ -1,11 +1,13 @@
 // FILE: ui/navigation/core.js
 // PURPOSE: Core navigation functions (goNext, goPrev, showQuestion)
-// VERSION: 6.0.0
-// CHANGES FROM 5.5.0:
-//   - ADD: isShayona + utils resolver (reads window.DEVICECONFIG.kioskMode)
-//   - ADD: getQuestions() uses resolved utils (café or temple)
-//   - ADD: goNext() routes through utils.getNextQuestionIndex() if available
-//   - ADD: _renderQuestion() merges shayonaDataUtils.questionRenderers for new types
+// VERSION: 6.0.1
+// CHANGES FROM 6.0.0:
+//   - FIX L2: Changed _getStorageKey() fallback from 'kioskAppState' to
+//     'kioskState' so saveState() and appState.js read from the same key when
+//     CONSTANTS.STORAGE_KEY_STATE and appState.storageKey are both absent.
+//     Previously saveState() wrote to 'kioskAppState' while appState.js read from
+//     'kioskState', so reopened surveys always started at question 0 and lost
+//     resumed form data.
 //   - no other logic changes
 
 // ─── Module-level render-cancellation state ───────────────────────────────────
@@ -40,11 +42,9 @@ export function getDependencies() {
     timerManager: window.timerManager,
     validateQuestion: window.validateQuestion,
     clearErrors: window.clearErrors,
-questionContainer: window.globals?.questionContainer ?? null,  // ← ADD THIS
-    questions: _getUtils()?.getSurveyQuestions?.() ?? [],          // ← ADD THIS
-    surveyType: window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? null, // ← ADD THIS
-
-    
+    questionContainer: window.globals?.questionContainer ?? null,
+    questions: _getUtils()?.getSurveyQuestions?.() ?? [],
+    surveyType: window.KIOSK_CONFIG?.getActiveSurveyType?.() ?? null,
   };
 }
 
@@ -88,7 +88,7 @@ function _getStorageKey() {
   return (
     window.CONSTANTS?.STORAGE_KEY_STATE ||
     window.appState?.storageKey ||
-    'kioskAppState'
+    'kioskState'
   );
 }
 

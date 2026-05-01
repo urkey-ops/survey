@@ -2,24 +2,20 @@
 // PURPOSE: Setup navigation buttons and activity tracking
 // DEPENDENCIES: ui/navigation/core.js, ui/navigation/startScreen.js,
 //               timers/inactivityHandler.js (direct import — no window.uiHandlers race)
-// VERSION: 3.2.3
-// CHANGES FROM 3.2.2:
-//   - FIX (inactivity timer race — window.uiHandlers not yet assigned):
-//     resetInactivityTimer and addInactivityListeners are now imported DIRECTLY
-//     from timers/inactivityHandler.js instead of being read from window.uiHandlers
-//     at call time. On first launch, device-config.js fires dispatchEvent()
-//     synchronously, which runs initialize() before uiHandlers.js (a separate
-//     <script type="module"> tag) has had a chance to assign window.uiHandlers.
-//     This caused setupActivityTracking() to always see window.uiHandlers as
-//     undefined and log "Inactivity listeners not available", meaning the timer
-//     was never started. Direct ES module imports resolve at parse time and have
-//     no race condition.
+// VERSION: 3.2.4
+// CHANGES FROM 3.2.3:
+//   - FIX V1: Added a deviceConfigReady listener at the bottom of the module.
+//     device-config.js dispatches deviceConfigReady synchronously during HTML
+//     parsing, before this ES module may have executed and assigned
+//     window._initializeSurveyState. If initialize() fails to call
+//     initializeSurveyState() on first launch, this fallback listener catches the
+//     event after the module loads and calls initializeSurveyState() as long as
+//     window.__surveyStateInitialized is still false.
+//   - FIX L1: cleanupNavigationSetup() now resets window.__surveyStateInitialized
+//     to false so partial teardown / hot-reload / test harness flows can
+//     re-initialize the survey state cleanly.
 //
-//     setupActivityTracking() now calls addInactivityListeners() directly with
-//     no typeof guard needed (import always succeeds or the module fails to load).
-//     Both paths in initializeSurveyState() also use direct imports.
-//
-// CHANGES FROM 3.2.1 (preserved):
+// CHANGES FROM 3.2.2 (preserved):
 //   - FIX (v3.2.2): fresh-start path now calls resetInactivityTimer() +
 //     addInactivityListeners() so the timer restarts after every kiosk reset.
 //   - FIX B7-01: stepCounter uses getQuestions().length not appState.totalQuestions.
@@ -31,9 +27,9 @@ import {
   addInactivityListeners,
 } from '../timers/inactivityHandler.js';
 
-let navigationBound    = false;
-let boundNextHandler   = null;
-let boundPrevHandler   = null;
+let navigationBound  = false;
+let boundNextHandler = null;
+let boundPrevHandler = null;
 
 // ── Setup overlay guard ───────────────────────────────────────────────────────
 
@@ -186,12 +182,23 @@ export function initializeSurveyState() {
 
 export function cleanupNavigationSetup() {
   cleanupNavigationListeners();
+  window.__surveyStateInitialized = false;
   console.log('[NAVIGATION] Navigation listener cleanup complete');
 }
 
 // ── Global bridge for non-module callers ──────────────────────────────────────
 // device-config.js is a plain IIFE — cannot ES-import. Exposed on window.
 window._initializeSurveyState = initializeSurveyState;
+
+// FIX V1: device-config.js dispatches deviceConfigReady synchronously before
+// this ES module may have executed. This fallback listener catches the event
+// after the module loads and initializes survey state if the flag was never set.
+window.addEventListener('deviceConfigReady', () => {
+  if (!window.__surveyStateInitialized) {
+    console.log('[NAVIGATION] deviceConfigReady fallback — calling initializeSurveyState()');
+    initializeSurveyState();
+  }
+}, { once: true });
 
 export default {
   setupNavigation,

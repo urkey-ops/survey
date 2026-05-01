@@ -1,15 +1,36 @@
 // FILE: sync/queueManager.js
 // PURPOSE: Queue access and maintenance for multi-survey offline storage
-// VERSION: 3.4.1
-// CHANGES FROM 3.4.0:
-//   - FIX 1: getQueueKeysForMode(mode) now accepts flat DEVICECONFIG shape
-//     (kioskId, kioskMode, allowedSurveyTypes) as well as CONFIGS[mode] shapes.
-//     No hardcoding of KIOSK_QUEUE_CONFIGS or survey‑type keys.
-//   - getSurveyTypeConfigs(mode) uses the same flat/CONFIGS logic for allowedSurveyTypes.
-//   - Added smokeCheckDeviceConfigShape() for early warning on invalid config.
+// VERSION: 3.4.2
+// CHANGES FROM 3.4.1:
+//   - FIX T2: Removed all inline window.CONSTANTS?.MAX_QUEUE_SIZE || 250 reads.
+//     Replaced with a single module-level IIFE that resolves MAX_QUEUE_SIZE once
+//     at load time and emits console.warn if the CONSTANTS fallback is used.
+//     Previously the fallback was silent — if CONSTANTS was not loaded (load order
+//     issue, script error), the queue operated at 250 with no indication the
+//     authoritative value was missed. checkQueueHealth also had two inline reads
+//     that are now replaced with the module-level constant.
+//   - FIX L5: In addToQueue(), after the queue-full slice, added a call to
+//     window.flagStorageAlert() so staff receive a persistent admin panel banner
+//     when records are dropped. Previously only console.error was logged — in a
+//     Guided Access kiosk environment staff cannot see the console, so data loss
+//     was invisible until a sync discrepancy was noticed manually.
 // DEPENDENCIES: storageUtils.js
 
 import { safeGetLocalStorage, safeSetLocalStorage } from './storageUtils.js';
+
+// ─── FIX T2: Centralised MAX_QUEUE_SIZE resolution ───────────────────────────
+// Resolved once at module load. Emits a warning if CONSTANTS is not available
+// so the fallback is never silent. All addToQueue / checkQueueHealth calls below
+// reference this constant — no inline || 250 fallbacks remain in the file.
+const MAX_QUEUE_SIZE = (() => {
+  const val = window.CONSTANTS?.MAX_QUEUE_SIZE;
+  if (val == null) {
+    console.warn('[QUEUE] CONSTANTS.MAX_QUEUE_SIZE not found — using fallback 250. ' +
+      'Ensure constants.js loads before queueManager.js.');
+    return 250;
+  }
+  return val;
+})();
 
 // ─── FIX 1: Support flat DEVICECONFIG and CONFIGS shapes ────────────────────
 
@@ -158,12 +179,12 @@ function safeRemoveLocalStorage(key) {
 
 /**
  * Emit a warning or error if queue size is near capacity.
+ * FIX T2: Uses module-level MAX_QUEUE_SIZE constant — no inline fallback reads.
  */
 function checkQueueHealth(queueSize) {
-  const MAX     = window.CONSTANTS?.MAX_QUEUE_SIZE          || 250;
   const WARNING = window.CONSTANTS?.QUEUE_WARNING_THRESHOLD || 200;
-  if (queueSize >= WARNING) console.warn(`⚠️ [QUEUE WARNING] Queue at ${queueSize}/${MAX} records`);
-  if (queueSize >= MAX - 50) console.error(`🚨 [QUEUE CRITICAL] Queue nearly full: ${queueSize}/${MAX}`);
+  if (queueSize >= WARNING)      console.warn(`⚠️ [QUEUE WARNING] Queue at ${queueSize}/${MAX_QUEUE_SIZE} records`);
+  if (queueSize >= MAX_QUEUE_SIZE - 50) console.error(`🚨 [QUEUE CRITICAL] Queue nearly full: ${queueSize}/${MAX_QUEUE_SIZE}`);
 }
 
 /**
@@ -255,7 +276,7 @@ export function countUnsyncedRecords(overrideKey, mode) {
 }
 
 /**
- * Update the admin UI’s unsynced count for the current mode.
+ * Update the admin UI's unsynced count for the current mode.
  */
 export function updateAdminCount(mode = window.DEVICECONFIG?.kioskMode) {
   const counts = getCountsByQueue(mode);
@@ -277,9 +298,8 @@ export function updateAdminCount(mode = window.DEVICECONFIG?.kioskMode) {
  * Add a submission to the specified queue (or key).
  */
 export function addToQueue(submission, overrideKey) {
-  const key            = getQueueKey(overrideKey);
-  const MAX_QUEUE_SIZE = window.CONSTANTS?.MAX_QUEUE_SIZE || 250;
-  let submissionQueue  = getSubmissionQueue(key);
+  const key           = getQueueKey(overrideKey);
+  let submissionQueue = getSubmissionQueue(key);
 
   checkQueueHealth(submissionQueue.length);
 
@@ -289,15 +309,21 @@ export function addToQueue(submission, overrideKey) {
 
   if (submissionQueue.length >= MAX_QUEUE_SIZE) {
     const dropCount = submissionQueue.length - (MAX_QUEUE_SIZE - 1);
+    // FIX L5: Keep console.error for developer visibility, and also call
+    // window.flagStorageAlert() to surface a persistent banner in the admin
+    // panel — the only staff-visible notification in Guided Access kiosk mode.
     console.error(`🚨 [QUEUE] Full at ${submissionQueue.length}/${MAX_QUEUE_SIZE} — dropping ${dropCount} oldest`);
     submissionQueue = submissionQueue.slice(-(MAX_QUEUE_SIZE - 1));
+    if (typeof window.flagStorageAlert === 'function') {
+      window.flagStorageAlert(`Queue full — dropped ${dropCount} oldest record(s)`);
+    }
   }
 
   submissionQueue.push(submission);
-  const saved = safeSetLocalStorage(key, submissionQueue);  // ← capture result
+  const saved = safeSetLocalStorage(key, submissionQueue);
   console.log(`[QUEUE] Added to "${key}". Size: ${submissionQueue.length}/${MAX_QUEUE_SIZE}`);
   updateAdminCount();
-  return saved !== false;  // ← return true on success, false only if storage actually failed
+  return saved !== false;
 }
 
 /**

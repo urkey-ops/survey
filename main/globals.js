@@ -1,27 +1,37 @@
 // FILE: main/globals.js
 // PURPOSE: Admin element validation, safe survey type switching, persistent storage alert
-// VERSION: 1.0.0
+// VERSION: 1.0.1
+// CHANGES FROM 1.0.0:
+//   - FIX L4: Added window.safeSetActiveSurveyType = safeSetActiveSurveyType after
+//     function definition. The function was exported as an ES named export but never
+//     assigned to window. Non-module callers (IIFEs, adminSurveyControls.js if not
+//     an ES module) calling window.safeSetActiveSurveyType() got undefined and fell
+//     through to calling window.KIOSK_CONFIG.setActiveSurveyType() directly,
+//     bypassing the read-back verification and return-value check.
+//   - FIX L5: Added window.flagStorageAlert = flagStorageAlert after function
+//     definition. queueManager.js calls window.flagStorageAlert() in the queue-full
+//     drop branch — without this assignment the call was a no-op and staff received
+//     no persistent banner notification of data loss.
+//   - FIX T1 (globals side): Replaced local REQUIRED_ADMIN_GLOBALS array with an
+//     import of REQUIRED_ADMIN_ELEMENTS from uiElements.js as the single source of
+//     truth. Both lists were identical — if a developer added a key to one but not
+//     the other, one validation path would silently miss the missing element.
+//     Matching export must exist in uiElements.js (see v1.1.1 of that file).
 // AUTHORITY: Does NOT reassemble window.globals (that is uiElements.js + appState.js).
 //            Validates admin elements, adds safe type-switch wrapper, persistent quota alert.
 // LOAD ORDER: Called from main/index.js after initializeElements() has run.
+
+import { REQUIRED_ADMIN_ELEMENTS } from './uiElements.js';
 
 // ─── ADMIN ELEMENT VALIDATION ────────────────────────────────────────────────
 // validateElements() in uiElements.js checks only 6 survey-critical elements.
 // These admin elements are populated in initializeElements() but never validated.
 // A renamed ID in index.html silently nulls them — every admin button stops
 // working with no console error.
-
-const REQUIRED_ADMIN_GLOBALS = [
-  'syncButton',
-  'syncAnalyticsButton',
-  'syncStatusMessage',
-  'adminClearButton',
-  'checkUpdateButton',
-  'fixVideoButton',
-  'hideAdminButton',
-  'adminControls',
-  'unsyncedCountDisplay',
-];
+//
+// FIX T1: REQUIRED_ADMIN_GLOBALS is now an alias for REQUIRED_ADMIN_ELEMENTS
+// imported from uiElements.js — single source of truth, no drift possible.
+const REQUIRED_ADMIN_GLOBALS = REQUIRED_ADMIN_ELEMENTS;
 
 export function validateAdminGlobals() {
   if (!window.globals) {
@@ -87,6 +97,12 @@ export function safeSetActiveSurveyType(type) {
   return true;
 }
 
+// FIX L4: Expose safeSetActiveSurveyType on window for non-module callers
+// (IIFEs, adminSurveyControls.js, inline HTML handlers). ES named export above
+// remains for module consumers. Mirrors the pattern used in navigationSetup.js
+// for window._initializeSurveyState.
+window.safeSetActiveSurveyType = safeSetActiveSurveyType;
+
 // ─── PERSISTENT STORAGE ALERT ────────────────────────────────────────────────
 // storageUtils.js catches QuotaExceededError and calls showUserError() which
 // shows a 10-second toast that disappears before staff see it in Guided Access.
@@ -109,6 +125,13 @@ export function flagStorageAlert(context = '') {
   }
 }
 
+// FIX L5: Expose flagStorageAlert on window so non-module callers can reach it.
+// queueManager.js calls window.flagStorageAlert() in the queue-full drop branch
+// to trigger the persistent admin panel banner. Without this assignment the
+// typeof guard in queueManager.js always saw undefined and staff received no
+// notification of dropped records.
+window.flagStorageAlert = flagStorageAlert;
+
 export function checkStorageAlert() {
   try {
     return JSON.parse(localStorage.getItem('kioskStorageAlert') || 'null');
@@ -126,4 +149,4 @@ export function clearStorageAlert() {
   }
 }
 
-console.log('[GLOBALS] ✅ globals.js loaded (v1.0.0)');
+console.log('[GLOBALS] ✅ globals.js loaded (v1.0.1)');

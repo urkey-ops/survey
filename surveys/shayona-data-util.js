@@ -1,11 +1,14 @@
 // FILE: surveys/shayona-data-util.js
-// VERSION: 2.4.0
-// CHANGES FROM 2.3.1:
-//   - FIX 8: All shared helpers (getTextGridCols, getGridMaxWidth,
-//     applyRadioSelectedStyles, applyChipSelectedStyle, applyStarSelectedStyles,
-//     otherKey, auto-advance timer) now sourced from window.surveyRenderUtils.
-//     Local duplicate definitions removed. Canonical applyStarSelectedStyles
-//     (with border/shadow reset) is now used — resolves silent visual divergence.
+// VERSION: 2.4.1
+// CHANGES FROM 2.4.0:
+//   - FIX S6: Converted questionRenderers from a static const to a lazy getter
+//     on the returned object. The previous static spread captured baseDataUtils
+//     (window.dataUtils) at IIFE parse time — if data-util.js had not yet
+//     executed, baseDataUtils was {} and all base renderers (emoji-radio, radio,
+//     radio-with-followup, selector-textarea) were missing from the map.
+//     The getter now reads window.dataUtils?.questionRenderers on every access,
+//     so the merge is always fresh. core.js _getRenderers() already reads this
+//     property per render call — no call-site changes needed.
 
 window.shayonaDataUtils = (function () {
   const baseDataUtils = window.dataUtils || {};
@@ -426,11 +429,11 @@ window.shayonaDataUtils = (function () {
   };
 
   // ─── Question Renderers ───────────────────────────────────────────────────
-  const questionRenderers = {
-    ...(baseDataUtils.questionRenderers || {}),
-    'section-header':    sectionHeaderRenderer,
-    'dual-star-rating':  dualStarRatingRenderer,
-  };
+  // FIX S6: Removed static const questionRenderers — the spread of
+  // baseDataUtils.questionRenderers was evaluated at IIFE parse time.
+  // If window.dataUtils had not yet executed, the spread was empty and all
+  // base renderer types were missing. Replaced with a lazy getter so the
+  // merge is evaluated fresh on every access.
 
   function getSurveyQuestions() {
     return surveyQuestionsType3;
@@ -439,7 +442,18 @@ window.shayonaDataUtils = (function () {
   return {
     get surveyQuestions() { return surveyQuestionsType3; },
     getSurveyQuestions,
-    questionRenderers,
+
+    // FIX S6: Lazy getter — reads window.dataUtils?.questionRenderers at
+    // access time, not parse time. Guarantees base renderers are included
+    // even if data-util.js loads after this file.
+    get questionRenderers() {
+      return {
+        ...(window.dataUtils?.questionRenderers || {}),
+        'section-header':   sectionHeaderRenderer,
+        'dual-star-rating': dualStarRatingRenderer,
+      };
+    },
+
     getNextQuestionIndex,
     otherKey,
     clearAutoAdvance,
@@ -455,5 +469,5 @@ window.shayonaDataUtils = (function () {
 })();
 
 if (window.DEVICECONFIG?.kioskMode === 'shayona') {
-  console.info('[shayona-data-util] ✅ Shayona mode active (v2.4.0) — shared render utils loaded');
+  console.info('[shayona-data-util] ✅ Shayona mode active (v2.4.1) — shared render utils loaded');
 }

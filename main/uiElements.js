@@ -1,13 +1,29 @@
 // FILE: main/uiElements.js
 // PURPOSE: DOM element initialization and validation
-// VERSION: 1.1.0
-// CHANGES FROM 1.0.0:
-//   - ADD: Admin element validation inside initializeElements()
-//     Previously only validateElements() checked 6 survey-critical elements.
-//     Admin elements (syncButton, adminClearButton, etc.) were populated but
-//     never validated — a renamed ID silently nulled them with no console error.
+// VERSION: 1.1.1
+// CHANGES FROM 1.1.0:
+//   - FIX T1: Exported REQUIRED_ADMIN_ELEMENTS as the single source of truth for
+//     admin validation. globals.js now imports this list instead of maintaining a
+//     duplicate local array. initializeElements() reuses the same exported array
+//     so the list cannot drift across files.
 //   - UNCHANGED: validateElements(), showCriticalError() — no behaviour change.
 // DEPENDENCIES: window.globals (declared in appState.js, populated here)
+
+/**
+ * Shared required admin DOM elements.
+ * Single source of truth for both initializeElements() and globals.js validation.
+ */
+export const REQUIRED_ADMIN_ELEMENTS = [
+  'adminControls',
+  'syncButton',
+  'adminClearButton',
+  'hideAdminButton',
+  'unsyncedCountDisplay',
+  'syncStatusMessage',
+  'syncAnalyticsButton',
+  'checkUpdateButton',
+  'fixVideoButton',
+];
 
 /**
  * Initialize all DOM element references
@@ -39,7 +55,7 @@ export function initializeElements() {
   window.globals.syncButton           = document.getElementById('syncButton');
   window.globals.adminClearButton     = document.getElementById('adminClearButton');
   window.globals.hideAdminButton      = document.getElementById('hideAdminButton');
-  window.globals.unsyncedCountDisplay = document.getElementById('unsyncedCountDisplay');
+  window.globals.unsyncedCountDisplay  = document.getElementById('unsyncedCountDisplay');
   window.globals.syncStatusMessage    = document.getElementById('syncStatusMessage');
   window.globals.syncAnalyticsButton  = document.getElementById('syncAnalyticsButton');
   window.globals.checkUpdateButton    = document.getElementById('checkUpdateButton');
@@ -47,27 +63,15 @@ export function initializeElements() {
 
   // ── Optional elements — null is acceptable ────────────────────────────────
   // Never include these in requiredElements or admin validation.
-  window.globals.kioskSurvey     = document.getElementById('kioskSurvey')    ?? null;
-  window.globals.adminQueueCount = document.getElementById('adminQueueCount') ?? null;
-  window.globals.progressText    = document.getElementById('progressText')    ?? null;
+  window.globals.kioskSurvey      = document.getElementById('kioskSurvey')    ?? null;
+  window.globals.adminQueueCount  = document.getElementById('adminQueueCount') ?? null;
+  window.globals.progressText     = document.getElementById('progressText')    ?? null;
 
   // ── Admin element validation ──────────────────────────────────────────────
   // Logs console.error for each missing admin element immediately at boot.
   // Does NOT halt initialization — survey functionality is unaffected.
   // If any of these are null, adminPanel.js will silently skip them, but
   // the error here tells the developer exactly which ID to fix in index.html.
-  const REQUIRED_ADMIN_ELEMENTS = [
-    'adminControls',
-    'syncButton',
-    'adminClearButton',
-    'hideAdminButton',
-    'unsyncedCountDisplay',
-    'syncStatusMessage',
-    'syncAnalyticsButton',
-    'checkUpdateButton',
-    'fixVideoButton',
-  ];
-
   const missingAdmin = REQUIRED_ADMIN_ELEMENTS.filter(key => !window.globals[key]);
 
   if (missingAdmin.length) {

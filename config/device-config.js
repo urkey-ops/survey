@@ -1,20 +1,15 @@
 // FILE: config/device-config.js
 // PURPOSE: First script in index.html — sets window.DEVICECONFIG before app loads
-// VERSION: 1.1.7
-// CHANGES FROM 1.1.6:
-//   - FIX BUG-2: Removed 150ms setTimeout before _initializeSurveyState().
-//     The defer was a timing hack that created a race condition on slow devices.
-//     index.js now guarantees DOM wiring completes before the deviceConfigReady
-//     event resolves (Path 2 / Path 3 guards handle sequencing). Calling
-//     _initializeSurveyState() synchronously after dispatchEvent() is safe because
-//     dispatchEvent() is synchronous — all deviceConfigReady listeners run to
-//     completion before the next line executes. No polling or timers needed.
-//   - FIX BUG-3: Added window.KIOSK_CONFIG.setActiveSurveyType(config.defaultSurveyType)
-//     call in the setup button click handler immediately after DEVICECONFIG is set.
-//     Previously the activeSurveyType key was written via localStorage.setItem() directly,
-//     bypassing KIOSK_CONFIG entirely. Any module that called getActiveSurveyType() before
-//     the next reload would read a stale or missing value. Now the canonical setter is used
-//     so KIOSK_CONFIG's in-memory state and localStorage stay in sync from the first click.
+// VERSION: 1.1.8
+// CHANGES FROM 1.1.7:
+//   - FIX V1 (partial): Added a 500ms poll after dispatchEvent() as a last-resort
+//     fallback in case window._initializeSurveyState is still undefined at call time
+//     (ES module not yet executed). Primary fix is the deviceConfigReady listener
+//     added at the bottom of navigationSetup.js. This poll is belt-and-suspenders.
+//   - FIX S3: In the KIOSK_CONFIG-not-available fallback branch, added a setInterval
+//     poll to apply setActiveSurveyType() once KIOSK_CONFIG loads during the current
+//     session. Previously the direct localStorage.setItem() persisted the value for
+//     the next boot but left in-memory KIOSK_CONFIG state stale for the current session.
 
 (function () {
   const STORAGE_KEY = 'deviceConfig';
@@ -92,8 +87,8 @@
           localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
           window.DEVICECONFIG = config;
 
-          // FIX BUG-3: Use KIOSK_CONFIG.setActiveSurveyType() as the canonical
-          // setter so in-memory state and localStorage stay in sync immediately.
+          // Use KIOSK_CONFIG.setActiveSurveyType() as the canonical setter so
+          // in-memory state and localStorage stay in sync immediately.
           // Fall back to direct localStorage write if KIOSK_CONFIG is not yet
           // available (e.g. config.js loaded after this IIFE on slow devices).
           if (typeof window.KIOSK_CONFIG?.setActiveSurveyType === 'function') {
@@ -106,12 +101,23 @@
               localStorage.setItem('activeSurveyType', config.defaultSurveyType);
             }
           } else {
-            // KIOSK_CONFIG not loaded yet — write directly; config.js will read on boot
+            // FIX S3: KIOSK_CONFIG not loaded yet — write directly so config.js
+            // finds the value on next boot, then poll to sync in-memory state
+            // for the current session once KIOSK_CONFIG becomes available.
             localStorage.setItem('activeSurveyType', config.defaultSurveyType);
             console.warn(
               '[DEVICE CONFIG] KIOSK_CONFIG not available yet — ' +
               'activeSurveyType written directly to localStorage'
             );
+
+            const _type = config.defaultSurveyType;
+            const _poll = setInterval(() => {
+              if (typeof window.KIOSK_CONFIG?.setActiveSurveyType === 'function') {
+                clearInterval(_poll);
+                window.KIOSK_CONFIG.setActiveSurveyType(_type);
+                console.log('[DEVICE CONFIG] ✅ In-memory KIOSK_CONFIG synced after late load');
+              }
+            }, 50);
           }
 
           // Hide overlay
@@ -128,13 +134,33 @@
           // dispatchEvent() is synchronous — all listeners run before the next line.
           window.dispatchEvent(new CustomEvent('deviceConfigReady'));
 
-          // FIX BUG-2: Removed 150ms setTimeout — it was a timing hack that
-          // created a race on slow devices. dispatchEvent() above is synchronous;
-          // index.js's onConfigReady → startApp → initialize() completes before
-          // we reach this line. _initializeSurveyState() is safe to call now.
+          // dispatchEvent() above is synchronous; index.js's onConfigReady →
+          // startApp → initialize() completes before we reach this line.
+          // _initializeSurveyState() is safe to call now if the ES module has
+          // already executed and assigned it to window.
           console.log('[DEVICE CONFIG] 🔄 DOM wired — initializing survey state');
           if (typeof window._initializeSurveyState === 'function') {
             window._initializeSurveyState();
+          } else {
+            // FIX V1: navigationSetup.js (ES module) may not have executed yet —
+            // its own deviceConfigReady listener is the primary fallback.
+            // This poll is a last-resort safety net in case that listener also
+            // missed the event (e.g. module execution delayed beyond this tick).
+            console.warn(
+              '[DEVICE CONFIG] window._initializeSurveyState not yet defined — ' +
+              'starting poll (primary fallback: navigationSetup.js listener)'
+            );
+            const _initPoll = setInterval(() => {
+              if (typeof window._initializeSurveyState === 'function') {
+                clearInterval(_initPoll);
+                if (!window.__surveyStateInitialized) {
+                  console.log('[DEVICE CONFIG] ✅ _initializeSurveyState resolved via poll — calling now');
+                  window._initializeSurveyState();
+                } else {
+                  console.log('[DEVICE CONFIG] ✅ _initializeSurveyState resolved via poll — already initialized, skipping');
+                }
+              }
+            }, 50);
           }
         });
       });

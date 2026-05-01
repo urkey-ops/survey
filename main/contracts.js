@@ -1,20 +1,16 @@
 // FILE: main/contracts.js
 // PURPOSE: Single source of truth for all data shapes — queue records,
 //          analytics events, formData field schemas, config version.
-// VERSION: 1.0.1
-// CHANGES FROM 1.0.0:
-//   - FIX BUG-22: buildAnalyticsEvent() base object now sets
-//     surveyType: data.surveyType ?? null instead of always calling
-//     window.KIOSK_CONFIG.getActiveSurveyType(). Previously every analytics
-//     event — including sync events, network events, and admin events that
-//     have no survey context — was stamped with whatever survey type happened
-//     to be active at the moment of the call. This caused non-survey events
-//     to pollute the byType breakdown in _buildPayload (analyticsManager.js),
-//     inflating completed/abandoned counts for the active type. Now callers
-//     that DO have survey context pass surveyType explicitly in the data
-//     argument; callers without survey context pass nothing and get null,
-//     which _buildPayload's `if (!a.surveyType) return;` guard already
-//     correctly skips.
+// VERSION: 1.0.2
+// CHANGES FROM 1.0.1:
+//   - FIX S5: Reordered buildQueueRecord() object literal so ...formData spread
+//     comes FIRST, followed by system fields (sync_status, id, timestamp).
+//     Previously sync_status: 'unsynced' was set before the spread, so if formData
+//     contained a stale sync_status key (e.g. from a previous failed record build
+//     or resumed session), the spread silently overwrote it with 'synced' or 'failed'.
+//     The sync engine then skipped the record. System fields now always win.
+//   - UNCHANGED: All field names, 'unsynced' initial status, formData spread.
+//     Only object literal ordering changed.
 
 // ─── CONFIG VERSION ───────────────────────────────────────────────────────────
 export const CONFIG_VERSION = '3.4';
@@ -49,27 +45,37 @@ export function buildQueueRecord(formData = {}, meta = {}) {
     || window.KIOSK_CONFIG?.getActiveSurveyType?.()
     || 'type1';
 
-  const id = formData.id
-    || (typeof crypto !== 'undefined' && crypto.randomUUID?.())
-    || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const timestamp = new Date().toISOString();
 
+  // FIX S5: User data first, then system fields after — sync_status and other
+  // system fields always win if formData contains stale values. Previously
+  // sync_status was set before the spread and got silently overwritten by
+  // a stale sync_status key inside formData (e.g. from a resumed session
+  // where a previous record was partially built). Records could enter the
+  // queue already marked 'synced' or 'failed' and be silently skipped.
   const record = {
-    // ── Identity ─────────────────────────────────────────────────────────
-    id,
+    // ── User data ─────────────────────────────────────────────────────────
+    ...formData,
+
+    // ── Identity ──────────────────────────────────────────────────────────
+    // id: prefer formData.id so existing session IDs are preserved;
+    // fall back to crypto.randomUUID() or a timestamp-based surrogate.
+    id: formData.id
+      || (typeof crypto !== 'undefined' && crypto.randomUUID?.())
+      || `${timestamp}-${Math.random().toString(36).slice(2, 9)}`,
+
     surveyType,
     kioskId: window.KIOSK_CONFIG?.KIOSK_ID || 'UNKNOWN',
 
-    // ── Timestamps ───────────────────────────────────────────────────────
-    submittedAt: new Date().toISOString(),
+    // ── Timestamps ────────────────────────────────────────────────────────
+    submittedAt: timestamp,
 
-    // ── Survey payload ───────────────────────────────────────────────────
-    ...formData,
-
-    // ── Sync metadata ────────────────────────────────────────────────────
+    // ── Sync metadata ─────────────────────────────────────────────────────
+    // Always written last — cannot be overwritten by the formData spread above.
     sync_status: meta.sync_status || 'unsynced',
   };
 
-  // Partial/abandon metadata — only written when explicitly provided
+  // Partial/abandon metadata — only written when explicitly provided by caller
   if (meta.abandonedAt)     record.abandonedAt     = meta.abandonedAt;
   if (meta.abandonedReason) record.abandonedReason = meta.abandonedReason;
 
@@ -226,4 +232,4 @@ export function validateFormData(formData, surveyType) {
   }
 }
 
-console.log('[CONTRACTS] ✅ contracts.js loaded (v1.0.1)');
+console.log('[CONTRACTS] ✅ contracts.js loaded (v1.0.2)');

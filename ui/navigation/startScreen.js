@@ -212,12 +212,23 @@ export function cleanupStartScreenListeners() {
     startTransitionTimer = null;
   }
 
-  // FIX B6-01: Remove both listeners explicitly — { once: true } was removed
+// FIX B6-01: Remove both listeners explicitly — { once: true } was removed
   // from the registration so manual cleanup is now the only removal path.
   if (window.boundStartSurvey && kioskStartScreen) {
     kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
     window.boundStartSurvey = null;
+  }
+
+  const _langBtnEn = document.getElementById('langBtnEn');
+  const _langBtnEs = document.getElementById('langBtnEs');
+  if (_langBtnEn && window._langBtnEnHandler) {
+    _langBtnEn.removeEventListener('click', window._langBtnEnHandler);
+    window._langBtnEnHandler = null;
+  }
+  if (_langBtnEs && window._langBtnEsHandler) {
+    _langBtnEs.removeEventListener('click', window._langBtnEsHandler);
+    window._langBtnEsHandler = null;
   }
 
   cleanupVideoStartScreenListeners();

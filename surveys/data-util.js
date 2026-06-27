@@ -281,8 +281,9 @@ window.dataUtils = (function () {
       options: [
         { value: 'Already visited',      label: 'Ya visité',          followupLabel: null, followupOptions: [] },
         { value: 'Going there now',      label: 'Voy ahora',          followupLabel: null, followupOptions: [] },
-        { value: 'Maybe next time',      label: 'Quizás la próxima',  followupLabel: '¿Qué le ayudaría la próxima vez?', followupOptions: ['Mejores señales', 'Más información', 'Ver qué se ofrece', 'Mapa del campus'] },
-        { value: "Didn't know about it", label: 'No sabía que existía', followupLabel: '¿Qué le ayudaría la próxima vez?', followupOptions: ['Mejores señales', 'Más información', 'Ver qué se ofrece', 'Mapa del campus'] },
+        { value: 'Maybe next time',      label: 'Quizás la próxima',   followupLabel: '¿Qué le ayudaría la próxima vez?', followupOptions: [{ value: 'Better signs', label: 'Mejores señales' }, { value: 'More information', label: 'Más información' }, { value: "See what's offered", label: 'Ver qué se ofrece' }, { value: 'Campus map', label: 'Mapa del campus' }] },
+        { value: "Didn't know about it", label: 'No sabía que existía', followupLabel: '¿Qué le ayudaría la próxima vez?', followupOptions: [{ value: 'Better signs', label: 'Mejores señales' }, { value: 'More information', label: 'Más información' }, { value: "See what's offered", label: 'Ver qué se ofrece' }, { value: 'Campus map', label: 'Mapa del campus' }] },
+        
       ],
       required: true,
     },
@@ -293,7 +294,7 @@ window.dataUtils = (function () {
       question: '¿Su visita transcurrió sin problemas hoy?',
       options: [
         { value: 'Yes everything was smooth', label: 'Sí, todo estuvo bien',      followupLabel: null,                      followupOptions: [] },
-        { value: 'A few things were unclear', label: 'Algunas cosas no estaban claras', followupLabel: '¿Qué no estaba claro?', followupOptions: ['Horario de Darshan', 'Cómo orientarme', 'Señales y direcciones', 'Estacionamiento'] },
+        { value: 'A few things were unclear', label: 'Algunas cosas no estaban claras', followupLabel: '¿Qué no estaba claro?', followupOptions: [{ value: 'Darshan timing', label: 'Horario de Darshan' }, { value: 'Finding my way', label: 'Cómo orientarme' }, { value: 'Signs & directions', label: 'Señales y direcciones' }, { value: 'Parking', label: 'Estacionamiento' }] },
       ],
       required: true,
     },
@@ -709,15 +710,17 @@ window.dataUtils = (function () {
           const show    = mainVal === opt.value;
 
           const chips = opt.followupOptions.map(fv => {
-            const fvSlug  = fv.replace(/\s+/g,'_').replace(/'/g,'');
+            const fvValue = typeof fv === 'object' ? fv.value : fv;
+            const fvLabel = typeof fv === 'object' ? fv.label : fv;
+            const fvSlug  = fvValue.replace(/\s+/g,'_').replace(/'/g,'');
             const fid     = `${q.id}_fu_${optSlug}_${fvSlug}`;
-            const checked = followupVals.includes(fv);
+            const checked = followupVals.includes(fvValue);
             return `
               <div class="checkbox-tab-wrapper">
                 <input type="checkbox"
                   id="${fid}"
                   name="${q.id}_followup_${optSlug}"
-                  value="${fv}"
+                  value="${fvValue}"
                   class="visually-hidden"
                   ${checked ? 'checked' : ''}>
                 <label for="${fid}"
@@ -725,7 +728,7 @@ window.dataUtils = (function () {
                   style="${checked
                     ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
                     : ''}">
-                  ${fv}
+                  ${fvLabel}
                 </label>
               </div>`;
           }).join('');

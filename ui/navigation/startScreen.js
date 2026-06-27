@@ -212,12 +212,23 @@ export function cleanupStartScreenListeners() {
     startTransitionTimer = null;
   }
 
-  // FIX B6-01: Remove both listeners explicitly — { once: true } was removed
+// FIX B6-01: Remove both listeners explicitly — { once: true } was removed
   // from the registration so manual cleanup is now the only removal path.
   if (window.boundStartSurvey && kioskStartScreen) {
     kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
     kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
     window.boundStartSurvey = null;
+  }
+
+  const _langBtnEn = document.getElementById('langBtnEn');
+  const _langBtnEs = document.getElementById('langBtnEs');
+  if (_langBtnEn && window._langBtnEnHandler) {
+    _langBtnEn.removeEventListener('click', window._langBtnEnHandler);
+    window._langBtnEnHandler = null;
+  }
+  if (_langBtnEs && window._langBtnEsHandler) {
+    _langBtnEs.removeEventListener('click', window._langBtnEsHandler);
+    window._langBtnEsHandler = null;
   }
 
   cleanupVideoStartScreenListeners();
@@ -400,17 +411,27 @@ export function showStartScreen() {
 
   _setupVideoAndAttract();
 
-  // FIX B6-01: Remove both listeners immediately on first fire
-  window.boundStartSurvey = (e) => {
-    kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
-    kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
+  window.boundStartSurvey = null;
+
+  const langBtnEn = document.getElementById('langBtnEn');
+  const langBtnEs = document.getElementById('langBtnEs');
+
+  window._langBtnEnHandler = (e) => {
+    e.stopPropagation();
+    window.appState.formData.language = 'en';
     startSurvey(e);
   };
 
-  kioskStartScreen.addEventListener('click',      window.boundStartSurvey);
-  kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { passive: false });
+  window._langBtnEsHandler = (e) => {
+    e.stopPropagation();
+    window.appState.formData.language = 'es';
+    startSurvey(e);
+  };
 
-  console.log('[START SCREEN] ✅ Listeners attached (battery optimized)');
+  if (langBtnEn) langBtnEn.addEventListener('click', window._langBtnEnHandler);
+  if (langBtnEs) langBtnEs.addEventListener('click', window._langBtnEsHandler);
+
+  console.log('[START SCREEN] ✅ Language button listeners attached');
 }
 
 export {

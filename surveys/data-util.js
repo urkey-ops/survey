@@ -224,6 +224,97 @@ window.dataUtils = (function () {
     },
   ];
 
+// ═══════════════════════════════════════════════════════════
+  // SURVEY TYPE 2 — ESPAÑOL
+  // question/label strings translated; all value fields identical to type2 English.
+  // ═══════════════════════════════════════════════════════════
+  const surveyQuestionsType2_es = [
+    {
+      id: 'satisfaction',
+      name: 'satisfaction',
+      type: 'emoji-radio',
+      question: 'En general, ¿qué tan satisfecho estuvo con su visita hoy?',
+      options: [
+        { value: 'Sad',         label: 'Triste',    emoji: '😢' },
+        { value: 'Neutral',     label: 'Neutral',   emoji: '😐' },
+        { value: 'Happy',       label: 'Feliz',     emoji: '😊' },
+        { value: 'Super Happy', label: 'Muy Feliz', emoji: '🤩' },
+      ],
+      required: true,
+    },
+    {
+      id: 'experiences',
+      name: 'experiences',
+      type: 'checkbox-with-other',
+      question: '¿Qué disfrutó más hoy? (Seleccione hasta 3)',
+      options: [
+        { value: 'Art & Architecture',   label: 'Arte y Arquitectura' },
+        { value: 'Darshan & Ceremonies', label: 'Darshan y Ceremonias' },
+        { value: 'Walking the Grounds',  label: 'Caminata por los Jardines' },
+        { value: 'Shayona Cafe & Shop',  label: 'Café Shayona y Tienda' },
+        { value: 'Volunteers & Service', label: 'Voluntarios y Servicio' },
+        { value: 'Time with Family',     label: 'Tiempo en Familia' },
+      ],
+      maxSelections: CHECKBOX_MAX_SELECTIONS,
+      required: true,
+    },
+    {
+      id: 'standout',
+      name: 'standout',
+      type: 'radio-with-other',
+      question: '¿Qué describe mejor su experiencia hoy?',
+      options: [
+        { value: 'Peaceful atmosphere',        label: 'Ambiente Tranquilo' },
+        { value: 'Friendly volunteers',        label: 'Voluntarios Amables' },
+        { value: 'Welcoming environment',      label: 'Ambiente Acogedor' },
+        { value: 'Cleanliness & upkeep',       label: 'Limpieza y Mantenimiento' },
+        { value: 'Family-friendly experience', label: 'Experiencia Familiar' },
+        { value: 'Other',                      label: 'Algo Más' },
+      ],
+      required: true,
+    },
+    {
+      id: 'shayona_intent',
+      name: 'shayona_intent',
+      type: 'radio-with-followup',
+      question: '¿Ha visitado el Café Shayona y la Tienda de Regalos hoy?',
+      options: [
+        { value: 'Already visited',      label: 'Ya visité',          followupLabel: null, followupOptions: [] },
+        { value: 'Going there now',      label: 'Voy ahora',          followupLabel: null, followupOptions: [] },
+        { value: 'Maybe next time',      label: 'Quizás la próxima',   followupLabel: '¿Qué le ayudaría la próxima vez?', followupOptions: [{ value: 'Better signs', label: 'Mejores señales' }, { value: 'More information', label: 'Más información' }, { value: "See what's offered", label: 'Ver qué se ofrece' }, { value: 'Campus map', label: 'Mapa del campus' }] },
+        { value: "Didn't know about it", label: 'No sabía que existía', followupLabel: '¿Qué le ayudaría la próxima vez?', followupOptions: [{ value: 'Better signs', label: 'Mejores señales' }, { value: 'More information', label: 'Más información' }, { value: "See what's offered", label: 'Ver qué se ofrece' }, { value: 'Campus map', label: 'Mapa del campus' }] },
+        
+      ],
+      required: true,
+    },
+    {
+      id: 'expectation_met',
+      name: 'expectation_met',
+      type: 'radio-with-followup',
+      question: '¿Su visita transcurrió sin problemas hoy?',
+      options: [
+        { value: 'Yes everything was smooth', label: 'Sí, todo estuvo bien',      followupLabel: null,                      followupOptions: [] },
+        { value: 'A few things were unclear', label: 'Algunas cosas no estaban claras', followupLabel: '¿Qué no estaba claro?', followupOptions: [{ value: 'Darshan timing', label: 'Horario de Darshan' }, { value: 'Finding my way', label: 'Cómo orientarme' }, { value: 'Signs & directions', label: 'Señales y direcciones' }, { value: 'Parking', label: 'Estacionamiento' }] },
+      ],
+      required: true,
+    },
+    {
+      id: 'final_thoughts',
+      name: 'final_thoughts',
+      type: 'selector-textarea',
+      question: '¿Qué le gustaría compartir hoy?',
+      subLabel: 'Opcional — Seleccione uno para comenzar',
+      options: [
+        { value: 'thank_you',  label: 'Una nota de agradecimiento', emoji: '🙏', placeholder: 'Gracias por…' },
+        { value: 'reflection', label: 'Un pensamiento o reflexión',  emoji: '💭', placeholder: 'Hoy experimenté…' },
+        { value: 'prayer',     label: 'Una oración o deseo',         emoji: '✨', placeholder: 'Que…' },
+        { value: 'feedback',   label: 'Comentarios',                 emoji: '📝', placeholder: 'Alguna sugerencia o pensamiento…' },
+      ],
+      defaultPlaceholder: 'Comparta su pensamiento, oración o nota de agradecimiento aquí…',
+      required: false,
+    },
+  ];
+
   // ─── FIX 7: Map-based question set resolver ────────────────────────────────
   // To add a new survey type: add one line here — no other changes needed in this file.
   // e.g. type4: surveyQuestionsType4
@@ -232,8 +323,12 @@ window.dataUtils = (function () {
     type2: surveyQuestionsType2,
   };
 
-  function getSurveyQuestions() {
+ function getSurveyQuestions() {
     const activeType = window.KIOSK_CONFIG?.getActiveSurveyType?.() || 'type1';
+    const lang = window.appState?.formData?.language || 'en';
+    if (activeType === 'type2' && lang === 'es') {
+      return surveyQuestionsType2_es;
+    }
     if (!surveyQuestionMap[activeType]) {
       console.error(`[DATA-UTIL] No question set for survey type "${activeType}" — falling back to type1`);
     }
@@ -615,15 +710,17 @@ window.dataUtils = (function () {
           const show    = mainVal === opt.value;
 
           const chips = opt.followupOptions.map(fv => {
-            const fvSlug  = fv.replace(/\s+/g,'_').replace(/'/g,'');
+            const fvValue = typeof fv === 'object' ? fv.value : fv;
+            const fvLabel = typeof fv === 'object' ? fv.label : fv;
+            const fvSlug  = fvValue.replace(/\s+/g,'_').replace(/'/g,'');
             const fid     = `${q.id}_fu_${optSlug}_${fvSlug}`;
-            const checked = followupVals.includes(fv);
+            const checked = followupVals.includes(fvValue);
             return `
               <div class="checkbox-tab-wrapper">
                 <input type="checkbox"
                   id="${fid}"
                   name="${q.id}_followup_${optSlug}"
-                  value="${fv}"
+                  value="${fvValue}"
                   class="visually-hidden"
                   ${checked ? 'checked' : ''}>
                 <label for="${fid}"
@@ -631,7 +728,7 @@ window.dataUtils = (function () {
                   style="${checked
                     ? 'background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark);border-width:2px;'
                     : ''}">
-                  ${fv}
+                  ${fvLabel}
                 </label>
               </div>`;
           }).join('');

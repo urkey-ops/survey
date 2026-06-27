@@ -38,6 +38,7 @@ const COLUMN_ORDER_TYPE2 = [
   'expectation_diff',
   'final_thoughts_category',
   'final_thoughts_text',
+  'language',
   'sync_status',
   'timestamp',
   'id',
@@ -200,6 +201,7 @@ function processSingleSubmissionType2(submission) {
     expectation_diff:        flattenFollowup(source.expectation_met),
     final_thoughts_category: source.final_thoughts_category || '',
     final_thoughts_text:     (source.final_thoughts_text || '').trim(),
+    language:                source.language || 'en',
   };
 
   return COLUMN_ORDER_TYPE2.map(key => String(processedData[key] ?? ''));

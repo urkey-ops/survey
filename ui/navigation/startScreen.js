@@ -411,17 +411,27 @@ export function showStartScreen() {
 
   _setupVideoAndAttract();
 
-  // FIX B6-01: Remove both listeners immediately on first fire
-  window.boundStartSurvey = (e) => {
-    kioskStartScreen.removeEventListener('click',      window.boundStartSurvey);
-    kioskStartScreen.removeEventListener('touchstart', window.boundStartSurvey);
+  window.boundStartSurvey = null;
+
+  const langBtnEn = document.getElementById('langBtnEn');
+  const langBtnEs = document.getElementById('langBtnEs');
+
+  window._langBtnEnHandler = (e) => {
+    e.stopPropagation();
+    window.appState.formData.language = 'en';
     startSurvey(e);
   };
 
-  kioskStartScreen.addEventListener('click',      window.boundStartSurvey);
-  kioskStartScreen.addEventListener('touchstart', window.boundStartSurvey, { passive: false });
+  window._langBtnEsHandler = (e) => {
+    e.stopPropagation();
+    window.appState.formData.language = 'es';
+    startSurvey(e);
+  };
 
-  console.log('[START SCREEN] ✅ Listeners attached (battery optimized)');
+  if (langBtnEn) langBtnEn.addEventListener('click', window._langBtnEnHandler);
+  if (langBtnEs) langBtnEs.addEventListener('click', window._langBtnEsHandler);
+
+  console.log('[START SCREEN] ✅ Language button listeners attached');
 }
 
 export {

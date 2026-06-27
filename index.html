@@ -147,6 +147,48 @@ box-shadow: 0 4px 16px rgba(1, 105, 111, 0.15);
 .setup-icon { font-size: 2.5rem; }
 .setup-label { font-size: 1.1rem; font-weight: 600; color: #28251d; }
 .setup-desc { font-size: 0.875rem; color: #7a7974; }
+
+.lang-btn-row {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.lang-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem 3rem;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 1.25rem;
+  cursor: pointer;
+  min-width: 180px;
+  backdrop-filter: blur(4px);
+  transition: background 0.18s, border-color 0.18s, transform 0.1s;
+  touch-action: manipulation;
+}
+
+.lang-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: #fff;
+  transform: scale(0.97);
+}
+
+.lang-btn-flag {
+  font-size: 2.8rem;
+  line-height: 1;
+}
+
+.lang-btn-label {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
 </style>
 </head>
 
@@ -217,10 +259,20 @@ user picks a mode.
   </video>
 
   <div class="mt-12 content">
-    <p id="rotatingQuestion" class="tap-prompt text-xl text-white font-semibold text-center">
-      Tap anywhere to begin
-    </p>
+  <p class="tap-prompt text-lg text-white font-semibold text-center mb-6">
+    Select your language / Seleccione su idioma
+  </p>
+  <div class="lang-btn-row">
+    <button id="langBtnEn" type="button" class="lang-btn">
+      <span class="lang-btn-flag">🇺🇸</span>
+      <span class="lang-btn-label">English</span>
+    </button>
+    <button id="langBtnEs" type="button" class="lang-btn">
+      <span class="lang-btn-flag">🇲🇽</span>
+      <span class="lang-btn-label">Español</span>
+    </button>
   </div>
+</div>
 </div>
 
 <main class="w-full flex flex-col">
@@ -483,14 +535,20 @@ window.showCheckmark = function() {
   const textDiv = document.createElement('div');
   textDiv.className = 'text-center';
 
+  const _lang = window.appState?.formData?.language || 'en';
+
   const heading = document.createElement('h2');
   heading.className = 'text-2xl font-bold text-gray-800 mb-2';
-  heading.textContent = 'Thank you for your feedback!';
+  heading.textContent = _lang === 'es'
+    ? '¡Gracias por sus comentarios!'
+    : 'Thank you for your feedback!';
 
   const countdown = document.createElement('p');
   countdown.id = 'resetCountdown';
   countdown.className = 'text-gray-500 text-lg font-medium';
-  countdown.textContent = 'Kiosk resetting in 5 seconds...';
+  countdown.textContent = _lang === 'es'
+    ? 'El quiosco se reiniciará en 5 segundos...'
+    : 'Kiosk resetting in 5 seconds...';
 
   textDiv.appendChild(heading);
   textDiv.appendChild(countdown);

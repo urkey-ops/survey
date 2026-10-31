@@ -3,6 +3,7 @@
 //   - Injects an "Explorar en español" entry block into #kioskStartScreen (existing)
 //   - Opens a separate full-screen overlay (#spanishGuideRoot)
 //   - Suggested tour ("Siguiente" chain), progress cue, fixed bottom bar, visited marks
+//   - Magazine-style rendering: lead paragraph, pull quotes, fact tiles, alternating photo side
 //   - ALL guide state is module-local: never touches appState, formData,
 //     survey storage, queues, or survey language.
 // IDLE: while open, window.__spanishGuideOpen = true. timers/inactivityHandler.js
@@ -236,7 +237,7 @@ function bumpIdle() {
   if (isOpen) armIdle();
 }
 
-// ── home-screen entry block (unchanged from before) ─────────────────────────
+// ── home-screen entry block (unchanged) ─────────────────────────────────────
 
 function ensureEntry() {
   const screen = document.getElementById('kioskStartScreen');
@@ -360,12 +361,27 @@ function renderFooter(pageId, page) {
   rootEl.classList.toggle('guide-root--footer', !!btn);
 }
 
-function appendBlocks(container, blocks) {
-  (blocks || []).forEach((b) => {
-    if (b.t === 'p') container.appendChild(el('p', 'guide-p', b.x));
-    else if (b.t === 'h') container.appendChild(el('h3', 'guide-h', b.x));
-    else if (b.t === 'quote') container.appendChild(el('blockquote', 'guide-quote', b.x));
-    else if (b.t === 'list') {
+// Magazine-style blocks. allowLead: the first block, if a paragraph, is the lead.
+function appendBlocks(container, blocks, allowLead) {
+  (blocks || []).forEach((b, i) => {
+    if (b.t === 'p') {
+      container.appendChild(el('p', 'guide-p' + (allowLead && i === 0 ? ' guide-lead' : ''), b.x));
+    } else if (b.t === 'h') {
+      container.appendChild(el('h3', 'guide-h', b.x));
+    } else if (b.t === 'quote') {
+      container.appendChild(el('blockquote', 'guide-quote', b.x));
+    } else if (b.t === 'pull') {
+      container.appendChild(el('blockquote', 'guide-pull', b.x));
+    } else if (b.t === 'facts') {
+      const wrap = el('div', 'guide-facts');
+      b.items.forEach((f) => {
+        const tile = el('div', 'guide-fact');
+        tile.appendChild(el('strong', 'guide-fact-value', f.value));
+        tile.appendChild(el('span', 'guide-fact-label', f.label));
+        wrap.appendChild(tile);
+      });
+      container.appendChild(wrap);
+    } else if (b.t === 'list') {
       const ul = el('ul', 'guide-list');
       b.items.forEach((item) => ul.appendChild(el('li', '', item)));
       container.appendChild(ul);
@@ -428,12 +444,12 @@ function startTour() {
 
 function buildMenu(page) {
   const { GUIDE_TOUR } = content;
-  const article = el('article', 'guide-page guide-menu');
+  const article = el('article', 'guide-page guide-menu guide-fade');
 
   const intro = el('div', 'guide-text');
   intro.appendChild(el('p', 'guide-eyebrow', page.eyebrow));
   intro.appendChild(el('h2', 'guide-title', page.title));
-  appendBlocks(intro, page.blocks);
+  appendBlocks(intro, page.blocks, true);
   article.appendChild(intro);
 
   const topics = el('div', 'guide-text');
@@ -459,16 +475,20 @@ function buildMenu(page) {
   return article;
 }
 
-function buildPage(page) {
-  const article = el('article', 'guide-page');
+function buildPage(page, pageId) {
+  const { GUIDE_TOUR } = content;
+  const article = el('article', 'guide-page guide-fade');
+  const step = GUIDE_TOUR.indexOf(pageId);
+  if (step >= 0 && step % 2 === 1) article.classList.add('guide-page--flip');
+
   const text = el('div', 'guide-text');
   if (page.kicker) text.appendChild(el('p', 'guide-eyebrow', page.kicker));
   text.appendChild(el('h2', 'guide-title', page.title));
   if (page.subtitle) text.appendChild(el('p', 'guide-subtitle', page.subtitle));
   appendStats(text, page.stats);
-  appendBlocks(text, page.blocks);
+  appendBlocks(text, page.blocks, true);
   appendLinks(text, page.links);
-  appendBlocks(text, page.after);
+  appendBlocks(text, page.after, false);
   article.appendChild(text);
   buildPhotos(article, page.images);
   return article;
@@ -486,7 +506,7 @@ function renderPage(id) {
   visited.add(topicOf(pageId));
   renderBar(pageId, page);
   scrollEl.textContent = '';
-  scrollEl.appendChild(pageId === GUIDE_HOME ? buildMenu(page) : buildPage(page));
+  scrollEl.appendChild(pageId === GUIDE_HOME ? buildMenu(page) : buildPage(page, pageId));
   scrollEl.scrollTop = 0;
   renderFooter(pageId, page);
   statView(pageId);
@@ -528,7 +548,7 @@ function closeGuide(reason) {
   const lastPage = currentId;
   const seconds = openedAt ? Math.min(Math.round((Date.now() - openedAt) / 1000), 3600) : 0;
   openedAt = 0;
-  statClose(reason, seconds, openedAt === 0 && seconds >= 0 ? lastPage : null);
+  statClose(reason, seconds, lastPage);
   if (rootEl) {
     rootEl.hidden = true;
     scrollEl.textContent = '';

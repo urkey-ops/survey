@@ -155,7 +155,7 @@
     }
     const g = guideTotals();
     if (g) {
-      box.appendChild(mkRow('Guide', g.opens + ' sessions · ' + g.thanks + ' finished · ' + g.shares + ' to survey (7 days)'));
+      box.appendChild(mkRow('Guide', g.opens + ' sessions · ' + g.thanks + ' finished (7 days)'));
     }
   }
 

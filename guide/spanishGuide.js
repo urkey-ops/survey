@@ -1,17 +1,15 @@
 // FILE: guide/spanishGuide.js
 // PURPOSE: Standalone Spanish visitor guide for TEMPLE kiosks only.
-//   - Injects an "Explorar en español" entry block into #kioskStartScreen
+//   - Injects an "Explorar en español" entry block into #kioskStartScreen (existing)
 //   - Opens a separate full-screen overlay (#spanishGuideRoot)
+//   - Suggested tour ("Siguiente" chain), progress cue, fixed bottom bar, visited marks
 //   - ALL guide state is module-local: never touches appState, formData,
 //     survey storage, queues, or survey language.
 // IDLE: while open, window.__spanishGuideOpen = true. timers/inactivityHandler.js
-//   then skips arming the 60 s survey timer; the guide runs its own two-stage
-//   timer (idle -> soft prompt -> close).
-// OFFLINE: makes no network calls of its own. When online it only checks that its
-//   own files/photos are cached and fetches any that are missing (self-heal).
-// USAGE COUNTERS: anonymous per-day counters in localStorage key 'guideStats'.
-//   Sent only when online, one 'guide_usage_summary' event per day, via the
-//   existing analytics pipeline (no server change). No personal data.
+//   then skips arming the 60 s survey timer; the guide runs its own two-stage timer.
+// OFFLINE: no network calls of its own; self-heals its cached files when online.
+// USAGE COUNTERS: anonymous per-day counters in localStorage 'guideStats' (sent once
+//   per day-summary when online) and a 14-day rolling copy 'guideStatsRecent'.
 // FAILURE ISOLATION: separate module graph; errors here cannot affect the survey.
 
 import { pauseInactivityTimer, resetInactivityTimer } from '../timers/inactivityHandler.js';
@@ -24,6 +22,8 @@ const LOAD_TIMEOUT_MS = 8000;      // give up opening if content cannot load
 const HEAL_DELAY_MS = 8000;        // wait after load before cache self-check
 const FLUSH_DELAY_MS = 20000;      // wait after load/online before sending counters
 const STATS_KEY = 'guideStats';
+const RECENT_KEY = 'guideStatsRecent';
+const RECENT_DAYS = 14;
 const IMG_BASE = '/guide/img/';
 const LOG = '[GUIDE]';
 
@@ -31,6 +31,7 @@ let content = null;
 let rootEl = null;
 let barEl = null;
 let scrollEl = null;
+let footerEl = null;
 let promptEl = null;
 let isOpen = false;
 let currentId = null;
@@ -40,6 +41,7 @@ let promptTimer = null;
 let visibilityBound = false;
 let onlineBound = false;
 let healed = false;
+const visited = new Set();
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -82,6 +84,18 @@ function todayKey() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+function normDay(d) {
+  d.opens = d.opens || 0;
+  d.views = d.views || {};
+  d.thanks = d.thanks || 0;
+  d.shares = d.shares || 0;
+  d.closes = d.closes || {};
+  d.exits = d.exits || {};
+  d.tourStarts = d.tourStarts || 0;
+  d.seconds = d.seconds || 0;
+  return d;
+}
+
 function readStats() {
   try {
     const raw = localStorage.getItem(STATS_KEY);
@@ -100,9 +114,6 @@ function writeStats(stats) {
   } catch (e) { /* storage full or blocked: counters are best-effort */ }
 }
 
-const RECENT_KEY = 'guideStatsRecent';
-const RECENT_DAYS = 14;
-
 // Rolling copy of daily counters for the admin panel (never sent, never cleared by flush)
 function updateRecent(mutator) {
   try {
@@ -110,11 +121,8 @@ function updateRecent(mutator) {
     try { recent = JSON.parse(localStorage.getItem(RECENT_KEY)) || {}; } catch (e) { recent = {}; }
     if (!recent.days || typeof recent.days !== 'object') recent = { days: {} };
     const key = todayKey();
-    const day = recent.days[key] || (recent.days[key] = {
-      opens: 0, views: {}, thanks: 0, shares: 0, closes: {}, seconds: 0,
-    });
+    const day = normDay(recent.days[key] || (recent.days[key] = {}));
     mutator(day);
-
     Object.keys(recent.days).sort().slice(0, -RECENT_DAYS).forEach((k) => delete recent.days[k]);
     localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
   } catch (e) { /* best-effort only */ }
@@ -124,15 +132,13 @@ function bumpStats(mutator) {
   try {
     const stats = readStats();
     const key = todayKey();
-    const day = stats.days[key] || (stats.days[key] = {
-      opens: 0, views: {}, thanks: 0, shares: 0, closes: {}, seconds: 0,
-    });
+    const day = normDay(stats.days[key] || (stats.days[key] = {}));
     mutator(day);
-    updateRecent(mutator);
     writeStats(stats);
   } catch (e) {
     console.warn(LOG, 'counter update skipped:', e);
   }
+  updateRecent(mutator);
 }
 
 function statOpen() {
@@ -146,17 +152,21 @@ function statView(pageId) {
   });
 }
 
-function statClose(reason, seconds) {
+function statTourStart() {
+  bumpStats((d) => { d.tourStarts += 1; });
+}
+
+function statClose(reason, seconds, lastPage) {
   bumpStats((d) => {
     d.closes[reason] = (d.closes[reason] || 0) + 1;
     d.seconds += seconds;
+    if (lastPage) d.exits[lastPage] = (d.exits[lastPage] || 0) + 1;
     if (reason === 'share') d.shares += 1;
   });
 }
 
 // Sends one summary event per stored day through the existing analytics queue.
-// Only when online, so events are recorded right before the periodic analytics
-// sync and are not exposed to the offline queue-size trimming.
+// Only when online, so events are recorded right before the periodic analytics sync.
 function flushStats() {
   if (!navigator.onLine) return;
   if (typeof window.dataHandlers?.recordAnalytics !== 'function') return;
@@ -165,7 +175,7 @@ function flushStats() {
     const days = Object.keys(stats.days);
     if (!days.length) return;
     days.forEach((day) => {
-      const d = stats.days[day];
+      const d = normDay(stats.days[day]);
       window.dataHandlers.recordAnalytics('guide_usage_summary', {
         surveyId: null,
         surveyType: null,
@@ -176,6 +186,8 @@ function flushStats() {
         questionTimeSpent: {                      // JSON column: details
           views: d.views,
           closes: d.closes,
+          exits: d.exits,                         // last page before the guide closed
+          tourStarts: d.tourStarts,
           thanks: d.thanks,
           shares: d.shares,
         },
@@ -224,7 +236,7 @@ function bumpIdle() {
   if (isOpen) armIdle();
 }
 
-// ── home-screen entry block ─────────────────────────────────────────────────
+// ── home-screen entry block (unchanged from before) ─────────────────────────
 
 function ensureEntry() {
   const screen = document.getElementById('kioskStartScreen');
@@ -261,6 +273,8 @@ function ensureRoot() {
 
   barEl = el('div', 'guide-bar');
   scrollEl = el('div', 'guide-scroll');
+  footerEl = el('div', 'guide-footer');
+  footerEl.hidden = true;
 
   promptEl = el('div', 'guide-prompt');
   promptEl.hidden = true;
@@ -272,6 +286,7 @@ function ensureRoot() {
 
   rootEl.appendChild(barEl);
   rootEl.appendChild(scrollEl);
+  rootEl.appendChild(footerEl);
   rootEl.appendChild(promptEl);
   document.body.appendChild(rootEl);
 
@@ -290,7 +305,7 @@ function homeButton() {
 }
 
 function renderBar(id, page) {
-  const { GUIDE_HOME } = content;
+  const { GUIDE_HOME, GUIDE_TOUR } = content;
   barEl.textContent = '';
   if (id !== GUIDE_HOME) {
     if (page.parent && page.parent !== GUIDE_HOME) {
@@ -299,7 +314,50 @@ function renderBar(id, page) {
     barEl.appendChild(button('Ver otros temas', 'guide-btn', () => renderPage(GUIDE_HOME)));
   }
   barEl.appendChild(el('div', 'guide-bar-spacer'));
+  const step = GUIDE_TOUR.indexOf(id);
+  if (step >= 0) {
+    barEl.appendChild(el('span', 'guide-progress', `${step + 1} de ${GUIDE_TOUR.length}`));
+  }
   barEl.appendChild(homeButton());
+}
+
+function nextOf(pageId) {
+  const { GUIDE_PAGES, GUIDE_TOUR } = content;
+  const page = GUIDE_PAGES[pageId];
+  if (page && page.next) return page.next;
+  const i = GUIDE_TOUR.indexOf(pageId);
+  return i >= 0 && i < GUIDE_TOUR.length - 1 ? GUIDE_TOUR[i + 1] : null;
+}
+
+function topicOf(id) {
+  const { GUIDE_PAGES, GUIDE_HOME } = content;
+  let cur = id;
+  let guard = 0;
+  while (GUIDE_PAGES[cur] && GUIDE_PAGES[cur].parent && GUIDE_PAGES[cur].parent !== GUIDE_HOME && guard++ < 5) {
+    cur = GUIDE_PAGES[cur].parent;
+  }
+  return cur;
+}
+
+function renderFooter(pageId, page) {
+  const { GUIDE_PAGES } = content;
+  footerEl.textContent = '';
+  let btn = null;
+  if (page.action === 'survey') {
+    btn = button(page.actionLabel, 'guide-btn guide-btn--primary', shareExperience);
+  } else {
+    const nextId = nextOf(pageId);
+    if (nextId) {
+      const target = GUIDE_PAGES[nextId];
+      const main = page.nextText || `Siguiente: ${target?.label || ''}`;
+      btn = button('', 'guide-btn guide-btn--primary', () => renderPage(nextId));
+      btn.appendChild(el('span', 'guide-footer-main', main));
+      if (page.teaser) btn.appendChild(el('span', 'guide-footer-sub', page.teaser));
+    }
+  }
+  if (btn) footerEl.appendChild(btn);
+  footerEl.hidden = !btn;
+  rootEl.classList.toggle('guide-root--footer', !!btn);
 }
 
 function appendBlocks(container, blocks) {
@@ -327,6 +385,18 @@ function appendLinks(container, links) {
   container.appendChild(wrap);
 }
 
+function appendStats(container, stats) {
+  if (!stats || !stats.length) return;
+  const wrap = el('div', 'guide-stats');
+  stats.forEach((s) => {
+    const tile = el('div', 'guide-stat');
+    tile.appendChild(el('strong', 'guide-stat-value', s.value));
+    tile.appendChild(el('span', 'guide-stat-label', s.label));
+    wrap.appendChild(tile);
+  });
+  container.appendChild(wrap);
+}
+
 function buildPhotos(article, images) {
   if (!images || !images.length) return;
   const aside = el('aside', 'guide-photos' + (images.length > 1 ? ' guide-photos--multi' : ''));
@@ -351,7 +421,13 @@ function buildPhotos(article, images) {
   article.appendChild(aside);
 }
 
+function startTour() {
+  statTourStart();
+  renderPage(content.GUIDE_TOUR[0]);
+}
+
 function buildMenu(page) {
+  const { GUIDE_TOUR } = content;
   const article = el('article', 'guide-page guide-menu');
 
   const intro = el('div', 'guide-text');
@@ -361,34 +437,38 @@ function buildMenu(page) {
   article.appendChild(intro);
 
   const topics = el('div', 'guide-text');
+  const cta = button('', 'guide-btn guide-btn--primary guide-tour-cta', startTour);
+  cta.appendChild(el('span', 'guide-footer-main', page.tourLabel));
+  cta.appendChild(el('span', 'guide-footer-sub', `${GUIDE_TOUR.length} pasos · a su ritmo`));
+  topics.appendChild(cta);
+
   topics.appendChild(el('p', 'guide-topics-label', page.topicsLabel));
   const list = el('div', 'guide-topics');
-  page.topics.forEach((t) => list.appendChild(button(t.label, 'guide-topic', () => renderPage(t.id))));
+  page.topics.forEach((t) => {
+    const seen = visited.has(t.id);
+    const b = button('', 'guide-topic' + (seen ? ' guide-topic--seen' : ''), () => renderPage(t.id));
+    b.appendChild(el('span', 'guide-topic-label', t.label));
+    if (seen) {
+      b.appendChild(el('span', 'guide-topic-check', '✓'));
+      b.setAttribute('aria-label', `${t.label}, ya visto`);
+    }
+    list.appendChild(b);
+  });
   topics.appendChild(list);
   article.appendChild(topics);
   return article;
 }
 
 function buildPage(page) {
-  const { GUIDE_PAGES } = content;
   const article = el('article', 'guide-page');
   const text = el('div', 'guide-text');
+  if (page.kicker) text.appendChild(el('p', 'guide-eyebrow', page.kicker));
   text.appendChild(el('h2', 'guide-title', page.title));
   if (page.subtitle) text.appendChild(el('p', 'guide-subtitle', page.subtitle));
+  appendStats(text, page.stats);
   appendBlocks(text, page.blocks);
   appendLinks(text, page.links);
   appendBlocks(text, page.after);
-
-  const foot = el('div', 'guide-next');
-  if (page.action === 'survey') {
-    foot.appendChild(button(page.actionLabel, 'guide-btn guide-btn--primary', shareExperience));
-  } else if (page.next) {
-    const target = GUIDE_PAGES[page.next];
-    const label = page.nextText || `Siguiente: ${target?.label || ''}`;
-    foot.appendChild(button(label, 'guide-btn guide-btn--primary', () => renderPage(page.next)));
-  }
-  if (foot.childNodes.length) text.appendChild(foot);
-
   article.appendChild(text);
   buildPhotos(article, page.images);
   return article;
@@ -403,10 +483,12 @@ function renderPage(id) {
     page = GUIDE_PAGES[pageId];
   }
   currentId = pageId;
+  visited.add(topicOf(pageId));
   renderBar(pageId, page);
   scrollEl.textContent = '';
   scrollEl.appendChild(pageId === GUIDE_HOME ? buildMenu(page) : buildPage(page));
   scrollEl.scrollTop = 0;
+  renderFooter(pageId, page);
   statView(pageId);
   armIdle();
 }
@@ -443,15 +525,20 @@ function closeGuide(reason) {
   if (!isOpen && window.__spanishGuideOpen !== true) return;
   isOpen = false;
   clearIdle();
+  const lastPage = currentId;
   const seconds = openedAt ? Math.min(Math.round((Date.now() - openedAt) / 1000), 3600) : 0;
   openedAt = 0;
-  statClose(reason, seconds);
+  statClose(reason, seconds, openedAt === 0 && seconds >= 0 ? lastPage : null);
   if (rootEl) {
     rootEl.hidden = true;
     scrollEl.textContent = '';
     barEl.textContent = '';
+    footerEl.textContent = '';
+    footerEl.hidden = true;
+    rootEl.classList.remove('guide-root--footer');
   }
   currentId = null;
+  visited.clear();
   window.__spanishGuideOpen = false;  // clear BEFORE re-arming the survey timer
   try { resetInactivityTimer(); } catch (e) { console.warn(LOG, 'timer re-arm failed', e); }
   console.log(LOG, 'closed:', reason);

@@ -1,11 +1,19 @@
 // FILE: guide/guideContent.es.js
-// PURPOSE: Spanish copy + page tree for the visitor guide (data only, no logic).
+// PURPOSE: Spanish copy + page tree + suggested tour for the visitor guide (data only).
 // Visitor-facing text is Spanish only. Photos live in /guide/img/ (optional).
 // Block types: p, h, quote, list {items}, note {title,x}
-// Page fields: parent, label (short name for "Siguiente"), next, nextText,
-//              links, images, action ('survey' on the closing card only)
+// Page fields: parent, label (short name), kicker (small line above title),
+//   teaser (second line under "Siguiente", describing the NEXT tour page),
+//   next / nextText (override), stats (tiles), links, images, action ('survey')
 
 export const GUIDE_HOME = 'menu';
+
+// Suggested tour order (reader is already inside the Mandir). Hub pages
+// (prayer, baps, visit) stay on the menu but are skipped by the tour.
+export const GUIDE_TOUR = [
+  'art', 'mandir', 'darshan', 'arti', 'abhishek',
+  'pramukh', 'mahant', 'community', 'audio', 'cafe', 'thanks',
+];
 
 export const GUIDE_PAGES = {
   menu: {
@@ -16,6 +24,7 @@ export const GUIDE_PAGES = {
       { t: 'p', x: 'Recibe a personas de todas las religiones y culturas. Más que un monumento arquitectónico, es un lugar donde la fe, la cultura, el servicio y la comunidad se encuentran cada día.' },
       { t: 'p', x: 'Le invitamos a descubrir sus tradiciones con curiosidad, respeto y un corazón abierto.' },
     ],
+    tourLabel: 'Comenzar el recorrido',
     topicsLabel: '¿Qué le gustaría conocer?',
     topics: [
       { id: 'mandir', label: '¿Qué es un mandir?' },
@@ -30,7 +39,8 @@ export const GUIDE_PAGES = {
   mandir: {
     parent: 'menu',
     label: '¿Qué es un mandir?',
-    next: 'baps',
+    kicker: 'Más que un edificio',
+    teaser: 'Contemplar lo Divino',
     title: '¿Qué es un mandir?',
     blocks: [
       { t: 'p', x: 'Un mandir es un templo hindú: un espacio sagrado donde las personas oran, reflexionan y profundizan su relación con Dios.' },
@@ -44,7 +54,6 @@ export const GUIDE_PAGES = {
   baps: {
     parent: 'menu',
     label: 'BAPS y sus guías espirituales',
-    next: 'art',
     title: 'BAPS Swaminarayan Sanstha',
     blocks: [
       { t: 'p', x: 'BAPS es una organización espiritual hindú de alcance mundial, guiada por las enseñanzas védicas de Bhagwan Swaminarayan.' },
@@ -62,8 +71,9 @@ export const GUIDE_PAGES = {
   pramukh: {
     parent: 'baps',
     label: 'Pramukh Swami Maharaj',
-    next: 'mahant',
+    kicker: 'Una vida de servicio',
     nextText: 'Conozca a Mahant Swami Maharaj',
+    teaser: 'El actual gurú de BAPS',
     title: 'Su Santidad Pramukh Swami Maharaj',
     subtitle: '1921–2016',
     blocks: [
@@ -77,7 +87,8 @@ export const GUIDE_PAGES = {
   mahant: {
     parent: 'baps',
     label: 'Mahant Swami Maharaj',
-    next: 'art',
+    kicker: 'Humildad, devoción y servicio',
+    teaser: 'La vida del Mandir más allá de la oración',
     title: 'Su Santidad Mahant Swami Maharaj',
     blocks: [
       { t: 'p', x: 'Su Santidad Mahant Swami Maharaj sucedió a Pramukh Swami Maharaj como sexto sucesor espiritual de Bhagwan Swaminarayan y es el actual gurú de BAPS.' },
@@ -90,8 +101,14 @@ export const GUIDE_PAGES = {
   art: {
     parent: 'menu',
     label: 'Arte e historia',
-    next: 'prayer',
+    kicker: 'Mire a su alrededor',
+    teaser: 'La casa de Dios',
     title: 'Arte, historia y devoción',
+    stats: [
+      { value: '34.000+', label: 'piezas talladas a mano' },
+      { value: '2007', label: 'año de inauguración' },
+      { value: '≈ 1,3 millones', label: 'de horas de servicio voluntario' },
+    ],
     blocks: [
       { t: 'p', x: 'El Mandir refleja tradiciones arquitectónicas hindúes transmitidas de generación en generación.' },
       { t: 'p', x: 'Más de 34.000 piezas de mármol italiano, piedra caliza turca y arenisca rosa de la India fueron talladas a mano en la India y ensambladas en Lilburn como un enorme rompecabezas tridimensional.' },
@@ -104,7 +121,6 @@ export const GUIDE_PAGES = {
   prayer: {
     parent: 'menu',
     label: 'Oración y ceremonias',
-    next: 'community',
     title: 'Oración y ceremonias',
     blocks: [
       { t: 'p', x: 'El Mandir es, ante todo, un lugar de oración. Cada día, los fieles expresan su gratitud, buscan bendiciones y profundizan su relación con Dios.' },
@@ -121,7 +137,8 @@ export const GUIDE_PAGES = {
   darshan: {
     parent: 'prayer',
     label: 'Murti Darshan',
-    next: 'arti',
+    kicker: 'Nueve santuarios',
+    teaser: 'Una ofrenda de luz',
     title: 'Murti Darshan',
     blocks: [
       { t: 'p', x: 'En el interior del Mandir hay nueve santuarios que albergan murtis: formas sagradas de Dios veneradas como una presencia viva de lo Divino.' },
@@ -134,7 +151,8 @@ export const GUIDE_PAGES = {
   arti: {
     parent: 'prayer',
     label: 'Arti',
-    next: 'abhishek',
+    kicker: 'Gratitud, amor y devoción',
+    teaser: 'Una ofrenda de agua',
     title: 'Arti: una ofrenda de luz',
     blocks: [
       { t: 'p', x: 'El Arti es una ceremonia de oración hindú en la que se ofrece luz a Dios mediante mechas de algodón encendidas, acompañadas de cantos devocionales y música.' },
@@ -149,7 +167,8 @@ export const GUIDE_PAGES = {
   abhishek: {
     parent: 'prayer',
     label: 'Abhishek',
-    next: 'community',
+    kicker: 'Devoción y gratitud',
+    teaser: 'La inspiración detrás de este Mandir',
     title: 'Shri Nilkanth Varni Abhishek',
     blocks: [
       { t: 'p', x: 'El Abhishek es un ritual hindú en el que se vierte suavemente agua santificada sobre la murti de Shri Nilkanth Varni, la forma adolescente de Bhagwan Swaminarayan.' },
@@ -162,7 +181,8 @@ export const GUIDE_PAGES = {
   community: {
     parent: 'menu',
     label: 'Comunidad y servicio',
-    next: 'visit',
+    kicker: 'Aprender, celebrar y servir',
+    teaser: 'Descubra el Mandir a su ritmo',
     title: 'Una comunidad de fe y servicio',
     blocks: [
       { t: 'p', x: 'La vida del Mandir continúa más allá de la oración. Durante todo el año, personas de distintas generaciones se reúnen para aprender, celebrar y servir.' },
@@ -176,8 +196,6 @@ export const GUIDE_PAGES = {
   visit: {
     parent: 'menu',
     label: 'Información para su visita',
-    next: 'thanks',
-    nextText: 'Finalizar el recorrido',
     title: 'Información para su visita',
     blocks: [
       { t: 'p', x: 'Continúe descubriendo el Mandir a su propio ritmo.' },
@@ -195,7 +213,8 @@ export const GUIDE_PAGES = {
   audio: {
     parent: 'visit',
     label: 'Audioguía en español',
-    next: 'cafe',
+    kicker: 'A su propio ritmo',
+    teaser: 'Para después de su visita',
     title: 'Audioguía en español',
     blocks: [
       { t: 'p', x: 'Descubra la arquitectura, la historia y las tradiciones del Mandir a su propio ritmo con una audioguía en español.' },
@@ -208,7 +227,8 @@ export const GUIDE_PAGES = {
   cafe: {
     parent: 'visit',
     label: 'Café Shayona y tienda de regalos',
-    next: 'guidelines',
+    kicker: 'Comida vegetariana, libros y regalos',
+    nextText: 'Concluir el recorrido',
     title: 'Café Shayona y tienda de regalos',
     blocks: [
       { t: 'h', x: 'Café Shayona' },
@@ -217,7 +237,7 @@ export const GUIDE_PAGES = {
       { t: 'h', x: 'Tienda de regalos y libros' },
       { t: 'p', x: 'Explore libros, postales, recursos y regalos relacionados con las tradiciones hindúes y la cultura de la India.' },
       { t: 'p', x: 'Horario: de 10:00 a. m. a 6:00 p. m.' },
-      { t: 'p', x: 'Consulte a un voluntario para saber cómo llegar.' },
+      { t: 'p', x: 'Consulte a un voluntario para saber cómo llegar y conocer los horarios.' },
     ],
     images: [
       { file: 'shayona-cafe.png', shape: 'landscape', alt: 'Café Shayona' },
@@ -229,7 +249,7 @@ export const GUIDE_PAGES = {
     parent: 'visit',
     label: 'Indicaciones para su visita',
     next: 'thanks',
-    nextText: 'Finalizar el recorrido',
+    nextText: 'Concluir el recorrido',
     title: 'Indicaciones para su visita',
     blocks: [
       { t: 'p', x: 'Ayúdenos a mantener un ambiente de respeto y tranquilidad.' },

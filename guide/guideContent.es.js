@@ -1,15 +1,13 @@
 // FILE: guide/guideContent.es.js
 // PURPOSE: Spanish copy + page tree + suggested tour for the visitor guide (data only).
 // Visitor-facing text is Spanish only. Photos live in /guide/img/ (optional).
-// Block types: p, h, quote, list {items}, note {title,x}
-// Page fields: parent, label (short name), kicker (small line above title),
-//   teaser (second line under "Siguiente", describing the NEXT tour page),
-//   next / nextText (override), stats (tiles), links, images, action ('survey')
+// Block types: p, h, quote, pull (pull quote), facts {items:[{value,label}]},
+//              list {items}, note {title,x}
+// The first block of a page, when it is a 'p', is shown as the larger lead paragraph.
+// Page fields: parent, label, kicker, teaser, next / nextText, stats, links, images, action
 
 export const GUIDE_HOME = 'menu';
 
-// Suggested tour order (reader is already inside the Mandir). Hub pages
-// (prayer, baps, visit) stay on the menu but are skipped by the tour.
 export const GUIDE_TOUR = [
   'art', 'mandir', 'darshan', 'arti', 'abhishek',
   'pramukh', 'mahant', 'community', 'audio', 'cafe', 'thanks',
@@ -22,7 +20,7 @@ export const GUIDE_PAGES = {
     blocks: [
       { t: 'p', x: 'Bienvenido. Este mandir, o templo hindú, es un lugar sagrado de oración, reflexión e inspiración dedicado a Bhagwan Swaminarayan.' },
       { t: 'p', x: 'Recibe a personas de todas las religiones y culturas. Más que un monumento arquitectónico, es un lugar donde la fe, la cultura, el servicio y la comunidad se encuentran cada día.' },
-      { t: 'p', x: 'Le invitamos a descubrir sus tradiciones con curiosidad, respeto y un corazón abierto.' },
+      { t: 'pull', x: 'Le invitamos a descubrir sus tradiciones con curiosidad, respeto y un corazón abierto.' },
     ],
     tourLabel: 'Comenzar el recorrido',
     topicsLabel: '¿Qué le gustaría conocer?',
@@ -93,7 +91,7 @@ export const GUIDE_PAGES = {
     blocks: [
       { t: 'p', x: 'Su Santidad Mahant Swami Maharaj sucedió a Pramukh Swami Maharaj como sexto sucesor espiritual de Bhagwan Swaminarayan y es el actual gurú de BAPS.' },
       { t: 'p', x: 'Conocido por su humildad, austeridad, devoción y servicio, continúa guiando BAPS siguiendo el ejemplo de sus predecesores espirituales.' },
-      { t: 'p', x: 'Su vida y sus enseñanzas promueven la paz, la armonía y la unidad.' },
+      { t: 'pull', x: 'Su vida y sus enseñanzas promueven la paz, la armonía y la unidad.' },
     ],
     images: [{ file: 'mahant-swami-maharaj.png', shape: 'portrait', alt: 'Retrato de Su Santidad Mahant Swami Maharaj' }],
   },
@@ -113,7 +111,7 @@ export const GUIDE_PAGES = {
       { t: 'p', x: 'El Mandir refleja tradiciones arquitectónicas hindúes transmitidas de generación en generación.' },
       { t: 'p', x: 'Más de 34.000 piezas de mármol italiano, piedra caliza turca y arenisca rosa de la India fueron talladas a mano en la India y ensambladas en Lilburn como un enorme rompecabezas tridimensional.' },
       { t: 'p', x: 'Inspirado por Su Santidad Pramukh Swami Maharaj, el Mandir fue inaugurado en 2007. Su construcción contó con aproximadamente 1,3 millones de horas de servicio voluntario.' },
-      { t: 'p', x: 'Su belleza va más allá de la piedra: es una expresión de fe, dedicación y servicio desinteresado.' },
+      { t: 'pull', x: 'Su belleza va más allá de la piedra: es una expresión de fe, dedicación y servicio desinteresado.' },
     ],
     images: [{ file: 'art-history.png', shape: 'landscape', alt: 'Tallas de piedra del Mandir' }],
   },
@@ -156,10 +154,15 @@ export const GUIDE_PAGES = {
     title: 'Arti: una ofrenda de luz',
     blocks: [
       { t: 'p', x: 'El Arti es una ceremonia de oración hindú en la que se ofrece luz a Dios mediante mechas de algodón encendidas, acompañadas de cantos devocionales y música.' },
+      {
+        t: 'facts',
+        items: [
+          { value: '11:15 a. m.', label: 'todos los días' },
+          { value: '10 minutos', label: 'duración aproximada' },
+        ],
+      },
       { t: 'p', x: 'Esta ceremonia expresa gratitud, amor y devoción.' },
       { t: 'p', x: 'Los visitantes son bienvenidos a observar en silencio y ofrecer una oración o reflexión personal.' },
-      { t: 'p', x: 'Horario: todos los días a las 11:15 a. m.' },
-      { t: 'p', x: 'Duración aproximada: 10 minutos.' },
     ],
     images: [{ file: 'arti.png', shape: 'landscape', alt: 'Ceremonia del Arti' }],
   },
@@ -233,10 +236,10 @@ export const GUIDE_PAGES = {
     blocks: [
       { t: 'h', x: 'Café Shayona' },
       { t: 'p', x: 'Ubicado en el recinto del Mandir, el Café Shayona ofrece comida vegetariana de la India, bocadillos, bebidas y dulces tradicionales.' },
-      { t: 'p', x: 'Horario: todos los días, de 11:00 a. m. a 7:30 p. m.' },
+      { t: 'facts', items: [{ value: '11:00 a. m. – 7:30 p. m.', label: 'Horario · todos los días' }] },
       { t: 'h', x: 'Tienda de regalos y libros' },
       { t: 'p', x: 'Explore libros, postales, recursos y regalos relacionados con las tradiciones hindúes y la cultura de la India.' },
-      { t: 'p', x: 'Horario: de 10:00 a. m. a 6:00 p. m.' },
+      { t: 'facts', items: [{ value: '10:00 a. m. – 6:00 p. m.', label: 'Horario' }] },
       { t: 'p', x: 'Consulte a un voluntario para saber cómo llegar y conocer los horarios.' },
     ],
     images: [

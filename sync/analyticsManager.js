@@ -24,6 +24,27 @@ import { buildAnalyticsEvent } from '../main/contracts.js';
 
 const MAX_ANALYTICS_QUEUE = 500;
 
+// Persist last-sync result for the admin analytics panel (additive; never throws)
+function _saveSyncSnapshot(part, info) {
+  try {
+    const raw = localStorage.getItem('lastSyncSnapshot');
+    const snap = raw ? JSON.parse(raw) : {};
+    const prev = snap[part] || {};
+    const now = Date.now();
+    snap[part] = {
+      ok: !!info.ok,
+      at: now,
+      sent: info.sent || 0,
+      pending: info.pending || 0,
+      error: info.error || null,
+      lastOk: (info.ok || info.sent > 0)
+        ? { at: now, sent: info.sent || 0, pending: info.pending || 0 }
+        : (prev.lastOk || null),
+    };
+    localStorage.setItem('lastSyncSnapshot', JSON.stringify(snap));
+  } catch (e) { /* non-critical */ }
+}
+
 function _getStorageKey() {
   return window.CONSTANTS?.STORAGE_KEY_ANALYTICS_V3
     || window.CONSTANTS?.STORAGE_KEY_ANALYTICS
@@ -196,6 +217,7 @@ export async function syncAnalytics(force = false) {
     safeSetLocalStorage(storageKey, []);
 
     console.log(`[ANALYTICS] ✅ Synced ${analytics.length} events — queue cleared`);
+_saveSyncSnapshot('analytics', { ok: true, sent: analytics.length });
 
     // Record the sync itself as an analytics event (does not recurse —
     // 'analytics_synced' is not aggregated back into the payload)
@@ -206,6 +228,7 @@ export async function syncAnalytics(force = false) {
     return true;
   } catch (error) {
     console.error('[ANALYTICS] ❌ Sync failed:', error.message);
+_saveSyncSnapshot('analytics', { ok: false, sent: 0, error: error.message });
     return false;
   }
 }

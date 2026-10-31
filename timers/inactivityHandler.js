@@ -82,6 +82,8 @@ function getQuestions() {
 // ── Internal Reset Logic ──────────────────────────────────────────────────────
 
 function _doResetInactivityTimer() {
+  // Spanish guide open: never arm the 60 s survey timer (see guard above)
+  if (window.__spanishGuideOpen === true) return;
   const { INACTIVITY_TIMEOUT_MS, appState, dataUtils, timerManager } = getDependencies();
 
   if (timerManager) {
@@ -155,6 +157,8 @@ export function stopPeriodicSync() {
 // ── Inactivity timer ──────────────────────────────────────────────────────────
 
 export function resetInactivityTimer() {
+  // Spanish guide open: the guide owns idle handling (guide/spanishGuide.js)
+  if (window.__spanishGuideOpen === true) return;
   const now = Date.now();
   if (now - lastResetTime < DEBOUNCE_DELAY) {
     console.log('[INACTIVITY] Debounced reset (within 2s)');

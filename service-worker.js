@@ -11,8 +11,8 @@
 //     increment CACHE_NAME / RUNTIME_CACHE as usual.
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v63';
-const RUNTIME_CACHE = 'kiosk-runtime-v63';
+const CACHE_NAME    = 'kiosk-survey-v69';
+const RUNTIME_CACHE = 'kiosk-runtime-v69';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Config version — must match CONFIG_VERSION in main/contracts.js
@@ -35,7 +35,8 @@ const CRITICAL_CACHE = [
   '/config.js',
   '/appState.js',
   '/pwa-update-manager.js',
-  '/adminAnalytics.js',
+ '/adminAnalytics.js',
+'/adminSyncStatus.js',
 
   // Survey data utils — both always cached (proxy guard routes at runtime)
   '/surveys/survey-render-utils.js',
@@ -89,7 +90,24 @@ const CRITICAL_CACHE = [
   '/icons/icon-512x512.png',
   '/icons/apple-touch-icon-180x180.png',
   '/icons/favicon-16x16.png',
-  '/icons/favicon-32x32.png'
+  '/icons/favicon-32x32.png',
+
+// Spanish visitor guide (code + photos). A missing photo only logs a warning.
+'/guide/spanishGuide.js',
+'/guide/guideContent.es.js',
+'/guide/img/what-is-mandir.png',
+'/guide/img/baps-about.png',
+'/guide/img/pramukh-swami-maharaj.png',
+'/guide/img/mahant-swami-maharaj.png',
+'/guide/img/art-history.png',
+'/guide/img/murti-darshan.png',
+'/guide/img/arti.png',
+'/guide/img/nilkanth-varni-abhishek.png',
+'/guide/img/community-service.png',
+'/guide/img/audio-guide.png',
+'/guide/img/shayona-cafe.png',
+'/guide/img/gift-shop.png',
+'/guide/img/visitor-guidelines.png'
 ];
 
 // Media files cached separately to prevent install failures

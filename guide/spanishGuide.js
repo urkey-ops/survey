@@ -344,8 +344,8 @@ function renderFooter(pageId, page) {
   const { GUIDE_PAGES } = content;
   footerEl.textContent = '';
   let btn = null;
-  if (page.action === 'survey') {
-    btn = button(page.actionLabel, 'guide-btn guide-btn--primary', shareExperience);
+  if (page.action === 'home') {
+    btn = button(page.actionLabel, 'guide-btn guide-btn--primary', () => closeGuide('finished'));
   } else {
     const nextId = nextOf(pageId);
     if (nextId) {

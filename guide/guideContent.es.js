@@ -140,6 +140,7 @@ export const GUIDE_PAGES = {
       { t: 'p', x: 'El Arti es una ceremonia de oración hindú en la que se ofrece luz a Dios mediante mechas de algodón encendidas, acompañadas de cantos devocionales y música.' },
       { t: 'p', x: 'Esta ceremonia expresa gratitud, amor y devoción.' },
       { t: 'p', x: 'Los visitantes son bienvenidos a observar en silencio y ofrecer una oración o reflexión personal.' },
+      { t: 'p', x: 'Horario: todos los días a las 11:15 a. m.' },
       { t: 'p', x: 'Duración aproximada: 10 minutos.' },
     ],
     images: [{ file: 'arti.png', shape: 'landscape', alt: 'Ceremonia del Arti' }],

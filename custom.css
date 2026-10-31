@@ -1720,4 +1720,26 @@ textarea:focus {
   .guide-tour-cta { min-height: 64px; margin-bottom: 12px; }
 }
 
+/* ── Guide closing card: two choices side by side ── */
+.guide-btn--secondary {
+  background: var(--card-bg);
+  color: var(--orange-darker);
+  border: 2px solid var(--orange-dark);
+  font-weight: 700;
+  font-size: 1.2rem;
+  box-shadow: none;
+}
+.guide-btn--secondary:active { background: var(--orange-light); }
+
+.guide-footer--two {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.guide-footer--two .guide-btn {
+  flex: 1 1 0;
+  width: auto;
+  max-width: 490px;
+  margin: 0;
+}
 

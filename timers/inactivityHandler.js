@@ -187,7 +187,14 @@ function handleInactivityTimeout(dataUtils, appState) {
   console.log(`[INACTIVITY] Detected at question ${idx + 1} (${currentQuestion?.id})`);
 
   if (idx === 0) {
-    console.log('[INACTIVITY] Q1 abandonment — recording analytics');
+    if (!appState.surveyStartTime) {
+    // Idle on the home screen: no survey was started, so nothing to record
+    console.log('[INACTIVITY] Idle on home screen (no survey started) — skipping abandonment analytics');
+    if (typeof window.cleanupAdminPanel === 'function') window.cleanupAdminPanel();
+    performKioskReset();
+    return;
+  }
+  console.log('[INACTIVITY] Q1 abandonment — recording analytics');
     try {
       getDependencies().dataHandlers.recordAnalytics('survey_abandoned', {
         questionId:       currentQuestion?.id,

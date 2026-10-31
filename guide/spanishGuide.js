@@ -1,17 +1,24 @@
 // FILE: guide/spanishGuide.js
 // PURPOSE: Standalone Spanish visitor guide for TEMPLE kiosks only.
-//   - Injects a "Explorar en español" entry block into #kioskStartScreen
-//   - Opens a separate full-screen overlay (#spanishGuideRoot) with the guide
-//   - Keeps ALL guide state module-local: never touches appState, formData,
+//   - Injects an "Explorar en español" entry block into #kioskStartScreen
+//   - Opens a separate full-screen overlay (#spanishGuideRoot)
+//   - ALL guide state is module-local: never touches appState, formData,
 //     storage, queues, analytics, or survey language.
 // IDLE: while open, window.__spanishGuideOpen = true. timers/inactivityHandler.js
-//   skips arming the 60 s survey timer; the guide runs its own timer instead.
-// FAILURE ISOLATION: separate module graph; any error here cannot affect the survey.
+//   then skips arming the 60 s survey timer; the guide runs its own two-stage
+//   timer (idle -> soft prompt -> close).
+// OFFLINE: makes no network calls of its own. When online it only checks that its
+//   own files/photos are cached and fetches any that are missing (self-heal).
+// FAILURE ISOLATION: separate module graph; errors here cannot affect the survey.
 
 import { pauseInactivityTimer, resetInactivityTimer } from '../timers/inactivityHandler.js';
 
-const GUIDE_ENABLED = true;          // kill switch (requires deploy)
-const GUIDE_IDLE_MS = 120000;        // 120 s without touch -> back to home
+const GUIDE_ENABLED = true;        // kill switch (requires deploy)
+const IDLE_MENU_MS = 40000;        // no touch on the topic menu
+const IDLE_PAGE_MS = 75000;        // no touch while reading a page
+const PROMPT_MS = 15000;           // soft prompt before closing
+const LOAD_TIMEOUT_MS = 8000;      // give up opening if content cannot load
+const HEAL_DELAY_MS = 8000;        // wait after load before cache self-check
 const IMG_BASE = '/guide/img/';
 const LOG = '[GUIDE]';
 
@@ -19,9 +26,14 @@ let content = null;
 let rootEl = null;
 let barEl = null;
 let scrollEl = null;
+let promptEl = null;
 let isOpen = false;
+let currentId = null;
 let idleTimer = null;
+let promptTimer = null;
 let visibilityBound = false;
+let onlineBound = false;
+let healed = false;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -39,10 +51,7 @@ function el(tag, className, text) {
 function button(label, className, onClick) {
   const b = el('button', className, label);
   b.type = 'button';
-  b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onClick();
-  });
+  b.addEventListener('click', onClick);
   return b;
 }
 
@@ -51,11 +60,38 @@ async function loadContent() {
   return content;
 }
 
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('load timeout')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // ── idle handling (guide-owned) ─────────────────────────────────────────────
 
-function armIdle() {
+function currentIdleMs() {
+  return currentId === null || currentId === content?.GUIDE_HOME ? IDLE_MENU_MS : IDLE_PAGE_MS;
+}
+
+function clearIdle() {
   if (idleTimer) clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => closeGuide('idle'), GUIDE_IDLE_MS);
+  if (promptTimer) clearTimeout(promptTimer);
+  idleTimer = null;
+  promptTimer = null;
+  if (promptEl) promptEl.hidden = true;
+}
+
+function armIdle() {
+  clearIdle();
+  idleTimer = setTimeout(showPrompt, currentIdleMs());
+}
+
+function showPrompt() {
+  idleTimer = null;
+  if (!isOpen) return;
+  if (promptEl) promptEl.hidden = false;
+  promptTimer = setTimeout(() => closeGuide('idle'), PROMPT_MS);
 }
 
 function bumpIdle() {
@@ -77,6 +113,9 @@ function ensureEntry() {
     const btn = button('Explorar en español', 'guide-entry-btn', openGuide);
     btn.id = 'guideEntryBtn';
     block.appendChild(btn);
+    const note = el('p', 'guide-entry-note', 'Mandir guide in Spanish');
+    note.lang = 'en';
+    block.appendChild(note);
     screen.appendChild(block);
   }
   screen.classList.add('guide-enabled');
@@ -96,14 +135,32 @@ function ensureRoot() {
 
   barEl = el('div', 'guide-bar');
   scrollEl = el('div', 'guide-scroll');
+
+  promptEl = el('div', 'guide-prompt');
+  promptEl.hidden = true;
+  promptEl.setAttribute('role', 'status');
+  promptEl.appendChild(el('p', 'guide-prompt-es', '¿Sigue ahí? Toque para continuar.'));
+  const en = el('p', 'guide-prompt-en', 'Still there? Tap to continue.');
+  en.lang = 'en';
+  promptEl.appendChild(en);
+
   rootEl.appendChild(barEl);
   rootEl.appendChild(scrollEl);
+  rootEl.appendChild(promptEl);
   document.body.appendChild(rootEl);
 
   ['touchstart', 'pointerdown', 'click'].forEach((type) =>
     rootEl.addEventListener(type, bumpIdle, { passive: true })
   );
   rootEl.addEventListener('scroll', bumpIdle, { capture: true, passive: true });
+}
+
+function homeButton() {
+  const b = button('', 'guide-btn guide-btn--home', () => closeGuide('home'));
+  b.setAttribute('aria-label', 'Volver al inicio. Back to home.');
+  b.appendChild(el('span', 'guide-home-icon', '⌂'));
+  b.appendChild(el('span', 'guide-home-text', 'Inicio · Home'));
+  return b;
 }
 
 function renderBar(id, page) {
@@ -116,7 +173,7 @@ function renderBar(id, page) {
     barEl.appendChild(button('Ver otros temas', 'guide-btn', () => renderPage(GUIDE_HOME)));
   }
   barEl.appendChild(el('div', 'guide-bar-spacer'));
-  barEl.appendChild(button('Volver al inicio', 'guide-btn guide-btn--primary', () => closeGuide('home')));
+  barEl.appendChild(homeButton());
 }
 
 function appendBlocks(container, blocks) {
@@ -183,18 +240,11 @@ function buildMenu(page) {
   page.topics.forEach((t) => list.appendChild(button(t.label, 'guide-topic', () => renderPage(t.id))));
   topics.appendChild(list);
   article.appendChild(topics);
-
-  const invite = el('div', 'guide-invite');
-  const txt = el('div');
-  txt.appendChild(el('p', 'guide-invite-title', page.invite.title));
-  txt.appendChild(el('p', 'guide-invite-sub', page.invite.text));
-  invite.appendChild(txt);
-  invite.appendChild(button(page.invite.button, 'guide-btn guide-btn--primary', shareExperience));
-  article.appendChild(invite);
   return article;
 }
 
 function buildPage(page) {
+  const { GUIDE_PAGES } = content;
   const article = el('article', 'guide-page');
   const text = el('div', 'guide-text');
   text.appendChild(el('h2', 'guide-title', page.title));
@@ -202,6 +252,17 @@ function buildPage(page) {
   appendBlocks(text, page.blocks);
   appendLinks(text, page.links);
   appendBlocks(text, page.after);
+
+  const foot = el('div', 'guide-next');
+  if (page.action === 'survey') {
+    foot.appendChild(button(page.actionLabel, 'guide-btn guide-btn--primary', shareExperience));
+  } else if (page.next) {
+    const target = GUIDE_PAGES[page.next];
+    const label = page.nextText || `Siguiente: ${target?.label || ''}`;
+    foot.appendChild(button(label, 'guide-btn guide-btn--primary', () => renderPage(page.next)));
+  }
+  if (foot.childNodes.length) text.appendChild(foot);
+
   article.appendChild(text);
   buildPhotos(article, page.images);
   return article;
@@ -215,6 +276,7 @@ function renderPage(id) {
     pageId = GUIDE_HOME;
     page = GUIDE_PAGES[pageId];
   }
+  currentId = pageId;
   renderBar(pageId, page);
   scrollEl.textContent = '';
   scrollEl.appendChild(pageId === GUIDE_HOME ? buildMenu(page) : buildPage(page));
@@ -237,7 +299,8 @@ async function openGuide() {
 
   try {
     ensureRoot();
-    await loadContent();
+    armIdle();                        // guarantees a close even if loading hangs
+    await withTimeout(loadContent(), LOAD_TIMEOUT_MS);
     if (!isOpen) return;              // closed while content was loading
     renderPage(content.GUIDE_HOME);
     rootEl.hidden = false;
@@ -250,12 +313,13 @@ async function openGuide() {
 function closeGuide(reason) {
   if (!isOpen && window.__spanishGuideOpen !== true) return;
   isOpen = false;
-  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  clearIdle();
   if (rootEl) {
     rootEl.hidden = true;
     scrollEl.textContent = '';
     barEl.textContent = '';
   }
+  currentId = null;
   window.__spanishGuideOpen = false;  // clear BEFORE re-arming the survey timer
   try { resetInactivityTimer(); } catch (e) { console.warn(LOG, 'timer re-arm failed', e); }
   console.log(LOG, 'closed:', reason);
@@ -267,6 +331,34 @@ function shareExperience() {
   if (btn) btn.click();
 }
 
+// ── offline self-heal (only when online; never required) ────────────────────
+
+async function healCache() {
+  if (healed || !navigator.onLine || !('caches' in window)) return;
+  healed = true;
+  try {
+    await loadContent();
+    const urls = ['/guide/spanishGuide.js', '/guide/guideContent.es.js'];
+    Object.values(content.GUIDE_PAGES).forEach((p) =>
+      (p.images || []).forEach((i) => urls.push(IMG_BASE + i.file))
+    );
+    for (const url of urls) {
+      if (!navigator.onLine) break;
+      if (await caches.match(url, { ignoreSearch: true })) continue;
+      try { await fetch(url); } catch (e) { /* offline or missing: ignore */ }
+    }
+  } catch (err) {
+    console.warn(LOG, 'cache self-check skipped:', err);
+  }
+}
+
+function scheduleHeal() {
+  if (!navigator.onLine) return;
+  setTimeout(healCache, HEAL_DELAY_MS);
+}
+
+// ── wiring ──────────────────────────────────────────────────────────────────
+
 function bindVisibility() {
   if (visibilityBound) return;
   visibilityBound = true;
@@ -275,12 +367,21 @@ function bindVisibility() {
   });
 }
 
-// ── init ────────────────────────────────────────────────────────────────────
+function bindOnline() {
+  if (onlineBound) return;
+  onlineBound = true;
+  window.addEventListener('online', () => {
+    healed = false;
+    scheduleHeal();
+  });
+}
 
 function setup() {
   if (!GUIDE_ENABLED || !isTempleKiosk()) return;
   if (!ensureEntry()) return;
   bindVisibility();
+  bindOnline();
+  scheduleHeal();
 }
 
 function init() {

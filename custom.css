@@ -1314,7 +1314,7 @@ textarea:focus {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   Spanish visitor guide (v1)
+   Spanish visitor guide (v2)
    All selectors are guide-prefixed or scoped to #kioskStartScreen.guide-enabled
    (class added only on temple kiosks by guide/spanishGuide.js).
    Uses existing tokens; survey screens are not affected.
@@ -1334,6 +1334,7 @@ textarea:focus {
 }
 .guide-entry-title { margin: 0; font-size: 1.25rem; font-weight: 700; }
 .guide-entry-sub { margin: 0.25rem 0 0.75rem; font-size: 1rem; opacity: 0.85; }
+.guide-entry-note { margin: 0.6rem 0 0; font-size: 0.95rem; opacity: 0.75; }
 .guide-entry-btn {
   min-height: var(--min-tap, 60px);
   padding: 0.75rem 2.2rem;
@@ -1392,6 +1393,8 @@ textarea:focus {
   transition: var(--transition);
 }
 .guide-btn:active { background: var(--surface-hover); transform: scale(0.97); }
+.guide-btn--home { display: inline-flex; align-items: center; gap: 8px; }
+.guide-home-icon { font-size: 1.4rem; line-height: 1; }
 .guide-btn--primary {
   background: var(--orange-dark);
   color: #fff;
@@ -1443,7 +1446,13 @@ textarea:focus {
   font-style: italic;
   line-height: 1.5;
 }
-.guide-list { margin: 0 0 14px; padding-left: 1.4rem; font-size: 1.2rem; line-height: 1.5; }
+.guide-list {
+  margin: 0 0 14px;
+  padding-left: 1.4rem;
+  list-style: disc outside;
+  font-size: 1.2rem;
+  line-height: 1.5;
+}
 .guide-list li { margin-bottom: 8px; }
 .guide-note {
   margin: 8px 0 0;
@@ -1455,6 +1464,8 @@ textarea:focus {
 .guide-note .guide-p { margin: 0; }
 
 .guide-links { display: grid; gap: 10px; margin-top: 6px; }
+.guide-next { margin-top: 18px; }
+.guide-next .guide-btn { width: 100%; min-height: 64px; font-size: 1.2rem; }
 .guide-topics-label { margin: 0 0 10px; font-size: 1.3rem; font-weight: 700; }
 .guide-topics { display: grid; gap: 10px; }
 .guide-topic {
@@ -1479,18 +1490,25 @@ textarea:focus {
 }
 
 .guide-menu { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.guide-invite {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 14px 20px;
-  background: var(--orange-light);
-  border-radius: var(--radius-md);
+
+/* ── Idle prompt (does not block touches) ── */
+.guide-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 14px 26px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  border-radius: var(--radius-lg);
+  text-align: center;
+  pointer-events: none;
 }
-.guide-invite-title { margin: 0; font-size: 1.25rem; font-weight: 700; }
-.guide-invite-sub { margin: 2px 0 0; font-size: 1.05rem; color: var(--text-secondary); }
+.guide-prompt[hidden] { display: none; }
+.guide-prompt p { margin: 0; line-height: 1.35; }
+.guide-prompt-es { font-size: 1.15rem; font-weight: 700; }
+.guide-prompt-en { font-size: 0.95rem; opacity: 0.85; }
 
 /* ── Photo slots (hidden until the image actually loads) ── */
 .guide-photos { display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -1516,7 +1534,6 @@ textarea:focus {
   .guide-photos { order: -1; }
   .guide-photo--landscape { max-width: 420px; }
   .guide-photo--portrait { max-width: 300px; }
-  .guide-invite { flex-direction: column; align-items: stretch; text-align: center; }
 }
 
 /* ── Short landscape screens (iPad 9th gen landscape ≈ 810 px tall) ── */

@@ -146,6 +146,27 @@ function normalizeSyncTargets(syncBothQueues = true) {
   return [getQueueConfigByType(getActiveSurveyType())];
 }
 
+// Persist last-sync result for the admin analytics panel (additive; never throws)
+function _saveSyncSnapshot(part, info) {
+  try {
+    const raw = localStorage.getItem('lastSyncSnapshot');
+    const snap = raw ? JSON.parse(raw) : {};
+    const prev = snap[part] || {};
+    const now = Date.now();
+    snap[part] = {
+      ok: !!info.ok,
+      at: now,
+      sent: info.sent || 0,
+      pending: info.pending || 0,
+      error: info.error || null,
+      lastOk: (info.ok || info.sent > 0)
+        ? { at: now, sent: info.sent || 0, pending: info.pending || 0 }
+        : (prev.lastOk || null),
+    };
+    localStorage.setItem('lastSyncSnapshot', JSON.stringify(snap));
+  } catch (e) { /* non-critical */ }
+}
+
 function getLastSyncStorageKey() {
   return window.CONSTANTS?.STORAGE_KEY_LAST_SYNC || 'lastDataSync';
 }
@@ -342,6 +363,17 @@ async function doSyncData(isManual = false, { syncBothQueues = true } = {}) {
     const hadAnyFailure = syncSummary.some(r => !r.ok);
     const hadAnySuccess = totalSuccessful > 0;
 
+if (hadAnySuccess || hadAnyFailure) {
+  _saveSyncSnapshot('data', {
+    ok: !hadAnyFailure,
+    sent: totalSuccessful,
+    pending: totalRemaining,
+    error: hadAnyFailure
+      ? (syncSummary.find((r) => !r.ok && r.error)?.error || 'sync failed')
+      : null,
+  });
+}
+
     if (isManual) {
       if (hadAnySuccess && !hadAnyFailure) {
         updateSyncStatus(`✅ Sync Complete! ${totalSuccessful} record(s) synced.`);
@@ -373,6 +405,7 @@ async function doSyncData(isManual = false, { syncBothQueues = true } = {}) {
     return hadAnySuccess || totalRemaining === 0;
   } catch (error) {
     console.error(`[DATA SYNC] ❌ FAILED: ${error.message}`);
+_saveSyncSnapshot('data', { ok: false, sent: 0, pending: 0, error: error.message });
 
     try {
       recordAnalytics('sync_failed', {

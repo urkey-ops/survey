@@ -100,6 +100,26 @@ function writeStats(stats) {
   } catch (e) { /* storage full or blocked: counters are best-effort */ }
 }
 
+const RECENT_KEY = 'guideStatsRecent';
+const RECENT_DAYS = 14;
+
+// Rolling copy of daily counters for the admin panel (never sent, never cleared by flush)
+function updateRecent(mutator) {
+  try {
+    let recent = {};
+    try { recent = JSON.parse(localStorage.getItem(RECENT_KEY)) || {}; } catch (e) { recent = {}; }
+    if (!recent.days || typeof recent.days !== 'object') recent = { days: {} };
+    const key = todayKey();
+    const day = recent.days[key] || (recent.days[key] = {
+      opens: 0, views: {}, thanks: 0, shares: 0, closes: {}, seconds: 0,
+    });
+    mutator(day);
+    updateRecent(mutator);
+    Object.keys(recent.days).sort().slice(0, -RECENT_DAYS).forEach((k) => delete recent.days[k]);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+  } catch (e) { /* best-effort only */ }
+}
+
 function bumpStats(mutator) {
   try {
     const stats = readStats();

@@ -280,7 +280,7 @@ export const GUIDE_PAGES = {
     blocks: [
       { t: 'p', x: 'Si lo desea, cuéntenos cómo fue su experiencia.' },
     ],
-    action: 'survey',
-    actionLabel: 'Compartir mi experiencia',
+    action: 'home',
+    actionLabel: 'Volver al inicio',
   },
 };

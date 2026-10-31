@@ -1,10 +1,9 @@
 // FILE: guide/guideContent.es.js
 // PURPOSE: Spanish copy + page tree for the visitor guide (data only, no logic).
-// Edit text here without touching survey code. Visitor-facing text is Spanish only.
-// Photo files live in /guide/img/ (optional; a missing file simply hides the slot).
-//
-// Block types: p (paragraph), h (sub-heading), quote, list {items}, note {title,x}
-// Image shapes: 'landscape' (4:3) or 'portrait' (4:5)
+// Visitor-facing text is Spanish only. Photos live in /guide/img/ (optional).
+// Block types: p, h, quote, list {items}, note {title,x}
+// Page fields: parent, label (short name for "Siguiente"), next, nextText,
+//              links, images, action ('survey' on the closing card only)
 
 export const GUIDE_HOME = 'menu';
 
@@ -26,15 +25,12 @@ export const GUIDE_PAGES = {
       { id: 'community', label: 'Comunidad y servicio' },
       { id: 'visit', label: 'Información para su visita' },
     ],
-    invite: {
-      title: '¿Ya terminó su visita?',
-      text: 'Nos gustaría conocer su experiencia.',
-      button: 'Compartir mi experiencia',
-    },
   },
 
   mandir: {
     parent: 'menu',
+    label: '¿Qué es un mandir?',
+    next: 'baps',
     title: '¿Qué es un mandir?',
     blocks: [
       { t: 'p', x: 'Un mandir es un templo hindú: un espacio sagrado donde las personas oran, reflexionan y profundizan su relación con Dios.' },
@@ -47,6 +43,8 @@ export const GUIDE_PAGES = {
 
   baps: {
     parent: 'menu',
+    label: 'BAPS y sus guías espirituales',
+    next: 'art',
     title: 'BAPS Swaminarayan Sanstha',
     blocks: [
       { t: 'p', x: 'BAPS es una organización espiritual hindú de alcance mundial, guiada por las enseñanzas védicas de Bhagwan Swaminarayan.' },
@@ -63,6 +61,9 @@ export const GUIDE_PAGES = {
 
   pramukh: {
     parent: 'baps',
+    label: 'Pramukh Swami Maharaj',
+    next: 'mahant',
+    nextText: 'Conozca a Mahant Swami Maharaj',
     title: 'Su Santidad Pramukh Swami Maharaj',
     subtitle: '1921–2016',
     blocks: [
@@ -70,12 +71,13 @@ export const GUIDE_PAGES = {
       { t: 'p', x: 'Su vida fue un ejemplo de devoción, humildad y servicio a los demás. Su mensaje continúa inspirando:' },
       { t: 'quote', x: '«En la alegría de los demás está nuestra propia alegría».' },
     ],
-    links: [{ id: 'mahant', label: 'Conozca a Mahant Swami Maharaj' }],
     images: [{ file: 'pramukh-swami-maharaj.png', shape: 'portrait', alt: 'Retrato de Su Santidad Pramukh Swami Maharaj' }],
   },
 
   mahant: {
     parent: 'baps',
+    label: 'Mahant Swami Maharaj',
+    next: 'art',
     title: 'Su Santidad Mahant Swami Maharaj',
     blocks: [
       { t: 'p', x: 'Su Santidad Mahant Swami Maharaj sucedió a Pramukh Swami Maharaj como sexto sucesor espiritual de Bhagwan Swaminarayan y es el actual gurú de BAPS.' },
@@ -87,6 +89,8 @@ export const GUIDE_PAGES = {
 
   art: {
     parent: 'menu',
+    label: 'Arte e historia',
+    next: 'prayer',
     title: 'Arte, historia y devoción',
     blocks: [
       { t: 'p', x: 'El Mandir refleja tradiciones arquitectónicas hindúes transmitidas de generación en generación.' },
@@ -99,6 +103,8 @@ export const GUIDE_PAGES = {
 
   prayer: {
     parent: 'menu',
+    label: 'Oración y ceremonias',
+    next: 'community',
     title: 'Oración y ceremonias',
     blocks: [
       { t: 'p', x: 'El Mandir es, ante todo, un lugar de oración. Cada día, los fieles expresan su gratitud, buscan bendiciones y profundizan su relación con Dios.' },
@@ -114,6 +120,8 @@ export const GUIDE_PAGES = {
 
   darshan: {
     parent: 'prayer',
+    label: 'Murti Darshan',
+    next: 'arti',
     title: 'Murti Darshan',
     blocks: [
       { t: 'p', x: 'En el interior del Mandir hay nueve santuarios que albergan murtis: formas sagradas de Dios veneradas como una presencia viva de lo Divino.' },
@@ -125,6 +133,8 @@ export const GUIDE_PAGES = {
 
   arti: {
     parent: 'prayer',
+    label: 'Arti',
+    next: 'abhishek',
     title: 'Arti: una ofrenda de luz',
     blocks: [
       { t: 'p', x: 'El Arti es una ceremonia de oración hindú en la que se ofrece luz a Dios mediante mechas de algodón encendidas, acompañadas de cantos devocionales y música.' },
@@ -137,6 +147,8 @@ export const GUIDE_PAGES = {
 
   abhishek: {
     parent: 'prayer',
+    label: 'Abhishek',
+    next: 'community',
     title: 'Shri Nilkanth Varni Abhishek',
     blocks: [
       { t: 'p', x: 'El Abhishek es un ritual hindú en el que se vierte suavemente agua santificada sobre la murti de Shri Nilkanth Varni, la forma adolescente de Bhagwan Swaminarayan.' },
@@ -148,6 +160,8 @@ export const GUIDE_PAGES = {
 
   community: {
     parent: 'menu',
+    label: 'Comunidad y servicio',
+    next: 'visit',
     title: 'Una comunidad de fe y servicio',
     blocks: [
       { t: 'p', x: 'La vida del Mandir continúa más allá de la oración. Durante todo el año, personas de distintas generaciones se reúnen para aprender, celebrar y servir.' },
@@ -160,6 +174,9 @@ export const GUIDE_PAGES = {
 
   visit: {
     parent: 'menu',
+    label: 'Información para su visita',
+    next: 'thanks',
+    nextText: 'Finalizar el recorrido',
     title: 'Información para su visita',
     blocks: [
       { t: 'p', x: 'Continúe descubriendo el Mandir a su propio ritmo.' },
@@ -176,6 +193,8 @@ export const GUIDE_PAGES = {
 
   audio: {
     parent: 'visit',
+    label: 'Audioguía en español',
+    next: 'cafe',
     title: 'Audioguía en español',
     blocks: [
       { t: 'p', x: 'Descubra la arquitectura, la historia y las tradiciones del Mandir a su propio ritmo con una audioguía en español.' },
@@ -187,6 +206,8 @@ export const GUIDE_PAGES = {
 
   cafe: {
     parent: 'visit',
+    label: 'Café Shayona y tienda de regalos',
+    next: 'guidelines',
     title: 'Café Shayona y tienda de regalos',
     blocks: [
       { t: 'h', x: 'Café Shayona' },
@@ -203,6 +224,9 @@ export const GUIDE_PAGES = {
 
   guidelines: {
     parent: 'visit',
+    label: 'Indicaciones para su visita',
+    next: 'thanks',
+    nextText: 'Finalizar el recorrido',
     title: 'Indicaciones para su visita',
     blocks: [
       { t: 'p', x: 'Ayúdenos a mantener un ambiente de respeto y tranquilidad.' },
@@ -220,5 +244,17 @@ export const GUIDE_PAGES = {
       { t: 'p', x: 'Estas son algunas indicaciones básicas. Consulte a un voluntario si necesita conocer las normas completas.' },
     ],
     images: [{ file: 'visitor-guidelines.png', shape: 'landscape', alt: 'Indicaciones para visitantes' }],
+  },
+
+  // Closing card: the ONLY place the survey is offered inside the guide.
+  thanks: {
+    parent: 'menu',
+    label: 'Gracias',
+    title: 'Gracias por acompañarnos',
+    blocks: [
+      { t: 'p', x: 'Si lo desea, cuéntenos cómo fue su experiencia.' },
+    ],
+    action: 'survey',
+    actionLabel: 'Compartir mi experiencia',
   },
 };

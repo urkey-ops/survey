@@ -11,8 +11,8 @@
 //     increment CACHE_NAME / RUNTIME_CACHE as usual.
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v67';
-const RUNTIME_CACHE = 'kiosk-runtime-v67';
+const CACHE_NAME    = 'kiosk-survey-v68';
+const RUNTIME_CACHE = 'kiosk-runtime-v68';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Config version — must match CONFIG_VERSION in main/contracts.js
@@ -35,7 +35,8 @@ const CRITICAL_CACHE = [
   '/config.js',
   '/appState.js',
   '/pwa-update-manager.js',
-  '/adminAnalytics.js',
+ '/adminAnalytics.js',
+'/adminSyncStatus.js',
 
   // Survey data utils — both always cached (proxy guard routes at runtime)
   '/surveys/survey-render-utils.js',

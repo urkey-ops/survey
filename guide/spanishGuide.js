@@ -114,7 +114,7 @@ function updateRecent(mutator) {
       opens: 0, views: {}, thanks: 0, shares: 0, closes: {}, seconds: 0,
     });
     mutator(day);
-    updateRecent(mutator);
+
     Object.keys(recent.days).sort().slice(0, -RECENT_DAYS).forEach((k) => delete recent.days[k]);
     localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
   } catch (e) { /* best-effort only */ }
@@ -128,6 +128,7 @@ function bumpStats(mutator) {
       opens: 0, views: {}, thanks: 0, shares: 0, closes: {}, seconds: 0,
     });
     mutator(day);
+    updateRecent(mutator);
     writeStats(stats);
   } catch (e) {
     console.warn(LOG, 'counter update skipped:', e);

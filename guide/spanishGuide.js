@@ -189,6 +189,9 @@ function flushStats() {
           closes: d.closes,
           exits: d.exits,                         // last page before the guide closed
           tourStarts: d.tourStarts,
+          chooserShown: d.chooserShown || 0,
+          chooserGuide: d.chooserGuide || 0,
+          chooserSurvey: d.chooserSurvey || 0,
           thanks: d.thanks,
           shares: d.shares,
         },
@@ -570,10 +573,112 @@ function closeGuide(reason) {
   console.log(LOG, 'closed:', reason);
 }
 
+// ── Español chooser (temple kiosks only): guide or survey ───────────────────
+const CHOOSER_IDLE_MS = 20000;   // chooser closes itself (well under the 60 s survey timer)
+let chooserEl = null;
+let chooserTimer = null;
+let hookInstalled = false;
+
+function statChooser(kind) {
+  bumpStats((d) => { d[kind] = (d[kind] || 0) + 1; });
+}
+
+// Click #langBtnEs without our own hook intercepting it again
+function letSurveyThrough(btn) {
+  window.__guideLetSurveyThrough = true;
+  try { btn.click(); } finally { window.__guideLetSurveyThrough = false; }
+}
+
+function closeChooser() {
+  if (chooserTimer) { clearTimeout(chooserTimer); chooserTimer = null; }
+  if (chooserEl) chooserEl.hidden = true;
+}
+
+function ensureChooser() {
+  if (chooserEl) return chooserEl;
+  const wrap = el('div', 'guide-chooser');
+  wrap.id = 'guideChooser';
+  wrap.lang = 'es';
+  wrap.hidden = true;
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-label', 'Elija una opción');
+
+  const card = el('div', 'guide-chooser-card');
+  card.appendChild(el('p', 'guide-chooser-title', '¿Qué le gustaría hacer?'));
+
+  const explore = button('', 'guide-btn guide-btn--primary guide-chooser-explore', () => {
+    statChooser('chooserGuide');
+    closeChooser();
+    openGuide();
+  });
+  explore.appendChild(el('span', 'guide-chooser-explore-main', 'Explorar el Mandir'));
+  explore.appendChild(el('span', 'guide-chooser-explore-sub', 'Conozca el Mandir y sus tradiciones.'));
+  card.appendChild(explore);
+
+  card.appendChild(button('Compartir mi experiencia', 'guide-btn guide-btn--secondary guide-chooser-survey', () => {
+    statChooser('chooserSurvey');
+    closeChooser();
+    const es = document.getElementById('langBtnEs');
+    if (es) letSurveyThrough(es);
+  }));
+
+  const back = button('', 'guide-chooser-back', () => closeChooser());
+  const backText = el('span', '', 'Volver · Back');
+  back.appendChild(backText);
+  card.appendChild(back);
+
+  wrap.appendChild(card);
+  document.body.appendChild(wrap);
+  chooserEl = wrap;
+  return wrap;
+}
+
+// Returns true only if the chooser is actually showing (the caller then blocks the tap).
+function showChooser() {
+  try {
+    const wrap = ensureChooser();
+    wrap.hidden = false;
+    statChooser('chooserShown');
+    if (chooserTimer) clearTimeout(chooserTimer);
+    chooserTimer = setTimeout(closeChooser, CHOOSER_IDLE_MS);
+    return true;
+  } catch (err) {
+    console.error(LOG, 'chooser failed (Español passes through):', err);
+    return false;
+  }
+}
+
+function onStartScreenCaptureClick(e) {
+  try {
+    if (window.__guideLetSurveyThrough === true) return;
+    const target = e.target;
+    if (!target || !target.closest || !target.closest('#langBtnEs')) return;
+    if (!GUIDE_ENABLED || !isTempleKiosk()) return;
+    if (isOpen || (chooserEl && !chooserEl.hidden)) return;
+    const screen = document.getElementById('kioskStartScreen');
+    if (!screen || screen.classList.contains('hidden') || screen.classList.contains('start-screen-fade-out')) return;
+    if (!showChooser()) return;      // fail open: the tap reaches the survey as before
+    e.preventDefault();
+    e.stopPropagation();
+  } catch (err) {
+    console.error(LOG, 'start-screen hook error (Español passes through):', err);
+  }
+}
+
+function installStartScreenHook() {
+  const screen = document.getElementById('kioskStartScreen');
+  if (!screen) return false;
+  if (!hookInstalled) {
+    screen.addEventListener('click', onStartScreenCaptureClick, true);
+    hookInstalled = true;
+  }
+  return true;
+}
+
 function shareExperience() {
   closeGuide('share');
   const btn = document.getElementById('langBtnEs'); // existing Spanish survey entry
-  if (btn) btn.click();
+  if (btn) letSurveyThrough(btn);
 }
 
 // ── offline self-heal (only when online; never required) ────────────────────
@@ -608,7 +713,10 @@ function bindVisibility() {
   if (visibilityBound) return;
   visibilityBound = true;
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && isOpen) closeGuide('hidden');
+    if (document.hidden) {
+      closeChooser();
+      if (isOpen) closeGuide('hidden');
+    }
   });
 }
 
@@ -624,7 +732,7 @@ function bindOnline() {
 
 function setup() {
   if (!GUIDE_ENABLED || !isTempleKiosk()) return;
-  if (!ensureEntry()) return;
+  if (!installStartScreenHook()) return;
   bindVisibility();
   bindOnline();
   scheduleHeal();

@@ -3,12 +3,15 @@
 //   - Injects an "Explorar en español" entry block into #kioskStartScreen
 //   - Opens a separate full-screen overlay (#spanishGuideRoot)
 //   - ALL guide state is module-local: never touches appState, formData,
-//     storage, queues, analytics, or survey language.
+//     survey storage, queues, or survey language.
 // IDLE: while open, window.__spanishGuideOpen = true. timers/inactivityHandler.js
 //   then skips arming the 60 s survey timer; the guide runs its own two-stage
 //   timer (idle -> soft prompt -> close).
 // OFFLINE: makes no network calls of its own. When online it only checks that its
 //   own files/photos are cached and fetches any that are missing (self-heal).
+// USAGE COUNTERS: anonymous per-day counters in localStorage key 'guideStats'.
+//   Sent only when online, one 'guide_usage_summary' event per day, via the
+//   existing analytics pipeline (no server change). No personal data.
 // FAILURE ISOLATION: separate module graph; errors here cannot affect the survey.
 
 import { pauseInactivityTimer, resetInactivityTimer } from '../timers/inactivityHandler.js';
@@ -19,6 +22,8 @@ const IDLE_PAGE_MS = 75000;        // no touch while reading a page
 const PROMPT_MS = 15000;           // soft prompt before closing
 const LOAD_TIMEOUT_MS = 8000;      // give up opening if content cannot load
 const HEAL_DELAY_MS = 8000;        // wait after load before cache self-check
+const FLUSH_DELAY_MS = 20000;      // wait after load/online before sending counters
+const STATS_KEY = 'guideStats';
 const IMG_BASE = '/guide/img/';
 const LOG = '[GUIDE]';
 
@@ -29,6 +34,7 @@ let scrollEl = null;
 let promptEl = null;
 let isOpen = false;
 let currentId = null;
+let openedAt = 0;
 let idleTimer = null;
 let promptTimer = null;
 let visibilityBound = false;
@@ -66,6 +72,105 @@ function withTimeout(promise, ms) {
     timer = setTimeout(() => reject(new Error('load timeout')), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// ── usage counters (anonymous, never throws) ────────────────────────────────
+
+function todayKey() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function readStats() {
+  try {
+    const raw = localStorage.getItem(STATS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' && parsed.days && typeof parsed.days === 'object'
+      ? parsed
+      : { days: {} };
+  } catch (e) {
+    return { days: {} };
+  }
+}
+
+function writeStats(stats) {
+  try {
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  } catch (e) { /* storage full or blocked: counters are best-effort */ }
+}
+
+function bumpStats(mutator) {
+  try {
+    const stats = readStats();
+    const key = todayKey();
+    const day = stats.days[key] || (stats.days[key] = {
+      opens: 0, views: {}, thanks: 0, shares: 0, closes: {}, seconds: 0,
+    });
+    mutator(day);
+    writeStats(stats);
+  } catch (e) {
+    console.warn(LOG, 'counter update skipped:', e);
+  }
+}
+
+function statOpen() {
+  bumpStats((d) => { d.opens += 1; });
+}
+
+function statView(pageId) {
+  bumpStats((d) => {
+    d.views[pageId] = (d.views[pageId] || 0) + 1;
+    if (pageId === 'thanks') d.thanks += 1;
+  });
+}
+
+function statClose(reason, seconds) {
+  bumpStats((d) => {
+    d.closes[reason] = (d.closes[reason] || 0) + 1;
+    d.seconds += seconds;
+    if (reason === 'share') d.shares += 1;
+  });
+}
+
+// Sends one summary event per stored day through the existing analytics queue.
+// Only when online, so events are recorded right before the periodic analytics
+// sync and are not exposed to the offline queue-size trimming.
+function flushStats() {
+  if (!navigator.onLine) return;
+  if (typeof window.dataHandlers?.recordAnalytics !== 'function') return;
+  try {
+    const stats = readStats();
+    const days = Object.keys(stats.days);
+    if (!days.length) return;
+    days.forEach((day) => {
+      const d = stats.days[day];
+      window.dataHandlers.recordAnalytics('guide_usage_summary', {
+        surveyId: null,
+        surveyType: null,
+        questionId: day,                          // column: day (YYYY-MM-DD)
+        questionIndex: d.opens,                   // column: guide sessions that day
+        totalTimeSeconds: Math.round(d.seconds),  // column: total seconds in guide
+        reason: 'daily',
+        questionTimeSpent: {                      // JSON column: details
+          views: d.views,
+          closes: d.closes,
+          thanks: d.thanks,
+          shares: d.shares,
+        },
+      });
+      delete stats.days[day];
+    });
+    writeStats(stats);
+    console.log(LOG, 'usage summary recorded for', days.length, 'day(s)');
+  } catch (err) {
+    console.warn(LOG, 'usage summary skipped:', err);
+  }
+}
+
+function scheduleFlush() {
+  if (!navigator.onLine) return;
+  setTimeout(flushStats, FLUSH_DELAY_MS);
 }
 
 // ── idle handling (guide-owned) ─────────────────────────────────────────────
@@ -281,6 +386,7 @@ function renderPage(id) {
   scrollEl.textContent = '';
   scrollEl.appendChild(pageId === GUIDE_HOME ? buildMenu(page) : buildPage(page));
   scrollEl.scrollTop = 0;
+  statView(pageId);
   armIdle();
 }
 
@@ -304,6 +410,8 @@ async function openGuide() {
     if (!isOpen) return;              // closed while content was loading
     renderPage(content.GUIDE_HOME);
     rootEl.hidden = false;
+    openedAt = Date.now();
+    statOpen();
   } catch (err) {
     console.error(LOG, 'open failed (survey unaffected):', err);
     closeGuide('error');
@@ -314,6 +422,9 @@ function closeGuide(reason) {
   if (!isOpen && window.__spanishGuideOpen !== true) return;
   isOpen = false;
   clearIdle();
+  const seconds = openedAt ? Math.min(Math.round((Date.now() - openedAt) / 1000), 3600) : 0;
+  openedAt = 0;
+  statClose(reason, seconds);
   if (rootEl) {
     rootEl.hidden = true;
     scrollEl.textContent = '';
@@ -373,6 +484,7 @@ function bindOnline() {
   window.addEventListener('online', () => {
     healed = false;
     scheduleHeal();
+    scheduleFlush();
   });
 }
 
@@ -382,6 +494,7 @@ function setup() {
   bindVisibility();
   bindOnline();
   scheduleHeal();
+  scheduleFlush();
 }
 
 function init() {

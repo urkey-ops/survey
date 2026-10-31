@@ -11,8 +11,8 @@
 //     increment CACHE_NAME / RUNTIME_CACHE as usual.
 
 // 🔒 Bump versions on every deploy
-const CACHE_NAME    = 'kiosk-survey-v64';
-const RUNTIME_CACHE = 'kiosk-runtime-v64';
+const CACHE_NAME    = 'kiosk-survey-v65';
+const RUNTIME_CACHE = 'kiosk-runtime-v65';
 const MEDIA_CACHE   = 'kiosk-media-v1';    // unchanged — video hasn't changed
 
 // Config version — must match CONFIG_VERSION in main/contracts.js

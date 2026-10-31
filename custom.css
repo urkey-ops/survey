@@ -1312,3 +1312,218 @@ textarea:focus {
     z-index: 10;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Spanish visitor guide (v1)
+   All selectors are guide-prefixed or scoped to #kioskStartScreen.guide-enabled
+   (class added only on temple kiosks by guide/spanishGuide.js).
+   Uses existing tokens; survey screens are not affected.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Home-screen entry block ── */
+#kioskStartScreen.guide-enabled .mb-8 { margin-bottom: 1rem; }
+#kioskStartScreen.guide-enabled .mt-12 { margin-top: 1.25rem; }
+#kioskStartScreen.guide-enabled #kioskVideo { max-height: 32vh; }
+
+.guide-entry {
+  width: min(560px, 90%);
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  text-align: center;
+}
+.guide-entry-title { margin: 0; font-size: 1.25rem; font-weight: 700; }
+.guide-entry-sub { margin: 0.25rem 0 0.75rem; font-size: 1rem; opacity: 0.85; }
+.guide-entry-btn {
+  min-height: var(--min-tap, 60px);
+  padding: 0.75rem 2.2rem;
+  background: transparent;
+  border: 2px solid #10b981;
+  border-radius: 1.25rem;
+  color: #fff;
+  font-family: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.18s, transform 0.1s;
+}
+.guide-entry-btn:active { background: rgba(16, 185, 129, 0.25); transform: scale(0.97); }
+
+/* ── Guide overlay ── */
+.guide-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text-primary);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.guide-root[hidden] { display: none; }
+.guide-root button { font-family: inherit; }
+
+.guide-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 12px 20px;
+  background: var(--card-bg);
+  border-bottom: var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+.guide-bar-spacer { flex: 1; }
+
+.guide-btn {
+  min-height: var(--min-tap);
+  padding: 0 1.5rem;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  border: var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: 1.125rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition);
+}
+.guide-btn:active { background: var(--surface-hover); transform: scale(0.97); }
+.guide-btn--primary {
+  background: var(--orange-dark);
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  box-shadow: var(--btn-shadow);
+}
+.guide-btn--primary:active { background: #A34400; }
+
+.guide-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 28px 28px;
+}
+
+.guide-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 28px;
+  align-items: start;
+  padding: 24px 28px;
+  background: var(--card-bg);
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+}
+.guide-page--photo { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+
+.guide-eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--orange-darker);
+}
+.guide-title { margin: 0 0 6px; font-size: 2rem; font-weight: 700; line-height: 1.2; }
+.guide-subtitle { margin: 0 0 14px; font-size: 1.25rem; font-weight: 600; color: var(--text-muted); }
+.guide-p { margin: 0 0 14px; font-size: 1.25rem; line-height: 1.55; color: var(--text-primary); }
+.guide-h { margin: 18px 0 6px; font-size: 1.3rem; font-weight: 700; }
+.guide-quote {
+  margin: 4px 0 14px;
+  padding: 10px 16px;
+  border-left: 4px solid var(--orange);
+  font-size: 1.3rem;
+  font-style: italic;
+  line-height: 1.5;
+}
+.guide-list { margin: 0 0 14px; padding-left: 1.4rem; font-size: 1.2rem; line-height: 1.5; }
+.guide-list li { margin-bottom: 8px; }
+.guide-note {
+  margin: 8px 0 0;
+  padding: 14px 18px;
+  background: var(--orange-light);
+  border-radius: var(--radius-md);
+}
+.guide-note-title { margin: 0 0 4px; font-size: 1.2rem; font-weight: 700; color: var(--orange-darker); }
+.guide-note .guide-p { margin: 0; }
+
+.guide-links { display: grid; gap: 10px; margin-top: 6px; }
+.guide-topics-label { margin: 0 0 10px; font-size: 1.3rem; font-weight: 700; }
+.guide-topics { display: grid; gap: 10px; }
+.guide-topic {
+  min-height: 64px;
+  padding: 0.75rem 1.1rem;
+  background: var(--surface-offset);
+  color: var(--text-secondary);
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition);
+}
+.guide-topic:active {
+  background: var(--orange-light);
+  border-color: var(--orange);
+  transform: scale(0.98);
+}
+
+.guide-menu { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.guide-invite {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 20px;
+  background: var(--orange-light);
+  border-radius: var(--radius-md);
+}
+.guide-invite-title { margin: 0; font-size: 1.25rem; font-weight: 700; }
+.guide-invite-sub { margin: 2px 0 0; font-size: 1.05rem; color: var(--text-secondary); }
+
+/* ── Photo slots (hidden until the image actually loads) ── */
+.guide-photos { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.guide-photos[hidden] { display: none; }
+.guide-photo {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface-hover);
+  border: var(--card-border);
+  border-radius: var(--radius-md);
+}
+.guide-photo[hidden] { display: none; }
+.guide-photo--landscape { aspect-ratio: 4 / 3; }
+.guide-photo--portrait { aspect-ratio: 4 / 5; max-width: 360px; }
+.guide-photos--multi .guide-photo { max-width: 340px; }
+.guide-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Smaller / portrait screens: single column, photo first ── */
+@media (max-width: 900px) {
+  .guide-page--photo,
+  .guide-menu { grid-template-columns: 1fr; }
+  .guide-photos { order: -1; }
+  .guide-photo--landscape { max-width: 420px; }
+  .guide-photo--portrait { max-width: 300px; }
+  .guide-invite { flex-direction: column; align-items: stretch; text-align: center; }
+}
+
+/* ── Short landscape screens (iPad 9th gen landscape ≈ 810 px tall) ── */
+@media (orientation: landscape) and (max-height: 860px) {
+  .guide-bar { padding: 8px 20px; }
+  .guide-scroll { padding: 14px 24px 18px; }
+  .guide-page { padding: 18px 24px; gap: 22px; }
+  .guide-title { font-size: 1.75rem; }
+  .guide-p { font-size: 1.2rem; margin-bottom: 10px; }
+}

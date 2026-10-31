@@ -282,5 +282,6 @@ export const GUIDE_PAGES = {
     ],
     action: 'home',
     actionLabel: 'Volver al inicio',
+    secondaryLabel: 'Compartir mi experiencia',
   },
 };

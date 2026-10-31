@@ -213,9 +213,11 @@ export const GUIDE_PAGES = {
     blocks: [
       { t: 'h', x: 'Café Shayona' },
       { t: 'p', x: 'Ubicado en el recinto del Mandir, el Café Shayona ofrece comida vegetariana de la India, bocadillos, bebidas y dulces tradicionales.' },
+      { t: 'p', x: 'Horario: todos los días, de 11:00 a. m. a 7:30 p. m.' },
       { t: 'h', x: 'Tienda de regalos y libros' },
       { t: 'p', x: 'Explore libros, postales, recursos y regalos relacionados con las tradiciones hindúes y la cultura de la India.' },
-      { t: 'p', x: 'Consulte a un voluntario para saber cómo llegar y conocer los horarios.' },
+      { t: 'p', x: 'Horario: de 10:00 a. m. a 6:00 p. m.' },
+      { t: 'p', x: 'Consulte a un voluntario para saber cómo llegar.' },
     ],
     images: [
       { file: 'shayona-cafe.png', shape: 'landscape', alt: 'Café Shayona' },

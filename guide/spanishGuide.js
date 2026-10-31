@@ -357,6 +357,12 @@ function renderFooter(pageId, page) {
     }
   }
   if (btn) footerEl.appendChild(btn);
+  if (btn && page.secondaryLabel) {
+    footerEl.appendChild(button(page.secondaryLabel, 'guide-btn guide-btn--secondary', shareExperience));
+    footerEl.classList.add('guide-footer--two');
+  } else {
+    footerEl.classList.remove('guide-footer--two');
+  }
   footerEl.hidden = !btn;
   rootEl.classList.toggle('guide-root--footer', !!btn);
 }

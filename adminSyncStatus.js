@@ -88,13 +88,17 @@
     if (!g || !g.days) return null;
     const keys = Object.keys(g.days).sort().slice(-7);
     let opens = 0; let thanks = 0; let shares = 0;
+    let cShown = 0; let cGuide = 0; let cSurvey = 0;
     keys.forEach((k) => {
       const x = g.days[k] || {};
       opens += x.opens || 0;
       thanks += x.thanks || 0;
       shares += x.shares || 0;
+      cShown += x.chooserShown || 0;
+      cGuide += x.chooserGuide || 0;
+      cSurvey += x.chooserSurvey || 0;
     });
-    return opens > 0 ? { opens, thanks, shares } : null;
+    return (opens > 0 || cShown > 0) ? { opens, thanks, shares, cShown, cGuide, cSurvey } : null;
   }
 
   function overallOkAt(snap) {
@@ -156,6 +160,9 @@
     const g = guideTotals();
     if (g) {
       box.appendChild(mkRow('Guide', g.opens + ' sessions · ' + g.thanks + ' finished · ' + g.shares + ' to survey (7 days)'));
+      if (g.cShown > 0) {
+        box.appendChild(mkRow('Español', g.cShown + ' taps · ' + g.cGuide + ' guide · ' + g.cSurvey + ' survey (7 days)'));
+      }
     }
   }
 
